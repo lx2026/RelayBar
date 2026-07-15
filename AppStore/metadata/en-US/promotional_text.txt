@@ -1,0 +1,1 @@
+Your essential SSH tunnels, always within reach in the macOS menu bar.

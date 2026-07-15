@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Test Swift package
+        run: swift test -Xswiftc -warnings-as-errors
+      - name: Build App Store project without signing
+        run: >-
+          xcodebuild
+          -project RelayBar.xcodeproj
+          -scheme RelayBar
+          -configuration Release
+          -destination 'platform=macOS'
+          CODE_SIGNING_ALLOWED=NO
+          build
