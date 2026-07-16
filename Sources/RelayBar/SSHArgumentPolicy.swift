@@ -2,8 +2,8 @@ import Foundation
 
 enum SSHArgumentPolicy {
     static let allowedFlags: Set<String> = ["-4", "-6", "-a", "-C", "-k", "-q", "-v", "-vv", "-vvv"]
-    static let optionsWithValues: Set<String> = ["-J", "-l", "-o", "-p"]
-    static let attachedOptionPrefixes = ["-J", "-l", "-o", "-p"]
+    static let optionsWithValues: Set<String> = ["-J", "-i", "-l", "-o", "-p"]
+    static let attachedOptionPrefixes = ["-J", "-i", "-l", "-o", "-p"]
 
     private static let allowedOpenSSHOptions: Set<String> = [
         "addressfamily",

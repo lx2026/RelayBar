@@ -7,7 +7,6 @@ enum SSHCommandParser {
         var destinationPort: Int
         var sshHost: String
         var bindAddress: String?
-        var identityPath: String?
         var additionalArguments: [String]
     }
 
@@ -58,7 +57,6 @@ enum SSHCommandParser {
 
         var forward: String?
         var sshHost: String?
-        var identityPath: String?
         var extraArguments: [String] = []
         var index = 1
 
@@ -82,14 +80,6 @@ enum SSHCommandParser {
             } else if token.hasPrefix("-L"), token.count > 2 {
                 guard forward == nil else { throw ParseError.unsupportedOption("Multiple -L forwards") }
                 forward = String(token.dropFirst(2))
-            } else if token == "-i" {
-                index += 1
-                guard index < tokens.count else { throw ParseError.missingOptionValue("-i") }
-                guard identityPath == nil else { throw ParseError.unsupportedOption("Multiple identity files") }
-                identityPath = tokens[index]
-            } else if token.hasPrefix("-i"), token.count > 2 {
-                guard identityPath == nil else { throw ParseError.unsupportedOption("Multiple identity files") }
-                identityPath = String(token.dropFirst(2))
             } else if flagsToDiscard.contains(token) {
                 // RelayBar supplies these itself. In particular, -f would detach SSH
                 // and make it impossible for the app to manage the process.
@@ -130,7 +120,6 @@ enum SSHCommandParser {
             destinationPort: parsedForward.destinationPort,
             sshHost: sshHost,
             bindAddress: parsedForward.bindAddress,
-            identityPath: identityPath,
             additionalArguments: extraArguments
         )
     }

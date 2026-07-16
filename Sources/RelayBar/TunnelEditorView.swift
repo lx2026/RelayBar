@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct TunnelEditorView: View {
@@ -13,10 +12,6 @@ struct TunnelEditorView: View {
     @State private var destinationPort: String
     @State private var command = ""
     @State private var bindAddress: String?
-    @State private var identityBookmark: Data?
-    @State private var identityFileName: String?
-    @State private var suggestedIdentityPath: String?
-    @State private var identityError: String?
     @State private var additionalArguments: [String]
     @State private var importError: String?
     @FocusState private var focusedField: Field?
@@ -35,9 +30,6 @@ struct TunnelEditorView: View {
         _destinationHost = State(initialValue: tunnel?.destinationHost ?? "localhost")
         _destinationPort = State(initialValue: tunnel.map { String($0.destinationPort) } ?? "")
         _bindAddress = State(initialValue: tunnel?.bindAddress)
-        _identityBookmark = State(initialValue: tunnel?.identityBookmark)
-        _identityFileName = State(initialValue: tunnel?.identityFileName)
-        _suggestedIdentityPath = State(initialValue: nil)
         _additionalArguments = State(initialValue: tunnel?.additionalArguments ?? [])
     }
 
@@ -132,55 +124,6 @@ struct TunnelEditorView: View {
                     .focused($focusedField, equals: .sshHost)
             }
 
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 4) {
-                    Text("Identity key")
-                        .font(.system(size: 10.5, weight: .medium))
-                    Text(runsInSandbox ? "· Required" : "· Optional")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                    Spacer()
-                }
-
-                HStack(spacing: 8) {
-                    Button(action: chooseIdentityFile) {
-                        Label(identityFileName ?? "Choose key…", systemImage: "key")
-                            .lineLimit(1)
-                    }
-                    .buttonStyle(.bordered)
-
-                    if identityBookmark != nil {
-                        Button {
-                            identityBookmark = nil
-                            identityFileName = nil
-                            identityError = nil
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(.secondary)
-                        .accessibilityLabel("Remove identity key")
-                    }
-                }
-
-                if let identityError {
-                    Text(identityError)
-                        .font(.system(size: 10))
-                        .foregroundStyle(.red)
-                } else if let suggestedIdentityPath, identityBookmark == nil {
-                    Text("Choose \(suggestedIdentityPath) to grant read-only access.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.orange)
-                        .lineLimit(2)
-                } else {
-                    Text(runsInSandbox
-                        ? "Required by the App Store sandbox; RelayBar receives read-only access."
-                        : "Needed when the SSH agent does not already hold your key.")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
             HStack(spacing: 10) {
                 EditorField(label: "Local port", hint: nil) {
                     TextField("5432", text: $localPort)
@@ -226,7 +169,6 @@ struct TunnelEditorView: View {
 
     private var isValid: Bool {
         guard
-            (!runsInSandbox || identityBookmark != nil),
             SSHArgumentPolicy.isValidHostTarget(sshHost),
             SSHArgumentPolicy.isValidDestinationHost(destinationHost),
             SSHArgumentPolicy.areAdditionalArgumentsSafe(additionalArguments),
@@ -234,10 +176,6 @@ struct TunnelEditorView: View {
             let destination = Int(destinationPort), (1...65_535).contains(destination)
         else { return false }
         return true
-    }
-
-    private var runsInSandbox: Bool {
-        ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil
     }
 
     private var exposesBeyondLoopback: Bool {
@@ -261,7 +199,6 @@ struct TunnelEditorView: View {
             destinationPort = String(imported.destinationPort)
             sshHost = imported.sshHost
             bindAddress = imported.bindAddress
-            suggestedIdentityPath = imported.identityPath
             additionalArguments = imported.additionalArguments
             if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 name = "\(imported.destinationHost):\(imported.destinationPort)"
@@ -284,41 +221,9 @@ struct TunnelEditorView: View {
                 destinationPort: destination,
                 sshHost: sshHost.trimmingCharacters(in: .whitespacesAndNewlines),
                 bindAddress: bindAddress,
-                identityBookmark: identityBookmark,
-                identityFileName: identityFileName,
                 additionalArguments: additionalArguments
             )
         )
-    }
-
-    private func chooseIdentityFile() {
-        let panel = NSOpenPanel()
-        panel.title = "Choose an SSH identity key"
-        panel.message = "RelayBar receives read-only access to this file."
-        panel.prompt = "Choose Key"
-        panel.canChooseDirectories = false
-        panel.canChooseFiles = true
-        panel.allowsMultipleSelection = false
-        panel.showsHiddenFiles = true
-
-        if let suggestedIdentityPath {
-            let expanded = NSString(string: suggestedIdentityPath).expandingTildeInPath
-            panel.directoryURL = URL(fileURLWithPath: expanded).deletingLastPathComponent()
-        }
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            identityBookmark = try url.bookmarkData(
-                options: .withSecurityScope,
-                includingResourceValuesForKeys: nil,
-                relativeTo: nil
-            )
-            identityFileName = url.lastPathComponent
-            suggestedIdentityPath = nil
-            identityError = nil
-        } catch {
-            identityError = "Could not save access to this key: \(error.localizedDescription)"
-        }
     }
 
     private func sectionLabel(_ title: String) -> some View {

@@ -13,7 +13,6 @@ final class TunnelStore: ObservableObject {
     private var processes: [UUID: Process] = [:]
     private var errorPipes: [UUID: Pipe] = [:]
     private var errorBuffers: [UUID: Data] = [:]
-    private var scopedIdentityURLs: [UUID: URL] = [:]
     private var intentionalStops: Set<UUID> = []
 
     init(defaults: UserDefaults = .standard) {
@@ -76,15 +75,6 @@ final class TunnelStore: ObservableObject {
         errorBuffers[tunnel.id] = Data()
         phases[tunnel.id] = .starting
 
-        let managedArguments: [String]
-        do {
-            managedArguments = try managedSSHArguments(for: tunnel)
-        } catch {
-            cleanupRuntime(for: tunnel.id)
-            phases[tunnel.id] = .failed(error.localizedDescription)
-            return
-        }
-
         let process = Process()
         let errorPipe = Pipe()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/ssh")
@@ -97,7 +87,7 @@ final class TunnelStore: ObservableObject {
             "-o", "ServerAliveInterval=30",
             "-o", "ServerAliveCountMax=3",
             "-L", tunnel.forwardSpec
-        ] + managedArguments + tunnel.additionalArguments + [tunnel.sshHost]
+        ] + tunnel.additionalArguments + [tunnel.sshHost]
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = FileHandle.nullDevice
         process.standardError = errorPipe
@@ -192,76 +182,10 @@ final class TunnelStore: ObservableObject {
         errorPipes[id] = nil
         errorBuffers[id] = nil
         processes[id] = nil
-        scopedIdentityURLs.removeValue(forKey: id)?.stopAccessingSecurityScopedResource()
-    }
-
-    private func managedSSHArguments(for tunnel: Tunnel) throws -> [String] {
-        var arguments: [String] = []
-
-        if ProcessInfo.processInfo.environment["APP_SANDBOX_CONTAINER_ID"] != nil {
-            let directory = FileManager.default
-                .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-                .appendingPathComponent("RelayBar", isDirectory: true)
-            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-            let knownHosts = directory.appendingPathComponent("known_hosts")
-            if !FileManager.default.fileExists(atPath: knownHosts.path) {
-                guard FileManager.default.createFile(
-                    atPath: knownHosts.path,
-                    contents: Data(),
-                    attributes: [.posixPermissions: 0o600]
-                ) else {
-                    throw TunnelLaunchError.knownHostsUnavailable
-                }
-            }
-            arguments += [
-                "-F", "/dev/null",
-                "-o", "UserKnownHostsFile=\(knownHosts.path)",
-                "-o", "GlobalKnownHostsFile=/dev/null",
-                "-o", "StrictHostKeyChecking=accept-new"
-            ]
-
-            guard tunnel.identityBookmark != nil else {
-                throw TunnelLaunchError.identityRequired
-            }
-        }
-
-        if let bookmark = tunnel.identityBookmark {
-            var isStale = false
-            let url = try URL(
-                resolvingBookmarkData: bookmark,
-                options: .withSecurityScope,
-                relativeTo: nil,
-                bookmarkDataIsStale: &isStale
-            )
-            guard !isStale, url.startAccessingSecurityScopedResource() else {
-                throw TunnelLaunchError.identityAccessExpired
-            }
-            scopedIdentityURLs[tunnel.id] = url
-            arguments += ["-i", url.path, "-o", "IdentitiesOnly=yes"]
-        }
-
-        return arguments
     }
 
     private func save() {
         guard let data = try? JSONEncoder().encode(tunnels) else { return }
         defaults.set(data, forKey: storageKey)
-    }
-}
-
-private enum TunnelLaunchError: LocalizedError {
-    case knownHostsUnavailable
-    case identityRequired
-    case identityAccessExpired
-
-    var errorDescription: String? {
-        switch self {
-        case .knownHostsUnavailable:
-            return "RelayBar could not prepare its private known-hosts file."
-        case .identityRequired:
-            return "Choose an identity key before starting this tunnel."
-        case .identityAccessExpired:
-            return "Access to the selected identity key expired. Edit the tunnel and choose the key again."
-        }
     }
 }

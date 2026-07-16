@@ -22,8 +22,7 @@ final class SSHCommandParserTests: XCTestCase {
         XCTAssertEqual(result.destinationHost, "db.internal")
         XCTAssertEqual(result.destinationPort, 5432)
         XCTAssertEqual(result.bindAddress, "0.0.0.0")
-        XCTAssertEqual(result.identityPath, "~/.ssh/work")
-        XCTAssertEqual(result.additionalArguments, ["-p", "2222"])
+        XCTAssertEqual(result.additionalArguments, ["-p", "2222", "-i", "~/.ssh/work"])
     }
 
     func testParsesQuotedOption() throws {
@@ -86,6 +85,10 @@ final class SSHCommandParserTests: XCTestCase {
     func testRejectsTamperedPersistedArguments() {
         XCTAssertFalse(SSHArgumentPolicy.areAdditionalArgumentsSafe(["-o", "LocalCommand=whoami"]))
         XCTAssertFalse(SSHArgumentPolicy.areAdditionalArgumentsSafe(["unexpected-host"]))
-        XCTAssertTrue(SSHArgumentPolicy.areAdditionalArgumentsSafe(["-p", "2222", "-o", "IdentitiesOnly=yes"]))
+        XCTAssertTrue(SSHArgumentPolicy.areAdditionalArgumentsSafe([
+            "-p", "2222",
+            "-i", "~/.ssh/work",
+            "-o", "IdentitiesOnly=yes"
+        ]))
     }
 }

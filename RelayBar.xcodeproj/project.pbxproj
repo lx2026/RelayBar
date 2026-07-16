@@ -15,7 +15,6 @@
 		400000000000000000000006 /* TunnelEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000006 /* TunnelEditorView.swift */; };
 		400000000000000000000007 /* TunnelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000007 /* TunnelStore.swift */; };
 		400000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000008 /* Assets.xcassets */; };
-		400000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000009 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -28,9 +27,7 @@
 		300000000000000000000006 /* TunnelEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelEditorView.swift; sourceTree = "<group>"; };
 		300000000000000000000007 /* TunnelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelStore.swift; sourceTree = "<group>"; };
 		300000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
-		300000000000000000000009 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		30000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
-		30000000000000000000000B /* RelayBar.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = RelayBar.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -81,8 +78,6 @@
 			isa = PBXGroup;
 			children = (
 				30000000000000000000000A /* Info.plist */,
-				300000000000000000000009 /* PrivacyInfo.xcprivacy */,
-				30000000000000000000000B /* RelayBar.entitlements */,
 			);
 			name = Packaging;
 			path = Packaging;
@@ -147,7 +142,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				400000000000000000000008 /* Assets.xcassets in Resources */,
-				400000000000000000000009 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -215,16 +209,13 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Packaging/RelayBar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				ENABLE_APP_SANDBOX = YES;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Packaging/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
@@ -243,14 +234,11 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				CODE_SIGN_ENTITLEMENTS = Packaging/RelayBar.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEAD_CODE_STRIPPING = YES;
-				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
-				ENABLE_USER_SELECTED_FILES = readonly;
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = Packaging/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
