@@ -8,8 +8,6 @@ struct Tunnel: Identifiable, Codable, Equatable {
     var destinationPort: Int
     var sshHost: String
     var bindAddress: String?
-    var identityBookmark: Data?
-    var identityFileName: String?
     var additionalArguments: [String]
 
     init(
@@ -20,8 +18,6 @@ struct Tunnel: Identifiable, Codable, Equatable {
         destinationPort: Int,
         sshHost: String,
         bindAddress: String? = nil,
-        identityBookmark: Data? = nil,
-        identityFileName: String? = nil,
         additionalArguments: [String] = []
     ) {
         self.id = id
@@ -31,14 +27,12 @@ struct Tunnel: Identifiable, Codable, Equatable {
         self.destinationPort = destinationPort
         self.sshHost = sshHost
         self.bindAddress = bindAddress
-        self.identityBookmark = identityBookmark
-        self.identityFileName = identityFileName
         self.additionalArguments = additionalArguments
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, name, localPort, destinationHost, destinationPort, sshHost
-        case bindAddress, identityBookmark, identityFileName, additionalArguments
+        case bindAddress, additionalArguments
     }
 
     init(from decoder: Decoder) throws {
@@ -50,8 +44,6 @@ struct Tunnel: Identifiable, Codable, Equatable {
         destinationPort = try container.decode(Int.self, forKey: .destinationPort)
         sshHost = try container.decode(String.self, forKey: .sshHost)
         bindAddress = try container.decodeIfPresent(String.self, forKey: .bindAddress)
-        identityBookmark = try container.decodeIfPresent(Data.self, forKey: .identityBookmark)
-        identityFileName = try container.decodeIfPresent(String.self, forKey: .identityFileName)
         additionalArguments = try container.decodeIfPresent([String].self, forKey: .additionalArguments) ?? []
     }
 

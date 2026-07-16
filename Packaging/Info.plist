@@ -28,8 +28,6 @@
     <true/>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
-    <key>ITSAppUsesNonExemptEncryption</key>
-    <false/>
     <key>NSLocalNetworkUsageDescription</key>
     <string>RelayBar connects to SSH hosts on your local network to create tunnels.</string>
     <key>NSHumanReadableCopyright</key>
