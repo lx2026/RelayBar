@@ -177,6 +177,13 @@ private struct TunnelRow: View {
                             .padding(.horizontal, 5)
                             .padding(.vertical, 2)
                             .background(Capsule().fill(Color.red.opacity(0.1)))
+                    } else if case .retrying(let attempt, let maxAttempts, _, _) = phase {
+                        Text("Retry \(attempt)/\(maxAttempts)")
+                            .font(.system(size: 9.5, weight: .medium))
+                            .foregroundStyle(.orange)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 2)
+                            .background(Capsule().fill(Color.orange.opacity(0.1)))
                     }
                 }
 
@@ -237,7 +244,7 @@ private struct TunnelRow: View {
     }
 
     @ViewBuilder private var toggleIcon: some View {
-        if phase == .starting {
+        if showsProgress {
             ProgressView()
                 .controlSize(.small)
                 .scaleEffect(0.7)
@@ -250,7 +257,21 @@ private struct TunnelRow: View {
     }
 
     private var isActive: Bool {
-        phase == .running || phase == .starting
+        switch phase {
+        case .starting, .retrying, .running:
+            return true
+        case .stopped, .failed:
+            return false
+        }
+    }
+
+    private var showsProgress: Bool {
+        switch phase {
+        case .starting, .retrying:
+            return true
+        case .stopped, .running, .failed:
+            return false
+        }
     }
 
     private var isFailure: Bool {
@@ -261,7 +282,7 @@ private struct TunnelRow: View {
     private var statusColor: Color {
         switch phase {
         case .running: return .green
-        case .starting: return .orange
+        case .starting, .retrying: return .orange
         case .failed: return .red
         case .stopped: return Color.secondary.opacity(0.45)
         }
@@ -272,8 +293,14 @@ private struct TunnelRow: View {
     }
 
     private var errorOrHost: String {
-        if case .failed(let message) = phase { return message }
-        return "via \(tunnel.sshHost)"
+        switch phase {
+        case .failed(let message):
+            return message
+        case .retrying(_, _, let delay, let message):
+            return "Retrying in \(max(1, Int(ceil(delay))))s · \(message)"
+        case .stopped, .starting, .running:
+            return "via \(tunnel.sshHost)"
+        }
     }
 }
 

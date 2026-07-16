@@ -53,7 +53,7 @@ final class TunnelStoreIntegrationTests: XCTestCase {
             case .failed(let message):
                 XCTFail(message)
                 return
-            case .starting, .stopped:
+            case .starting, .retrying, .stopped:
                 break
             }
             try await Task.sleep(for: .milliseconds(250))
@@ -64,5 +64,88 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         } else {
             XCTFail("Tunnel did not reach the running state.")
         }
+    }
+
+    func testUnexpectedExitRetriesUntilLimit() async throws {
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = TunnelStore(
+            defaults: defaults,
+            sshExecutableURL: URL(fileURLWithPath: "/usr/bin/false"),
+            maxRetryAttempts: 2,
+            retryDelayProvider: { _ in 0.01 }
+        )
+        let tunnel = makeTunnel()
+        store.add(tunnel)
+
+        store.start(tunnel)
+
+        for _ in 0..<200 {
+            if case .failed(let message) = store.phase(for: tunnel) {
+                XCTAssertTrue(message.contains("Automatic retry stopped after 2 attempts."))
+                XCTAssertEqual(store.runningCount, 0)
+                return
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTFail("Tunnel did not stop retrying after the configured limit.")
+    }
+
+    func testManualStopCancelsPendingRetry() async throws {
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let store = TunnelStore(
+            defaults: defaults,
+            sshExecutableURL: URL(fileURLWithPath: "/usr/bin/false"),
+            retryDelayProvider: { _ in 0.2 }
+        )
+        let tunnel = makeTunnel()
+        store.add(tunnel)
+        store.start(tunnel)
+
+        for _ in 0..<100 {
+            if case .retrying = store.phase(for: tunnel) {
+                break
+            }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        guard case .retrying = store.phase(for: tunnel) else {
+            XCTFail("Tunnel did not enter retry backoff.")
+            return
+        }
+
+        store.stop(tunnel)
+        try await Task.sleep(for: .milliseconds(300))
+
+        XCTAssertEqual(store.phase(for: tunnel), .stopped)
+        XCTAssertEqual(store.runningCount, 0)
+    }
+
+    func testRetryDelayUsesExponentialBackoffWithCap() {
+        XCTAssertEqual(TunnelStore.retryDelay(for: 1), 1)
+        XCTAssertEqual(TunnelStore.retryDelay(for: 2), 2)
+        XCTAssertEqual(TunnelStore.retryDelay(for: 3), 4)
+        XCTAssertEqual(TunnelStore.retryDelay(for: 6), 32)
+        XCTAssertEqual(TunnelStore.retryDelay(for: 7), 60)
+        XCTAssertEqual(TunnelStore.retryDelay(for: 10), 60)
+    }
+
+    private func makeIsolatedDefaults() -> (UserDefaults, String) {
+        let suiteName = "RelayBarTests.\(UUID().uuidString)"
+        return (UserDefaults(suiteName: suiteName)!, suiteName)
+    }
+
+    private func makeTunnel() -> Tunnel {
+        Tunnel(
+            name: "Retry test",
+            localPort: 43_210,
+            destinationHost: "127.0.0.1",
+            destinationPort: 80,
+            sshHost: "example.com"
+        )
     }
 }

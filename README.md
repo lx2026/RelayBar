@@ -7,6 +7,7 @@ RelayBar is a tiny native macOS menu-bar app for local SSH port forwards. It has
 - Imports common commands such as `ssh -N -L 8080:localhost:3000 user@host`
 - Adds tunnels manually with five small fields
 - Starts and stops each tunnel with one click
+- Retries unexpected disconnects up to 10 times with exponential backoff
 - Shows startup failures directly beside the tunnel
 - Stores tunnel definitions in local `UserDefaults`
 - Stops child SSH processes when RelayBar quits

@@ -89,6 +89,7 @@ struct Tunnel: Identifiable, Codable, Equatable {
 enum TunnelPhase: Equatable {
     case stopped
     case starting
+    case retrying(attempt: Int, maxAttempts: Int, delay: TimeInterval, message: String)
     case running
     case failed(String)
 }
