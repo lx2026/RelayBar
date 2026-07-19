@@ -134,6 +134,51 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         XCTAssertEqual(TunnelStore.retryDelay(for: 10), 60)
     }
 
+    func testOpenInBrowserStartsTunnelThenOpensLocalURL() async throws {
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var openedURLs: [URL] = []
+        let store = TunnelStore(
+            defaults: defaults,
+            sshExecutableURL: URL(fileURLWithPath: "/usr/bin/yes"),
+            browserOpener: { openedURLs.append($0) }
+        )
+        let tunnel = makeTunnel()
+        store.add(tunnel)
+        defer { store.stop(tunnel) }
+
+        store.openInBrowser(tunnel)
+
+        for _ in 0..<200 where openedURLs.isEmpty {
+            try await Task.sleep(for: .milliseconds(5))
+        }
+
+        XCTAssertEqual(openedURLs, [tunnel.browserURL])
+        XCTAssertEqual(store.phase(for: tunnel), .running)
+    }
+
+    func testStoppingTunnelCancelsPendingBrowserOpen() async throws {
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        var openedURLs: [URL] = []
+        let store = TunnelStore(
+            defaults: defaults,
+            sshExecutableURL: URL(fileURLWithPath: "/usr/bin/yes"),
+            browserOpener: { openedURLs.append($0) }
+        )
+        let tunnel = makeTunnel()
+        store.add(tunnel)
+
+        store.openInBrowser(tunnel)
+        store.stop(tunnel)
+        try await Task.sleep(for: .milliseconds(550))
+
+        XCTAssertTrue(openedURLs.isEmpty)
+        XCTAssertEqual(store.phase(for: tunnel), .stopped)
+    }
+
     private func makeIsolatedDefaults() -> (UserDefaults, String) {
         let suiteName = "RelayBarTests.\(UUID().uuidString)"
         return (UserDefaults(suiteName: suiteName)!, suiteName)

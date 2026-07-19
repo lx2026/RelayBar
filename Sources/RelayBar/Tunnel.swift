@@ -65,6 +65,25 @@ struct Tunnel: Identifiable, Codable, Equatable {
         return "\(host):\(localPort)"
     }
 
+    var browserURL: URL {
+        var host = bindAddress?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if host.hasPrefix("[") && host.hasSuffix("]") {
+            host.removeFirst()
+            host.removeLast()
+        }
+        if host.isEmpty || ["*", "0.0.0.0", "::"].contains(host.lowercased()) {
+            host = "localhost"
+        }
+
+        var components = URLComponents()
+        components.scheme = "http"
+        components.host = host.contains(":") ? "[\(host)]" : host
+        components.port = localPort
+        components.path = "/"
+        return components.url ?? URL(string: "http://localhost:\(localPort)/")!
+    }
+
     var destinationEndpoint: String {
         "\(destinationHost):\(destinationPort)"
     }

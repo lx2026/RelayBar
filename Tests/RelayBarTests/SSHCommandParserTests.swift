@@ -92,3 +92,33 @@ final class SSHCommandParserTests: XCTestCase {
         ]))
     }
 }
+
+final class TunnelTests: XCTestCase {
+    func testBrowserURLUsesLocalhostByDefault() {
+        let tunnel = makeTunnel(bindAddress: nil)
+
+        XCTAssertEqual(tunnel.browserURL.absoluteString, "http://localhost:8080/")
+    }
+
+    func testBrowserURLMapsWildcardBindAddressesToLocalhost() {
+        XCTAssertEqual(makeTunnel(bindAddress: "0.0.0.0").browserURL.host, "localhost")
+        XCTAssertEqual(makeTunnel(bindAddress: "::").browserURL.host, "localhost")
+    }
+
+    func testBrowserURLFormatsIPv6BindAddress() {
+        let tunnel = makeTunnel(bindAddress: "[::1]")
+
+        XCTAssertEqual(tunnel.browserURL.absoluteString, "http://[::1]:8080/")
+    }
+
+    private func makeTunnel(bindAddress: String?) -> Tunnel {
+        Tunnel(
+            name: "Web",
+            localPort: 8080,
+            destinationHost: "127.0.0.1",
+            destinationPort: 3000,
+            sshHost: "example.com",
+            bindAddress: bindAddress
+        )
+    }
+}

@@ -12,6 +12,7 @@ final class TunnelStore: ObservableObject {
     private let sshExecutableURL: URL
     private let maxRetryAttempts: Int
     private let retryDelayProvider: (Int) -> TimeInterval
+    private let browserOpener: (URL) -> Void
     private let storageKey = "savedTunnels.v1"
     private var processes: [UUID: Process] = [:]
     private var errorPipes: [UUID: Pipe] = [:]
@@ -19,17 +20,20 @@ final class TunnelStore: ObservableObject {
     private var desiredTunnels: [UUID: Tunnel] = [:]
     private var retryAttempts: [UUID: Int] = [:]
     private var retryTasks: [UUID: Task<Void, Never>] = [:]
+    private var pendingBrowserURLs: [UUID: URL] = [:]
 
     init(
         defaults: UserDefaults = .standard,
         sshExecutableURL: URL = URL(fileURLWithPath: "/usr/bin/ssh"),
         maxRetryAttempts: Int = 10,
-        retryDelayProvider: @escaping (Int) -> TimeInterval = TunnelStore.retryDelay(for:)
+        retryDelayProvider: @escaping (Int) -> TimeInterval = TunnelStore.retryDelay(for:),
+        browserOpener: @escaping (URL) -> Void = { _ = NSWorkspace.shared.open($0) }
     ) {
         self.defaults = defaults
         self.sshExecutableURL = sshExecutableURL
         self.maxRetryAttempts = max(0, maxRetryAttempts)
         self.retryDelayProvider = retryDelayProvider
+        self.browserOpener = browserOpener
         if
             let data = defaults.data(forKey: storageKey),
             let saved = try? JSONDecoder().decode([Tunnel].self, from: data)
@@ -95,6 +99,20 @@ final class TunnelStore: ObservableObject {
         desiredTunnels[tunnel.id] = tunnel
         retryAttempts[tunnel.id] = 0
         launchTunnel(id: tunnel.id)
+    }
+
+    func openInBrowser(_ tunnel: Tunnel) {
+        guard tunnel.isSafeToRun else {
+            phases[tunnel.id] = .failed("This tunnel contains an invalid host or blocked SSH option.")
+            return
+        }
+
+        pendingBrowserURLs[tunnel.id] = tunnel.browserURL
+        if phase(for: tunnel) == .running, processes[tunnel.id]?.isRunning == true {
+            openPendingBrowserURL(for: tunnel.id)
+        } else if desiredTunnels[tunnel.id] == nil {
+            start(tunnel)
+        }
     }
 
     func stop(_ tunnel: Tunnel) {
@@ -176,6 +194,7 @@ final class TunnelStore: ObservableObject {
                 else { return }
                 self.retryAttempts[tunnel.id] = 0
                 self.phases[tunnel.id] = .running
+                self.openPendingBrowserURL(for: tunnel.id)
             }
         } catch {
             cleanupRuntime(for: tunnel.id, process: process)
@@ -186,6 +205,7 @@ final class TunnelStore: ObservableObject {
     private func stop(id: UUID) {
         desiredTunnels[id] = nil
         retryAttempts[id] = nil
+        pendingBrowserURLs[id] = nil
         cancelRetry(for: id)
         phases[id] = .stopped
 
@@ -243,6 +263,7 @@ final class TunnelStore: ObservableObject {
         guard attempt <= maxRetryAttempts else {
             desiredTunnels[id] = nil
             retryAttempts[id] = nil
+            pendingBrowserURLs[id] = nil
             phases[id] = .failed(
                 "\(message) Automatic retry stopped after \(maxRetryAttempts) attempts."
             )
@@ -280,6 +301,11 @@ final class TunnelStore: ObservableObject {
     private func cancelRetry(for id: UUID) {
         retryTasks[id]?.cancel()
         retryTasks[id] = nil
+    }
+
+    private func openPendingBrowserURL(for id: UUID) {
+        guard let url = pendingBrowserURLs.removeValue(forKey: id) else { return }
+        browserOpener(url)
     }
 
     private func cleanupRuntime(for id: UUID, process: Process? = nil) {

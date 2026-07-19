@@ -57,6 +57,7 @@ private struct TunnelListView: View {
                                 tunnel: tunnel,
                                 phase: store.phase(for: tunnel),
                                 onToggle: { store.toggle(tunnel) },
+                                onOpen: { store.openInBrowser(tunnel) },
                                 onEdit: { onEdit(tunnel) },
                                 onDelete: { store.delete(tunnel) }
                             )
@@ -158,6 +159,7 @@ private struct TunnelRow: View {
     let tunnel: Tunnel
     let phase: TunnelPhase
     let onToggle: () -> Void
+    let onOpen: () -> Void
     let onEdit: () -> Void
     let onDelete: () -> Void
 
@@ -199,6 +201,16 @@ private struct TunnelRow: View {
             }
 
             Spacer(minLength: 4)
+
+            Button(action: onOpen) {
+                Image(systemName: "safari")
+                    .font(.system(size: 13, weight: .medium))
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.accentColor.opacity(0.1)))
+            }
+            .buttonStyle(.plain)
+            .help(openButtonHelp)
+            .accessibilityLabel("Open \(tunnel.displayName) in browser")
 
             Menu {
                 Button("Edit", systemImage: "pencil", action: onEdit)
@@ -290,6 +302,17 @@ private struct TunnelRow: View {
 
     private var toggleFill: Color {
         isActive ? Color.accentColor : Color.primary.opacity(0.07)
+    }
+
+    private var openButtonHelp: String {
+        switch phase {
+        case .running:
+            return "Open in browser"
+        case .starting, .retrying:
+            return "Open in browser when connected"
+        case .stopped, .failed:
+            return "Start tunnel and open in browser"
+        }
     }
 
     private var errorOrHost: String {

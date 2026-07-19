@@ -2,11 +2,21 @@
 
 RelayBar is a tiny native macOS menu-bar app for local SSH port forwards. It has no external dependencies and runs macOS's built-in `/usr/bin/ssh` directly.
 
+[Download the latest release](https://github.com/lx2026/RelayBar/releases/latest)
+
+## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/relaybar-tunnels.png" alt="RelayBar tunnel list" width="360">
+  <img src="docs/screenshots/relaybar-add-tunnel.png" alt="RelayBar new tunnel form" width="360">
+</p>
+
 ## What it does
 
 - Imports common commands such as `ssh -N -L 8080:localhost:3000 user@host`
 - Adds tunnels manually with five small fields
 - Starts and stops each tunnel with one click
+- Starts a tunnel and opens its local URL in the default browser with one click
 - Retries unexpected disconnects up to 10 times with exponential backoff
 - Shows startup failures directly beside the tunnel
 - Stores tunnel definitions in local `UserDefaults`
@@ -15,6 +25,10 @@ RelayBar is a tiny native macOS menu-bar app for local SSH port forwards. It has
 RelayBar intentionally manages one local (`-L`) forward per item. Safe connection options such as `-p`, `-J`, `-i`, and a restricted set of `-o` values are preserved when importing a command. Options that can execute local commands, select arbitrary configuration files, or write logs are rejected. RelayBar never invokes a shell.
 
 RelayBar is distributed outside the Mac App Store and is intentionally not sandboxed. Its SSH process behaves like the command-line client: it reads the user's normal `~/.ssh/config` and `known_hosts`, can use configured identity files, and inherits access to the user's SSH agent. SSH still runs non-interactively, so password prompts are not supported. On recent macOS versions, the first connection to a `.local` or LAN host may ask for Local Network access.
+
+## System specs
+
+The concise architecture and behavior archive starts at [`docs/system-specs`](docs/system-specs/README.md).
 
 ## Build
 
