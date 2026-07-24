@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>RelayBar | SSH tunnels, one click away</title>
+    <meta
+      name="description"
+      content="A tiny native macOS menu-bar app for one-click SSH local port forwards."
+    />
+    <link rel="canonical" href="https://lx2026.github.io/RelayBar/" />
+    <link rel="icon" href="./favicon.png" />
+    <link rel="apple-touch-icon" href="./relaybar-icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="RelayBar | SSH tunnels, one click away" />
+    <meta
+      property="og:description"
+      content="A tiny native macOS menu-bar app for one-click SSH local port forwards."
+    />
+    <meta property="og:url" content="https://lx2026.github.io/RelayBar/" />
+    <meta
+      property="og:image"
+      content="https://lx2026.github.io/RelayBar/relaybar-social.png"
+    />
+    <meta
+      property="og:image:alt"
+      content="RelayBar. SSH tunnels, one click away."
+    />
+    <meta property="og:image:width" content="1729" />
+    <meta property="og:image:height" content="910" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="RelayBar | SSH tunnels, one click away" />
+    <meta
+      name="twitter:description"
+      content="A tiny native macOS menu-bar app for one-click SSH local port forwards."
+    />
+    <meta
+      name="twitter:image"
+      content="https://lx2026.github.io/RelayBar/relaybar-social.png"
+    />
+  </head>
+  <body>
+    <main>
+      <nav class="nav shell" aria-label="Primary navigation">
+        <a class="brand" href="#top" aria-label="RelayBar home">
+          <img src="./favicon.png" alt="" width="34" height="34" />
+          <span>RelayBar</span>
+        </a>
+        <div class="nav-links">
+          <a href="#how-it-works">How it works</a>
+          <a href="https://github.com/lx2026/RelayBar/blob/main/docs/SECURITY_REVIEW.md"
+            >Security</a
+          >
+          <a class="nav-cta" href="https://github.com/lx2026/RelayBar">
+            GitHub <span aria-hidden="true">↗</span>
+          </a>
+        </div>
+      </nav>
+
+      <section class="hero shell" id="top">
+        <div class="hero-copy">
+          <div class="eyebrow">
+            <span class="eyebrow-dot"></span>
+            Native macOS menu bar app
+          </div>
+          <h1>SSH tunnels,<br />one click away.</h1>
+          <p class="hero-lede">
+            Paste an <code>ssh -N -L</code> command once. Start and stop the
+            tunnel from your menu bar.
+          </p>
+          <div class="hero-actions">
+            <a
+              class="button primary"
+              href="https://github.com/lx2026/RelayBar/releases/download/v1.1.0/RelayBar.zip"
+              aria-label="Download RelayBar 1.1.0 for macOS"
+            >
+              Download v1.1.0 <span aria-hidden="true">↓</span>
+            </a>
+            <a class="button secondary" href="https://github.com/lx2026/RelayBar">
+              View source <span aria-hidden="true">↗</span>
+            </a>
+          </div>
+          <p class="release-note">Free and open source · macOS 13 or newer</p>
+          <div class="terminal" aria-label="Example SSH command">
+            <span class="terminal-prompt">$</span>
+            <code>ssh -N -L 3000:127.0.0.1:3000 devbox.local</code>
+          </div>
+        </div>
+
+        <div class="hero-visual" aria-label="RelayBar tunnel list screenshot">
+          <div class="glow glow-one"></div>
+          <div class="glow glow-two"></div>
+          <div class="screenshot-window">
+            <div class="window-bar">
+              <div class="traffic-lights" aria-hidden="true">
+                <span></span>
+                <span></span>
+                <span></span>
+              </div>
+              <span class="window-title">Menu bar</span>
+            </div>
+            <img
+              src="./relaybar-tunnels.png"
+              alt="RelayBar showing two saved SSH tunnels with one-click start controls"
+              width="760"
+              height="880"
+            />
+          </div>
+        </div>
+      </section>
+
+      <section class="proof shell" aria-label="Product highlights">
+        <div>
+          <strong>Native SwiftUI</strong>
+          <span>Built for macOS 13 and newer.</span>
+        </div>
+        <div>
+          <strong>No dependencies</strong>
+          <span>Calls macOS's built-in <code>/usr/bin/ssh</code>.</span>
+        </div>
+        <div>
+          <strong>Stored locally</strong>
+          <span>Tunnel definitions stay on your Mac.</span>
+        </div>
+      </section>
+
+      <section class="workflow shell" id="how-it-works">
+        <div class="section-copy">
+          <span class="section-kicker">How it works</span>
+          <h2>Set it up once.</h2>
+          <p>
+            RelayBar reads your local-forward command, fills in the fields, and
+            keeps the tunnel ready in your menu bar.
+          </p>
+
+          <ol class="steps">
+            <li>
+              <span>1</span>
+              <div>
+                <strong>Paste your command</strong>
+                <p>Import a standard <code>ssh -N -L</code> command.</p>
+              </div>
+            </li>
+            <li>
+              <span>2</span>
+              <div>
+                <strong>Save the tunnel</strong>
+                <p>Name it once. RelayBar remembers the safe options.</p>
+              </div>
+            </li>
+            <li>
+              <span>3</span>
+              <div>
+                <strong>Click to connect</strong>
+                <p>Start and stop it without opening Terminal.</p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="editor-shot">
+          <div class="shot-caption">
+            <span>Actual app screenshot</span>
+            <span>Quick add</span>
+          </div>
+          <img
+            src="./relaybar-add-tunnel.png"
+            alt="RelayBar new tunnel screen with SSH command import and connection fields"
+            width="760"
+            height="880"
+          />
+        </div>
+      </section>
+
+      <section class="principles shell">
+        <div class="principles-heading">
+          <span class="section-kicker">A narrow job</span>
+          <h2>Your SSH setup stays yours.</h2>
+        </div>
+        <div class="principles-copy">
+          <p>
+            RelayBar manages one local forward per item. It adds no account,
+            analytics SDK, background service, or replacement SSH stack.
+          </p>
+          <p>
+            It runs <code>/usr/bin/ssh</code> directly, so it uses your existing
+            config, keys, known hosts, and SSH agent.
+          </p>
+        </div>
+      </section>
+
+      <section class="cta shell">
+        <img src="./relaybar-icon.png" alt="" width="92" height="92" />
+        <div>
+          <h2>Keep the tunnel. Lose the terminal tab.</h2>
+          <p>Open source. Native macOS. Runs on macOS 13 or newer.</p>
+        </div>
+        <a
+          class="button light"
+          href="https://github.com/lx2026/RelayBar/releases/download/v1.1.0/RelayBar.zip"
+          aria-label="Download RelayBar 1.1.0 for macOS"
+        >
+          Download for macOS <span aria-hidden="true">↓</span>
+        </a>
+      </section>
+
+      <footer class="footer shell">
+        <a class="brand small" href="#top">
+          <img src="./favicon.png" alt="" width="26" height="26" />
+          <span>RelayBar</span>
+        </a>
+        <p>SSH tunnels, one click away.</p>
+        <div>
+          <a href="https://github.com/lx2026/RelayBar">GitHub</a>
+          <a href="https://github.com/lx2026/RelayBar/blob/main/PRIVACY.md">Privacy</a>
+          <a href="https://github.com/lx2026/RelayBar/blob/main/SECURITY.md">Security</a>
+        </div>
+      </footer>
+    </main>
+  </body>
+</html>
