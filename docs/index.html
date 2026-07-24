@@ -178,12 +178,12 @@
 
       <section class="roadmap shell" id="roadmap">
         <div class="roadmap-intro">
-          <span class="section-kicker">Public roadmap</span>
-          <h2>Only the missing link.</h2>
+          <span class="section-kicker">Roadmap</span>
+          <h2>Port forwarding is done. Remote files are next.</h2>
           <p>
-            RelayBar handles the boundary between a remote Claude Code session
-            and your Mac. If Claude Code can already do the job over SSH,
-            RelayBar stays out of the way.
+            RelayBar handles the few steps between a remote server and your Mac.
+            Use Claude Code, Codex, or a terminal to search and edit on the
+            remote machine.
           </p>
         </div>
 
@@ -194,10 +194,16 @@
               <span class="status complete">Complete</span>
             </div>
             <h3>Port forwarding</h3>
-            <p>
-              Save, start, stop, and retry an SSH local forward, then open the
-              forwarded service in your Mac's default browser.
-            </p>
+            <ul class="roadmap-done">
+              <li>Import a standard <code>ssh -N -L</code> command.</li>
+              <li>Add, edit, and delete a forward by hand.</li>
+              <li>Save forward definitions locally.</li>
+              <li>Start and stop each forward from the menu bar.</li>
+              <li>Start a stopped forward and open its URL in the default browser.</li>
+              <li>Retry an unexpected disconnect up to 10 times.</li>
+              <li>Show connection errors beside the affected forward.</li>
+              <li>Stop managed SSH processes when RelayBar quits.</li>
+            </ul>
           </article>
 
           <article class="roadmap-stage planned">
@@ -237,21 +243,21 @@
                 <span>2.4</span>
                 <div>
                   <strong>Download a folder</strong>
-                  <p>Recursive transfer with cancellation and partial-failure handling.</p>
+                  <p>Transfer it recursively, show progress, and allow cancellation.</p>
                 </div>
               </li>
               <li>
                 <span>2.5</span>
                 <div>
                   <strong>Preview images</strong>
-                  <p>A focused native preview, without gallery or editing features.</p>
+                  <p>Preview one supported remote image at a time.</p>
                 </div>
               </li>
               <li>
                 <span>2.6</span>
                 <div>
                   <strong>Render Markdown</strong>
-                  <p>A safe, read-only renderer delivered as a milestone of its own.</p>
+                  <p>Render remote Markdown in a safe, read-only view.</p>
                 </div>
               </li>
             </ol>
@@ -259,8 +265,7 @@
         </div>
 
         <p class="roadmap-boundary">
-          No remote search, Markdown editor, terminal, sync engine, rename,
-          move, or delete tools.
+          Remote file operations stop at opening, previewing, and downloading.
         </p>
       </section>
 

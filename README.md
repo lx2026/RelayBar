@@ -28,18 +28,26 @@ RelayBar is distributed outside the Mac App Store and is intentionally not sandb
 
 ## Roadmap
 
-RelayBar only takes on work at the boundary between a remote Claude Code session and the local Mac. It is not becoming a remote search tool, editor, terminal, or general-purpose file manager.
+RelayBar handles the few steps between a remote server and your Mac. Use Claude Code, Codex, or a terminal to search and edit on the remote machine.
 
-1. **Port forwarding — Complete**
-   - Save, start, stop, and retry local SSH forwards.
-   - Open the forwarded service in the Mac's default browser.
-2. **Remote files — Planned**
+1. **Port forwarding** (complete)
+   - ~~Import a standard `ssh -N -L` command.~~
+   - ~~Add, edit, and delete a forward by hand.~~
+   - ~~Save forward definitions locally.~~
+   - ~~Start and stop each forward from the menu bar.~~
+   - ~~Start a stopped forward and open its URL in the default browser.~~
+   - ~~Retry an unexpected disconnect up to 10 times.~~
+   - ~~Show connection errors beside the affected forward.~~
+   - ~~Stop managed SSH processes when RelayBar quits.~~
+2. **Remote files** (planned)
    1. **Open a pasted path:** paste an absolute path copied from remote `pwd`, choose a saved server, and open that folder.
    2. **Navigate folders:** show the files and subfolders at that path, with basic navigation and refresh. No search or indexing.
    3. **Download a file:** choose a local destination, track progress, cancel, and reveal the result in Finder.
-   4. **Download a folder:** transfer a folder recursively with progress, cancellation, and clear partial-failure handling.
-   5. **Preview images:** inspect supported remote images without adding gallery or editing features.
-   6. **Render Markdown:** provide a safe, read-only Markdown view as its own delivery milestone. Remote Markdown editing remains Claude Code's job.
+   4. **Download a folder:** transfer a folder recursively, show progress, and allow cancellation.
+   5. **Preview images:** preview one supported remote image at a time.
+   6. **Render Markdown:** render remote Markdown in a safe, read-only view.
+
+Remote file operations stop at opening, previewing, and downloading.
 
 ## System specs
 

@@ -450,7 +450,7 @@ h1 {
 
 .roadmap-track {
   display: grid;
-  grid-template-columns: minmax(240px, 0.72fr) minmax(0, 1.28fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 20px;
   align-items: start;
 }
@@ -523,6 +523,36 @@ h1 {
 .roadmap-stage code {
   color: #315c7c;
   font-size: 0.9em;
+}
+
+.roadmap-done {
+  list-style: none;
+  margin: 28px 0 0;
+  padding: 0;
+  border-top: 1px solid var(--line);
+}
+
+.roadmap-done li {
+  position: relative;
+  padding: 13px 0 13px 19px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-decoration-color: rgba(93, 107, 126, 0.65);
+  text-decoration-line: line-through;
+  text-decoration-thickness: 1px;
+}
+
+.roadmap-done li::before {
+  position: absolute;
+  top: 20px;
+  left: 1px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #2bb171;
+  content: "";
 }
 
 .roadmap-items {
