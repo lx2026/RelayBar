@@ -51,6 +51,7 @@
         </a>
         <div class="nav-links">
           <a href="#how-it-works">How it works</a>
+          <a href="#roadmap">Roadmap</a>
           <a href="https://github.com/lx2026/RelayBar/blob/main/docs/SECURITY_REVIEW.md"
             >Security</a
           >
@@ -173,6 +174,94 @@
             height="880"
           />
         </div>
+      </section>
+
+      <section class="roadmap shell" id="roadmap">
+        <div class="roadmap-intro">
+          <span class="section-kicker">Public roadmap</span>
+          <h2>Only the missing link.</h2>
+          <p>
+            RelayBar handles the boundary between a remote Claude Code session
+            and your Mac. If Claude Code can already do the job over SSH,
+            RelayBar stays out of the way.
+          </p>
+        </div>
+
+        <div class="roadmap-track">
+          <article class="roadmap-stage complete">
+            <div class="roadmap-stage-header">
+              <span class="roadmap-number">1</span>
+              <span class="status complete">Complete</span>
+            </div>
+            <h3>Port forwarding</h3>
+            <p>
+              Save, start, stop, and retry an SSH local forward, then open the
+              forwarded service in your Mac's default browser.
+            </p>
+          </article>
+
+          <article class="roadmap-stage planned">
+            <div class="roadmap-stage-header">
+              <span class="roadmap-number">2</span>
+              <span class="status planned">Planned</span>
+            </div>
+            <h3>Remote files</h3>
+            <p>
+              Paste the absolute path from remote <code>pwd</code>, choose a
+              saved server, and open exactly that folder.
+            </p>
+
+            <ol class="roadmap-items">
+              <li>
+                <span>2.1</span>
+                <div>
+                  <strong>Open a pasted path</strong>
+                  <p>Select a server and load the requested folder.</p>
+                </div>
+              </li>
+              <li>
+                <span>2.2</span>
+                <div>
+                  <strong>Navigate folders</strong>
+                  <p>List, enter, go back, and refresh. No search or indexing.</p>
+                </div>
+              </li>
+              <li>
+                <span>2.3</span>
+                <div>
+                  <strong>Download a file</strong>
+                  <p>Choose a destination, track progress, and reveal it in Finder.</p>
+                </div>
+              </li>
+              <li>
+                <span>2.4</span>
+                <div>
+                  <strong>Download a folder</strong>
+                  <p>Recursive transfer with cancellation and partial-failure handling.</p>
+                </div>
+              </li>
+              <li>
+                <span>2.5</span>
+                <div>
+                  <strong>Preview images</strong>
+                  <p>A focused native preview, without gallery or editing features.</p>
+                </div>
+              </li>
+              <li>
+                <span>2.6</span>
+                <div>
+                  <strong>Render Markdown</strong>
+                  <p>A safe, read-only renderer delivered as a milestone of its own.</p>
+                </div>
+              </li>
+            </ol>
+          </article>
+        </div>
+
+        <p class="roadmap-boundary">
+          No remote search, Markdown editor, terminal, sync engine, rename,
+          move, or delete tools.
+        </p>
       </section>
 
       <section class="principles shell">
