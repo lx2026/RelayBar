@@ -32,6 +32,19 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 - **Task 009.** `testGroupingCacheInvalidatesOnEveryMutationPath` covers add, update, move, rename, ungroup, and delete, because the change introduces a cache whose only real risk is staleness.
 - **Task 011.** `ProgressPollingIntervalTests` covers the fixed single-file interval, the 1-second directory floor, growth with entry count, and the 8-second bound.
 - **Task 012.** `SyntaxHighlightCacheKeyTests` covers key stability, distinctness across appearance, language, and code, length independence between a 9-byte and a 40 KB block, and unambiguous field separation.
+- **Task 014.** `RemoteByteCountTests` asserts the reused formatter's output against `ByteCountFormatter` for twelve sizes, and pins the specific wording for 999 bytes, 1 KB, and 843 KB.
+
+## Visual evidence
+
+`VisualSnapshotHarness` renders `RelayBarRootView` offscreen at the fixed 380-by-440 menu size in light and dark appearance, using a mixed grouped fixture. It is skipped unless `RELAYBAR_SNAPSHOT_DIR` is set, following the same opt-in pattern as the live SSH tests.
+
+- Both appearances render named sections in localized order with **Personal** before **Work**, saved order preserved inside each section, rows unchanged, and the Remote Files row and footer in place. This confirms Task 009 did not disturb section presentation.
+- Screen capture of the running app was not available in this environment: `screencapture` failed with `could not create image from display`, so the evidence is offscreen rendering rather than a live window.
+
+### Not visually covered
+
+- Task 014's **Reveal Local Socket** item and Task 004's group menus live inside SwiftUI `Menu` content, which is not built until the menu opens and cannot be driven by offscreen rendering.
+- Task 005's refusal message and Task 012's highlighted output require a Remote Files model in a specific state; both are covered by unit assertions on the message and cache-key behavior rather than by pixels.
 
 ### Coverage carried by existing tests
 
@@ -48,6 +61,7 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 - Reviewing that rewrite surfaced a pre-existing latent hang on the same path: the drain also ran when `Process.run()` itself threw. No child ever held those pipes' write ends in that case, so `readDataToEndOfFile` would wait on the main queue for an end of file that cannot arrive. The drain is now skipped when the launch failed, where there is nothing to read anyway.
 - Task 013 removed cancellation checks from six leaf scanners only. The per-character checks in `stripCommentSegments` and `transformInline` were deliberately kept: one line may be the whole document, so removing them would trade a real cancellation-latency regression for a small constant.
 - Task 014 replaced a filesystem probe in a menu builder with a shape test. Reveal now falls back to the enclosing folder when the socket is gone, which is a small behavior change in the stale case and is recorded in the tunnel-management spec.
+- Task 014's first implementation used `.formatted(.byteCount(style: .file))` and was wrong: that style renders SI `kB` where `ByteCountFormatter` renders `KB`, and rounds 999 bytes up to `1 kB`, so every kilobyte-sized row would have changed wording. The spec asserted the text was unchanged and the task was marked complete without checking it. The automated suite could not catch this because nothing asserted the row text. It now reuses one main-actor-confined `ByteCountFormatter`, which meets the same goal with identical output, and `RemoteByteCountTests` pins the equivalence.
 - No dependency, asset, entitlement, or persisted format changed. No user-visible string changed except Task 005's new refusal message and Task 015's apostrophe correction.
 
 ## Deferred work

@@ -1598,6 +1598,32 @@ final class SFTPCommandBuilderTests: XCTestCase {
     }
 }
 
+@MainActor
+final class RemoteByteCountTests: XCTestCase {
+    // Task 014 reuses one formatter instead of building one per row. The output
+    // must stay identical to the per-call convenience it replaced; the
+    // `.formatted(.byteCount(style:))` alternative is not equivalent, because it
+    // renders SI `kB` and rounds 999 bytes up to `1 kB`.
+    func testMatchesByteCountFormatterExactly() {
+        for size in [
+            Int64(0), 1, 2, 999, 1_000, 1_024, 4_096, 842_700,
+            1_258_291, 3_565_158, 50_000_000, 5_000_000_000
+        ] {
+            XCTAssertEqual(
+                RemoteByteCount.string(size),
+                ByteCountFormatter.string(fromByteCount: size, countStyle: .file),
+                "size \(size) formatted differently"
+            )
+        }
+    }
+
+    func testUsesBinaryPrefixedFileStyleWording() {
+        XCTAssertEqual(RemoteByteCount.string(999), "999 bytes")
+        XCTAssertEqual(RemoteByteCount.string(1_024), "1 KB")
+        XCTAssertEqual(RemoteByteCount.string(842_700), "843 KB")
+    }
+}
+
 final class SyntaxHighlightCacheKeyTests: XCTestCase {
     // Task 012. The key is built inside a SwiftUI render pass, so it must not
     // scale with the code block.

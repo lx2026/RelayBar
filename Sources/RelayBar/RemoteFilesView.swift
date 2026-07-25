@@ -1,5 +1,25 @@
 import SwiftUI
 
+/// One reused formatter. `ByteCountFormatter.string(fromByteCount:countStyle:)`
+/// builds a formatter per call, and these run per row inside a render pass.
+/// `.formatted(.byteCount(style: .file))` is not a substitute: it renders SI
+/// `kB` rather than `KB` and rounds 999 bytes up to `1 kB`.
+///
+/// Confined to the main actor because `ByteCountFormatter` is not thread-safe
+/// and every caller is a SwiftUI view body.
+@MainActor
+enum RemoteByteCount {
+    private static let formatter: ByteCountFormatter = {
+        let formatter = ByteCountFormatter()
+        formatter.countStyle = .file
+        return formatter
+    }()
+
+    static func string(_ byteCount: Int64) -> String {
+        formatter.string(fromByteCount: byteCount)
+    }
+}
+
 struct RemoteFilesView: View {
     @ObservedObject var model: RemoteFilesModel
     @FocusState private var isPathFocused: Bool
@@ -403,7 +423,7 @@ private struct RemoteFileRow: View {
 
     private var sizeText: String {
         guard let size = entry.size else { return "—" }
-        return size.formatted(.byteCount(style: .file))
+        return RemoteByteCount.string(size)
     }
 
     private var accessibilityLabel: String {
@@ -547,9 +567,9 @@ private struct TransferStrip: View {
     }
 
     private var progressText: String {
-        let completed = transfer.completedBytes.formatted(.byteCount(style: .file))
+        let completed = RemoteByteCount.string(transfer.completedBytes)
         guard let total = transfer.totalBytes else { return completed }
-        return "\(completed) of \(total.formatted(.byteCount(style: .file)))"
+        return "\(completed) of \(RemoteByteCount.string(total))"
     }
 }
 

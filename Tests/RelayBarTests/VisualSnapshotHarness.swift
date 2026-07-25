@@ -1,0 +1,105 @@
+// Renders the menu window offscreen so a change to the saved list can be
+// reviewed in both appearances without a screen-capture permission. Skipped
+// unless RELAYBAR_SNAPSHOT_DIR is set, following the opt-in pattern the live
+// SSH tests use.
+import AppKit
+import SwiftUI
+import XCTest
+@testable import RelayBar
+
+@MainActor
+final class VisualSnapshotHarness: XCTestCase {
+    private var outputDirectory: URL {
+        URL(fileURLWithPath: ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] ?? "")
+    }
+
+    func testCaptureTunnelListSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let suiteName = "RelayBarSnapshot.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TunnelStore(defaults: defaults)
+
+        let fixtures: [(name: String, group: String?)] = [
+            ("Hermes Dashboard", "Work"),
+            ("Virtual Desktop", "Work"),
+            ("Photos", "Personal"),
+            ("Scratch", nil)
+        ]
+        for (index, fixture) in fixtures.enumerated() {
+            store.add(
+                Tunnel(
+                    name: fixture.name,
+                    localPort: 8_000 + index,
+                    destinationHost: "localhost",
+                    destinationPort: 3_000 + index,
+                    sshHost: "preview-\(index + 1).example.com",
+                    groupTag: fixture.group
+                )
+            )
+        }
+
+        // A local Unix-socket rule exercises the Task 014 Reveal path.
+        store.add(
+            Tunnel(
+                name: "Socket Forward",
+                sshHost: "gateway.example.com",
+                rules: [
+                    ForwardingRule(
+                        kind: .local,
+                        listen: .unix(path: "/tmp/relaybar-visual.sock"),
+                        destination: .tcp(host: "localhost", port: 5_432)
+                    )
+                ],
+                groupTag: "Work"
+            )
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            try capture(
+                view: RelayBarRootView().environmentObject(store),
+                appearance: appearanceName,
+                to: outputDirectory.appendingPathComponent("tunnel-list-\(label).png")
+            )
+        }
+    }
+
+    private func capture(
+        view: some View,
+        appearance: NSAppearance.Name,
+        to url: URL
+    ) throws {
+        let size = NSSize(width: 380, height: 440)
+        let hosting = NSHostingView(rootView: view)
+        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.appearance = NSAppearance(named: appearance)
+
+        let window = NSWindow(
+            contentRect: NSRect(origin: .zero, size: size),
+            styleMask: [.titled],
+            backing: .buffered,
+            defer: false
+        )
+        window.appearance = NSAppearance(named: appearance)
+        window.contentView = hosting
+        window.orderBack(nil)
+        hosting.layoutSubtreeIfNeeded()
+
+        // SwiftUI resolves its first layout pass on the run loop.
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        let rep = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        try data.write(to: url)
+        XCTAssertGreaterThan(data.count, 2_000, "snapshot looks empty")
+    }
+}
