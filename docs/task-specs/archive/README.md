@@ -16,8 +16,8 @@ Tasks 005 through 019 came from one review pass over the app sources for reliabi
 - [Task 009 — Build Tunnel Grouping Once Per Render](009-build-grouping-once-per-render.md)
 - [Task 010 — Compile the PermitRemoteOpen Expression Once](010-compile-permitremoteopen-expression-once.md)
 - [Task 011 — Bound Directory Download Progress Polling](011-bound-directory-progress-polling.md)
-- [Task 012 — Cheapen Syntax Highlight Cache Lookups](012-cheapen-highlight-cache-lookups.md)
-- [Task 013 — Hoist Cancellation Checks Out of Leaf Scanners](013-hoist-cancellation-checks.md)
+- [Task 012 — Cheapen Syntax Highlight Cache Lookups](012-cheapen-highlight-cache-lookups.md) — **withdrawn**, measured 28-179x slower than what it replaced
+- [Task 013 — Hoist Cancellation Checks Out of Leaf Scanners](013-hoist-cancellation-checks.md) — **withdrawn**, the removed cost measured under 1% of a render
 - [Task 014 — Remove Formatter and Filesystem Work From View Bodies](014-remove-work-from-view-bodies.md)
 - [Task 015 — Table-Driven sftp Error Messages](015-table-driven-sftp-messages.md)
 - [Task 016 — Deduplicate Control Output Buffering](016-deduplicate-control-buffering.md)

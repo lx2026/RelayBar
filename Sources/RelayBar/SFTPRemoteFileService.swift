@@ -496,6 +496,11 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         measureLocal(url).bytes
     }
 
+    /// Exposed so the polling-cost benchmark measures the real walk.
+    func benchmarkMeasureLocal(_ url: URL) -> (bytes: Int64, entries: Int) {
+        measureLocal(url)
+    }
+
     private func measureLocal(_ url: URL) -> (bytes: Int64, entries: Int) {
         guard let attributes = try? fileManager.attributesOfItem(atPath: url.path) else {
             return (0, 0)

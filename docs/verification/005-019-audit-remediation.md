@@ -2,13 +2,13 @@
 
 Verified: 2026-07-25
 
-Result: Complete for Tasks 006–019. **Task 005 was withdrawn**: live testing showed its finding was incorrect and its change was a regression, so it was reverted in full. See [the withdrawal record](../task-specs/archive/005-reject-glob-metacharacter-paths.md).
+Result: Complete for twelve of the fifteen tasks. **Tasks 005, 012, and 013 were withdrawn** after testing showed their findings did not hold; all three were reverted in full. Each carries its own withdrawal record: [005](../task-specs/archive/005-reject-glob-metacharacter-paths.md), [012](../task-specs/archive/012-cheapen-highlight-cache-lookups.md), [013](../task-specs/archive/013-hoist-cancellation-checks.md).
 
 These fifteen tasks came from one review pass over the app sources for reliability, performance, and conciseness. They share this report rather than repeating the same command output fifteen times.
 
 ## Automated evidence
 
-- `swift test` passed 145 tests with 4 opt-in tests skipped and no failures, up from 133 before the change. With `RELAYBAR_LOOPBACK_SSH_DIR` set, the two live tests also pass against a real OpenSSH server.
+- `swift test` passed 149 tests with 11 opt-in tests skipped and no failures, up from 133 before the change. With `RELAYBAR_LOOPBACK_SSH_DIR` set, the two live tests also pass against a real OpenSSH server.
 - `swift test -Xswiftc -warnings-as-errors`, the first CI check, passed.
 - The Release app build, the second CI check, succeeded:
 
@@ -29,7 +29,6 @@ These fifteen tasks came from one review pass over the app sources for reliabili
   This test was confirmed to be a regression test, not a tautology: with the per-operation guard temporarily reverted to the previous per-profile guard, it fails with `Restart failed: Another SSH control operation is still running. Automatic retry stopped after 1 attempts.` — the exact defect Task 007 describes.
 - **Task 009.** `testGroupingCacheInvalidatesOnEveryMutationPath` covers add, update, move, rename, ungroup, and delete, because the change introduces a cache whose only real risk is staleness.
 - **Task 011.** `ProgressPollingIntervalTests` covers the fixed single-file interval, the 1-second directory floor, growth with entry count, and the 8-second bound.
-- **Task 012.** `SyntaxHighlightCacheKeyTests` covers key stability, distinctness across appearance, language, and code, length independence between a 9-byte and a 40 KB block, and unambiguous field separation.
 - **Task 014.** `RemoteByteCountTests` asserts the reused formatter's output against `ByteCountFormatter` for twelve sizes, and pins the specific wording for 999 bytes, 1 KB, and 843 KB.
 
 ## Visual evidence
@@ -42,7 +41,6 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 ### Not visually covered
 
 - Task 014's **Reveal Local Socket** item and Task 004's group menus live inside SwiftUI `Menu` content, which is not built until the menu opens and cannot be driven by offscreen rendering.
-- Task 012's highlighted output requires a Remote Files model in a specific state; it is covered by unit assertions on cache-key behavior rather than by pixels.
 
 ### Coverage carried by existing tests
 
@@ -57,10 +55,25 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 - Task 007 keeps the single-operation-at-a-time rule; it is now scoped to a launch generation rather than a profile. Continuations still resume exactly once on completion, stop, cancellation, timeout, and launch failure, because a superseded operation stays registered until its own termination handler runs.
 - Task 006's handler detachment happens before the synchronous drain, and the operation is removed from the registry first, so a handler block still in flight becomes inert instead of recreating a buffer. Control output stays on the main queue rather than hopping through a `Task`, which preserves FIFO ordering with the termination handler's dispatch.
 - Reviewing that rewrite surfaced a pre-existing latent hang on the same path: the drain also ran when `Process.run()` itself threw. No child ever held those pipes' write ends in that case, so `readDataToEndOfFile` would wait on the main queue for an end of file that cannot arrive. The drain is now skipped when the launch failed, where there is nothing to read anyway.
-- Task 013 removed cancellation checks from six leaf scanners only. The per-character checks in `stripCommentSegments` and `transformInline` were deliberately kept: one line may be the whole document, so removing them would trade a real cancellation-latency regression for a small constant.
 - Task 014 replaced a filesystem probe in a menu builder with a shape test. Reveal now falls back to the enclosing folder when the socket is gone, which is a small behavior change in the stale case and is recorded in the tunnel-management spec.
 - Task 014's first implementation used `.formatted(.byteCount(style: .file))` and was wrong: that style renders SI `kB` where `ByteCountFormatter` renders `KB`, and rounds 999 bytes up to `1 kB`, so every kilobyte-sized row would have changed wording. The spec asserted the text was unchanged and the task was marked complete without checking it. The automated suite could not catch this because nothing asserted the row text. It now reuses one main-actor-confined `ByteCountFormatter`, which meets the same goal with identical output, and `RemoteByteCountTests` pins the equivalence.
 - No dependency, asset, entitlement, or persisted format changed. The only user-visible string change that survives is Task 015's apostrophe correction; Task 005's refusal message was reverted with the rest of that task.
+
+## Measured performance evidence
+
+`PerformanceClaimTests` runs the previous and current shape of each performance change in one process. It is skipped unless `RELAYBAR_BENCH` is set. Release build, Apple silicon:
+
+| Task | Before | After | Verdict |
+| --- | --- | --- | --- |
+| 009 grouping per render, 24 profiles, 4 sections | 286.8 µs | 56.6 µs | **5.1× faster**, kept |
+| 010 PermitRemoteOpen validation | 7.78 µs | 3.77 µs | **2.1× faster**, kept |
+| 011 progress poll, 5,000-file tree | 22.9 ms per poll every 1 s | same poll every 5 s | **5× less walking**, kept |
+| 012 highlight cache key, 1 KB / 16 KB / 64 KB | 0.17 / 0.43 / 2.15 µs | 30.8 / 36.9 / 59.4 µs | **28–179× slower, withdrawn** |
+| 013 leaf cancellation checks | `Task.isCancelled` = 2.2 ns | ≈7 ms saved on a 1.0 s render | **under 1%, withdrawn** |
+
+Two conclusions follow. The three kept changes are worth their diff, measured rather than assumed. The two withdrawn ones were justified by reasoning that measurement contradicted: a digest must read every byte where `NSString` bridging is lazy, and a 2.2 ns check is not a per-character cost worth removing.
+
+The same run surfaced a finding this branch does **not** address: `renderSource` takes ≈1.0 second for a 776 KB document, roughly 150 times more than everything Task 013 targeted. The markdown pipeline's repeated full passes and per-line `[Character]` materialization are the real cost there, and reworking them is separate, larger work.
 
 ## Live evidence
 

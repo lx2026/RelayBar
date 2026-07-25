@@ -1,36 +1,35 @@
 # Task 012 — Cheapen Syntax Highlight Cache Lookups
 
-Status: Complete
+Status: Withdrawn
 
 Created: 2026-07-24
 
-Completed: 2026-07-25
+Withdrawn: 2026-07-25
 
-## Outcome
+## Withdrawal
 
-`RelayBarCodeSyntaxHighlighter.highlightCode` builds its cache key as `"\(appearanceKey)|\(language)|\(code)"`, copying and hashing the entire code block — up to 64 KB — on every lookup, including cache hits. The method is a SwiftUI render callback, so this happens on the main thread during rendering.
+The optimization made the code slower. It was implemented, committed to the branch, then reverted.
 
-## Delivery Boundary
+### What the task claimed
 
-### Included
+That `"\(appearanceKey)|\(language)|\(code)"` copies and hashes up to 64 KB on every lookup, so a fixed-size digest would be cheaper.
 
-- A bounded cache key that does not scale with block length.
+### What was measured
 
-### Excluded
+`PerformanceClaimTests.testHighlightCacheKeyCost` builds each key and performs one `NSCache` lookup. Release build, Apple silicon:
 
-- Moving highlighting off the main thread. `CodeSyntaxHighlighter` is a synchronous rendering callback; changing that is a larger redesign and stays out of this task.
+| code size | interpolated key | SHA-256 digest key | digest cost |
+| --- | --- | --- | --- |
+| 1 KB | 0.17 µs | 30.80 µs | 179× |
+| 16 KB | 0.43 µs | 36.95 µs | 87× |
+| 64 KB | 2.15 µs | 59.44 µs | 28× |
 
-## Work
+The premise was wrong in two ways. Swift's `NSString` bridging is lazy rather than an eager copy, and `NSCache` does not hash the whole string, so the original key never paid per byte. A digest must read every byte by definition, and the hex encoding through `String(format:)` dominated even that.
 
-- Derive the key from a fixed-size digest of appearance, language, and code rather than the code text itself.
-- Keep both the success cache and the failure cache keyed consistently.
-- Preserve the existing size limit, language normalization, and locking behavior.
+### Resolution
 
-## Acceptance
+Reverted: the digest helper, the `CryptoKit` import, and the unit test that covered the helper. The interpolated key carries a note with the measured figures so it is not "optimized" again. The benchmark case is kept, renamed to mark the digest as the rejected shape, so the conclusion stays checkable.
 
-- Cache key construction is independent of code-block length.
-- Highlighted output, unsupported-language fallback, and over-limit fallback are unchanged.
-- Light and dark highlighters remain independently cached.
-- `swift test` and `git diff --check` pass.
+### What went wrong in the process
 
-Completion evidence is recorded in [Tasks 005–019 verification](../../verification/005-019-audit-remediation.md).
+"Copying and hashing 64 KB" was asserted from reading the expression, never measured. The unit test written for the task checked that the new key was stable and length-independent, which was true and irrelevant: it could not detect that the key was two orders of magnitude more expensive to produce. A performance change needs a measurement, not a correctness test.

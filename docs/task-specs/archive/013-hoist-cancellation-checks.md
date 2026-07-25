@@ -1,39 +1,36 @@
 # Task 013 — Hoist Cancellation Checks Out of Leaf Scanners
 
-Status: Complete
+Status: Withdrawn
 
 Created: 2026-07-24
 
-Completed: 2026-07-25
+Withdrawn: 2026-07-25
 
-## Outcome
+## Withdrawal
 
-`ObsidianMarkdownCompatibility` checks `Task.isCancelled` inside its innermost character loops, including `repeatedCount` and `isEscaped`. Each check is a concurrency-runtime call, paid per character, across documents up to the 2 MB decoder limit and repeated over several scanning passes.
+The cost this task removed is not measurable in context. It was implemented, committed to the branch, then reverted.
 
-Rendering already runs in a detached task off the main thread, and every leaf scanner is reached from a loop that polls cancellation once per line. The leaf checks are therefore redundant.
+### What the task claimed
 
-## Delivery Boundary
+That `Task.isCancelled` in the innermost character loops of `ObsidianMarkdownCompatibility` is "a concurrency-runtime call, paid per character" across documents up to 2 MB, and that removing it from six leaf scanners was worth doing.
 
-### Included
+### What was measured
 
-- Leaf scanners bounded by one run, one token, or one line, reached from a loop that already polls per line: `repeatedCount`, `isEscaped`, `escapeMarkdownText`, `codeSpan`, `firstCharacter`, `firstUnescapedCharacter`.
+`PerformanceClaimTests.testMarkdownScannerCosts`, release build:
 
-### Excluded
+- `Task.isCancelled` costs **2.2 ns** per check. The debug build reports 127 ns, which is what made the checks look expensive when reasoned about rather than measured.
+- `renderSource` over a 776 KB document takes **≈1.0 second**.
 
-- The per-character checks in the main scanners `stripCommentSegments` and `transformInline`. Those bound the work inside a single line, which matters because one line may be the whole document; removing them would trade a real cancellation-latency regression for a small constant.
-- Every per-line and per-pass check, and the checks in scanners whose lookahead crosses lines.
+Even assuming a check for every character on every pass, the removed checks account for well under 1% of that render. The change bought roughly 7 ms on a document that takes a second.
 
-## Work
+### Resolution
 
-- Remove the cancellation check from each in-scope leaf scanner.
-- Record why those scanners carry no check, so the omission is not read as an oversight.
-- Leave budgets, bounds, and returned values otherwise unchanged.
+Reverted. All six leaf scanners have their cancellation checks back, restoring the file to its original 30 check sites. Output was identical either way, so nothing else changes.
 
-## Acceptance
+### What this did surface
 
-- No cancellation check remains in the six leaf scanners named above.
-- Every retained check still sits on a path that observes cancellation at least once per line.
-- Rendered output is unchanged for the existing Markdown fixtures.
-- `swift test` and `git diff --check` pass.
+The real number here is the second. `renderSource` costing ≈1.0 s for 776 KB is roughly 150 times larger than anything the cancellation checks contribute, and it is the finding worth acting on: the pipeline makes several full passes and re-materializes `[Character]` arrays per line on each. That is a separate, larger piece of work and is deliberately not attempted here.
 
-Completion evidence is recorded in [Tasks 005–019 verification](../../verification/005-019-audit-remediation.md).
+### What went wrong in the process
+
+The per-character cost was estimated, not measured, and the estimate was taken from intuition about runtime calls. Measuring first would have shown both that the target was negligible and where the actual cost lives.

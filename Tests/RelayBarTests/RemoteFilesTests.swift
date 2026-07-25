@@ -1604,64 +1604,6 @@ final class RemoteByteCountTests: XCTestCase {
     }
 }
 
-final class SyntaxHighlightCacheKeyTests: XCTestCase {
-    // Task 012. The key is built inside a SwiftUI render pass, so it must not
-    // scale with the code block.
-    func testCacheKeyIsStableDistinguishingAndLengthIndependent() {
-        let short = RelayBarCodeSyntaxHighlighter.cacheKey(
-            appearance: "dark",
-            language: "swift",
-            code: "let x = 1"
-        )
-        let long = RelayBarCodeSyntaxHighlighter.cacheKey(
-            appearance: "dark",
-            language: "swift",
-            code: String(repeating: "let x = 1\n", count: 4_000)
-        )
-        XCTAssertEqual(short.length, long.length)
-
-        XCTAssertEqual(
-            short,
-            RelayBarCodeSyntaxHighlighter.cacheKey(
-                appearance: "dark",
-                language: "swift",
-                code: "let x = 1"
-            )
-        )
-        XCTAssertNotEqual(
-            short,
-            RelayBarCodeSyntaxHighlighter.cacheKey(
-                appearance: "light",
-                language: "swift",
-                code: "let x = 1"
-            )
-        )
-        XCTAssertNotEqual(
-            short,
-            RelayBarCodeSyntaxHighlighter.cacheKey(
-                appearance: "dark",
-                language: "python",
-                code: "let x = 1"
-            )
-        )
-        XCTAssertNotEqual(short, long)
-
-        // The separator must keep field boundaries unambiguous.
-        XCTAssertNotEqual(
-            RelayBarCodeSyntaxHighlighter.cacheKey(
-                appearance: "dark",
-                language: "swift",
-                code: "code"
-            ),
-            RelayBarCodeSyntaxHighlighter.cacheKey(
-                appearance: "dark",
-                language: "swiftcode",
-                code: ""
-            )
-        )
-    }
-}
-
 final class ProgressPollingIntervalTests: XCTestCase {
     // Task 011. Each directory poll re-walks the tree, so the gap widens with it.
     func testDirectoryPollingWidensWithTreeSize() {
