@@ -134,10 +134,7 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
     }
 
     func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
-        guard !RemotePath.containsGlobMetacharacters(path) else {
-            throw RemoteFileError.unsupportedPathCharacters
-        }
-        guard RemotePath.structuralValidationMessage(for: path) == nil else {
+        guard RemotePath.validationMessage(for: path) == nil else {
             throw RemoteFileError.invalidPath
         }
         let normalizedPath = RemotePath.normalized(path)

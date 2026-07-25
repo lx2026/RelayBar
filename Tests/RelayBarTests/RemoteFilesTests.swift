@@ -45,33 +45,22 @@ final class RemotePathTests: XCTestCase {
         )
     }
 
-    // Task 005. sftp expands glob(3) metacharacters even inside quotes, so a
-    // path carrying them cannot be sent literally.
-    func testRefusesRemotePathsCarryingGlobMetacharacters() throws {
-        for path in ["/srv/a*", "/srv/report[2026]", "/srv/draft?"] {
-            XCTAssertEqual(
+    // sftp's own quoting suppresses glob(3) expansion, so paths holding
+    // metacharacters are accepted and quoted without extra escaping. Verified
+    // against OpenSSH 10.2; see the note on `batchQuoted`. A previous change
+    // rejected these paths and had to be reverted, so the behavior is pinned.
+    func testAcceptsAndQuotesPathsCarryingGlobMetacharacters() throws {
+        for path in ["/srv/star*dir", "/srv/report[2026]", "/srv/draft?.md"] {
+            XCTAssertNil(
                 RemotePath.validationMessage(for: path),
-                "The remote path cannot contain *, ?, or [.",
-                "expected \(path) to be refused"
+                "\(path) must remain openable"
             )
-            XCTAssertTrue(RemotePath.containsGlobMetacharacters(path))
-            XCTAssertThrowsError(try RemotePath.remoteBatchQuoted(path)) { error in
-                XCTAssertEqual(error as? RemoteFileError, .unsupportedPathCharacters)
-            }
+            XCTAssertEqual(try RemotePath.batchQuoted(path), "\"\(path)\"")
         }
-
-        // Shape-only validation still accepts them, so a listing that contains
-        // such an entry keeps rendering the row.
-        XCTAssertNil(
-            RemotePath.structuralValidationMessage(for: "/srv/report[2026]")
-        )
-        // Local destinations are resolved by sftp literally; a user's own
-        // folder may legitimately contain a bracket.
         XCTAssertEqual(
             try RemotePath.batchQuoted("/Users/me/Downloads/set[1]/payload"),
             #""/Users/me/Downloads/set[1]/payload""#
         )
-        XCTAssertNil(RemotePath.validationMessage(for: "/srv/app/output"))
     }
 }
 
@@ -1485,29 +1474,20 @@ final class RemoteFilesKeyboardShortcutTests: XCTestCase {
 }
 
 final class SFTPCommandBuilderTests: XCTestCase {
-    // Task 005. The remote argument is refused; the local destination is not.
-    func testRefusesGlobMetacharactersOnlyInRemoteArguments() throws {
-        XCTAssertThrowsError(try SFTPCommandBuilder.listCommand(path: "/srv/a*")) { error in
-            XCTAssertEqual(error as? RemoteFileError, .unsupportedPathCharacters)
-        }
-        XCTAssertThrowsError(
-            try SFTPCommandBuilder.downloadCommand(
-                remotePath: "/srv/report[2026]",
-                localPath: "/Users/me/Downloads/report",
-                recursively: false
-            )
-        ) { error in
-            XCTAssertEqual(error as? RemoteFileError, .unsupportedPathCharacters)
-        }
-
-        let command = try SFTPCommandBuilder.downloadCommand(
-            remotePath: "/srv/report.csv",
-            localPath: "/Users/me/Downloads/set[1]/payload",
-            recursively: false
+    // Metacharacters reach sftp quoted, not escaped and not rejected; its own
+    // quoting matches them literally.
+    func testQuotesGlobMetacharactersInBothArguments() throws {
+        XCTAssertEqual(
+            try SFTPCommandBuilder.listCommand(path: "/srv/report[2026]"),
+            "ls -la \"/srv/report[2026]\"\n"
         )
         XCTAssertEqual(
-            command,
-            "get \"/srv/report.csv\" \"/Users/me/Downloads/set[1]/payload\"\n"
+            try SFTPCommandBuilder.downloadCommand(
+                remotePath: "/srv/report[2026]/data.csv",
+                localPath: "/Users/me/Downloads/set[1]/payload",
+                recursively: false
+            ),
+            "get \"/srv/report[2026]/data.csv\" \"/Users/me/Downloads/set[1]/payload\"\n"
         )
     }
 
@@ -1718,8 +1698,8 @@ final class ProgressPollingIntervalTests: XCTestCase {
 }
 
 final class SFTPListingParserTests: XCTestCase {
-    // Task 005. Opening these entries is refused, but the listing that contains
-    // them must still parse; the rows stay visible.
+    // Entries whose names hold glob metacharacters parse, render, and remain
+    // openable; sftp resolves their quoted paths literally.
     func testKeepsEntriesWhoseNamesCarryGlobMetacharacters() throws {
         let output = """
         drwxr-xr-x    3 alice staff        96 Jul 23 21:04 report[2026]

@@ -2,15 +2,13 @@
 
 Verified: 2026-07-25
 
-Result: Complete
-
-Every acceptance criterion in Tasks 005–019 has current evidence. Task 005 explicitly excludes the escaping that would make glob-bearing paths work; that is [Task 020](../task-specs/020-escape-glob-metacharacter-paths.md), which remains active and gated on live-SSH evidence.
+Result: Complete for Tasks 006–019. **Task 005 was withdrawn**: live testing showed its finding was incorrect and its change was a regression, so it was reverted in full. See [the withdrawal record](../task-specs/archive/005-reject-glob-metacharacter-paths.md).
 
 These fifteen tasks came from one review pass over the app sources for reliability, performance, and conciseness. They share this report rather than repeating the same command output fifteen times.
 
 ## Automated evidence
 
-- `swift test` passed 140 tests with 3 opt-in live tests skipped and no failures, up from 133 before the change.
+- `swift test` passed 145 tests with 4 opt-in tests skipped and no failures, up from 133 before the change. With `RELAYBAR_LOOPBACK_SSH_DIR` set, the two live tests also pass against a real OpenSSH server.
 - `swift test -Xswiftc -warnings-as-errors`, the first CI check, passed.
 - The Release app build, the second CI check, succeeded:
 
@@ -25,7 +23,7 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 
 ### New coverage
 
-- **Task 005.** `RemotePathTests` covers refusal of `*`, `?`, and `[` in remote paths, acceptance of the same characters in a local destination, and shape-only validation still accepting them. `SFTPCommandBuilderTests` covers refusal in the remote argument of `ls` and `get` while the local argument is quoted normally. `SFTPListingParserTests` covers a listing whose entries carry those characters still parsing with every row retained.
+- **Glob metacharacters (formerly Task 005).** `RemotePathTests` and `SFTPCommandBuilderTests` assert that paths containing `*`, `?`, and `[` are accepted and quoted without extra escaping. `SFTPListingParserTests` covers a listing whose entries carry those characters. These pin the behavior the withdrawn task broke.
 - **Task 007.** `testRestartIsNotBlockedByAStoppedLaunchesControlOperation` starts a profile, stops it while its control operation is still in flight, and restarts immediately. The fake SSH fixture gained `RELAYBAR_FAKE_SSH_IGNORE_TERM_SPEC`, a forward that ignores `SIGTERM`, so the stopped launch's operation is guaranteed to outlive the restart.
 
   This test was confirmed to be a regression test, not a tautology: with the per-operation guard temporarily reverted to the previous per-profile guard, it fails with `Restart failed: Another SSH control operation is still running. Automatic retry stopped after 1 attempts.` — the exact defect Task 007 describes.
@@ -44,7 +42,7 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 ### Not visually covered
 
 - Task 014's **Reveal Local Socket** item and Task 004's group menus live inside SwiftUI `Menu` content, which is not built until the menu opens and cannot be driven by offscreen rendering.
-- Task 005's refusal message and Task 012's highlighted output require a Remote Files model in a specific state; both are covered by unit assertions on the message and cache-key behavior rather than by pixels.
+- Task 012's highlighted output requires a Remote Files model in a specific state; it is covered by unit assertions on cache-key behavior rather than by pixels.
 
 ### Coverage carried by existing tests
 
@@ -62,12 +60,16 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 - Task 013 removed cancellation checks from six leaf scanners only. The per-character checks in `stripCommentSegments` and `transformInline` were deliberately kept: one line may be the whole document, so removing them would trade a real cancellation-latency regression for a small constant.
 - Task 014 replaced a filesystem probe in a menu builder with a shape test. Reveal now falls back to the enclosing folder when the socket is gone, which is a small behavior change in the stale case and is recorded in the tunnel-management spec.
 - Task 014's first implementation used `.formatted(.byteCount(style: .file))` and was wrong: that style renders SI `kB` where `ByteCountFormatter` renders `KB`, and rounds 999 bytes up to `1 kB`, so every kilobyte-sized row would have changed wording. The spec asserted the text was unchanged and the task was marked complete without checking it. The automated suite could not catch this because nothing asserted the row text. It now reuses one main-actor-confined `ByteCountFormatter`, which meets the same goal with identical output, and `RemoteByteCountTests` pins the equivalence.
-- No dependency, asset, entitlement, or persisted format changed. No user-visible string changed except Task 005's new refusal message and Task 015's apostrophe correction.
+- No dependency, asset, entitlement, or persisted format changed. The only user-visible string change that survives is Task 015's apostrophe correction; Task 005's refusal message was reverted with the rest of that task.
 
-## Deferred work
+## Live evidence
 
-Task 005 ships the refusal, not the escaping that would make these paths work, and says so in its delivery boundary. Escaping changes the bytes reaching a third-party globber, and the interaction between the sftp tokenizer's backslash handling and `glob(3)` cannot be accepted on unit tests alone. [Task 020](../task-specs/020-escape-glob-metacharacter-paths.md) carries that work and requires a live SSH server holding paths named with `*`, `?`, and `[`.
+`LiveLoopbackTests` runs the real `/usr/bin/ssh` and `/usr/bin/sftp` paths against a throwaway `sshd` bound to `127.0.0.1:2222` with its own host and client keys. It is skipped unless `RELAYBAR_LOOPBACK_SSH_DIR` is set. Against OpenSSH 10.2 it confirms:
 
-A live SSH run was not otherwise required. The complete fake-process lifecycle suite and the forwarding suite passed; the opt-in live tests remained skipped.
+- A profile with a local TCP forward and a port-`0` remote rule reaches running, OpenSSH reports a real allocated port, and an HTTP request through the forward returns 200 with the expected body.
+- Stop followed immediately by start reaches running again, allocates a fresh port, and still carries traffic. This is the Task 007 path against genuine OpenSSH reaping timing rather than the fake fixture's.
+- A real directory listing retains `report[2026]`, `draft?.md`, and `star*dir` rows, and each of those directories opens correctly — the evidence that withdrew Task 005.
+
+The setup ran as an unprivileged process on loopback and was torn down afterwards; `~/.ssh/known_hosts` was restored from a byte-for-byte backup. No system or security setting was changed.
 
 No release, notarization, publication, or deployment was performed.

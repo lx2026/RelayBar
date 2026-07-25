@@ -9,7 +9,7 @@ Move a task spec into this directory only after its acceptance criteria pass and
 
 Tasks 005 through 019 came from one review pass over the app sources for reliability, performance, and conciseness. They share [one verification report](../../verification/005-019-audit-remediation.md).
 
-- [Task 005 — Reject Remote Paths That sftp Would Glob](005-reject-glob-metacharacter-paths.md)
+- [Task 005 — Reject Remote Paths That sftp Would Glob](005-reject-glob-metacharacter-paths.md) — **withdrawn**, the finding was incorrect and the change was reverted
 - [Task 006 — Clear Control Pipe Handlers Before Draining](006-clear-pipe-handlers-before-draining.md)
 - [Task 007 — Key SSH Control State by Launch](007-key-control-state-by-launch.md)
 - [Task 008 — Remove the PID-Based Force-Kill Race](008-remove-pid-force-kill-race.md)

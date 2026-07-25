@@ -1,41 +1,45 @@
 # Task 005 — Reject Remote Paths That sftp Would Glob
 
-Status: Complete
+Status: Withdrawn
 
 Created: 2026-07-24
 
-Completed: 2026-07-25
+Withdrawn: 2026-07-25
 
-## Outcome
+## Withdrawal
 
-Stop presenting wrong results for remote paths that contain `glob(3)` metacharacters. `RemotePath.batchQuoted` escapes only `\` and `"`, which satisfies the sftp tokenizer but not its globber: `sftp(1)` states that "Any special characters contained within pathnames that are recognized by glob(3) must be escaped with backslashes". A directory literally named `report[2026]` therefore cannot be listed, and `/srv/a*` silently matches whatever else exists.
+The finding behind this task was wrong, and the change it produced was a regression. It was implemented, committed to the branch, then reverted in full. The record is kept so the same mistake is not repeated.
 
-Until the escaping form is verified against a live server, RelayBar reports an explicit, actionable error instead of issuing a command whose result cannot be trusted.
+### What the task claimed
 
-## Delivery Boundary
+That `RemotePath.batchQuoted` escapes only `\` and `"`, which satisfies the sftp tokenizer but not its globber, so a remote path containing `*`, `?`, or `[` would be expanded rather than used literally. The claim rested on one sentence in `sftp(1)`: "Any special characters contained within pathnames that are recognized by glob(3) must be escaped with backslashes".
 
-### Included
+### What is actually true
 
-- Detection of unescaped `*`, `?`, and `[` in any remote path sent to `sftp`.
-- One clear user-facing message naming the unsupported characters.
-- Listing entries whose names contain those characters remain visible; only navigating to or downloading them is refused.
+That sentence describes unquoted arguments. sftp's own quoting already suppresses expansion: inside a quoted argument it escapes glob metacharacters before matching, so they resolve literally. Measured against OpenSSH 10.2 over a real connection, using `batchQuoted` output verbatim:
 
-### Excluded
+| Remote path | Result |
+| --- | --- |
+| `"…/report[2026]"` | listed correctly, not treated as a character class |
+| `"…/draft?.md"` | listed correctly |
+| `"…/star*dir"` | listed correctly |
+| `"…/bra[ck]et.md"` | listed correctly |
+| `"…/quo\"te.md"` | listed correctly |
+| `"…/back\\slash.md"` | listed correctly |
+| `"…/*"` | reported not found, having been escaped to a literal `\*` |
 
-- Backslash escaping that would make these paths work. That change alters bytes reaching a third-party globber and cannot be accepted on unit tests alone; it is deferred to Task 020 pending live-SSH evidence.
+The last row is the direct evidence: sftp inserted that backslash itself. Quoting was already doing the job this task assumed it was not.
 
-## Work
+### Consequence
 
-- Add a metacharacter check to `RemotePath` and apply it wherever a path becomes an sftp argument, covering both the typed path and entry paths derived from a listing.
-- Surface the failure through the existing `RemoteFileError` presentation rather than a new alert path.
-- Keep `batchQuoted`'s current `\` and `"` escaping unchanged so existing tokenizer coverage still holds.
-- Cover accepted and rejected paths, including a `[` inside an entry name reached by activation rather than typing.
+The refusal shipped by this task blocked remote paths that already worked. Any folder or file named with a bracket, star, or question mark became unopenable through RelayBar, having been fine before. The unit tests written for the task passed because they asserted the new refusal rather than the underlying sftp behavior, which no test or manual check had ever exercised.
 
-## Acceptance
+### Resolution
 
-- A path containing `*`, `?`, or `[` is refused before any process launches, with a message naming those characters.
-- Paths without metacharacters behave exactly as before, and existing `batchQuoted` tests pass unchanged.
-- A listing containing `report[2026]` still renders the row; activating it reports the refusal instead of opening the wrong directory.
-- `swift test` and `git diff --check` pass.
+Every code change from this task was reverted: the metacharacter set, `containsGlobMetacharacters`, `remoteBatchQuoted`, the `structuralValidationMessage` split, the `unsupportedPathCharacters` error, and the command-builder and service guards. `batchQuoted` now carries a note recording the measured behavior, so the escaping is not "fixed" again. Task 020, which existed only to carry the deferred escaping, was deleted.
 
-Completion evidence is recorded in [Tasks 005–019 verification](../../verification/005-019-audit-remediation.md).
+Tests pin the correct behavior instead: `RemotePathTests` and `SFTPCommandBuilderTests` assert that metacharacter paths are accepted and quoted, and `LiveLoopbackTests` lists and opens real `report[2026]` and `star*dir` directories over a real connection.
+
+### What went wrong in the process
+
+The finding was reasoned from a man-page sentence rather than measured, and this task's own delivery boundary then excluded the measurement as something that "cannot be accepted on unit tests alone". That exclusion should have blocked the task rather than justified shipping a guess. A behavior claim about a third-party tool needs evidence from that tool before any code depends on it.
