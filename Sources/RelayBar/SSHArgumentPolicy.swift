@@ -74,11 +74,14 @@ enum SSHArgumentPolicy {
         }
     }
 
+    private static let permitRemoteOpenExpression = try? NSRegularExpression(
+        pattern: #"^(\*|[^:\s]+|\[[^\]]+\]):(\*|[0-9]+)$"#
+    )
+
     static func isValidPermitRemoteOpenDestination(_ value: String) -> Bool {
         guard isSafeOptionValue(value) else { return false }
-        let pattern = #"^(\*|[^:\s]+|\[[^\]]+\]):(\*|[0-9]+)$"#
         guard
-            let expression = try? NSRegularExpression(pattern: pattern),
+            let expression = permitRemoteOpenExpression,
             expression.firstMatch(
                 in: value,
                 range: NSRange(value.startIndex..., in: value)

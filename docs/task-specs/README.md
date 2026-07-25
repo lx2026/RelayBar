@@ -28,3 +28,5 @@ A task may be marked `Complete` only after:
 Completion does not authorize a commit, push, release, or deployment. Follow [`AGENTS.md`](../../AGENTS.md) and obtain explicit deployment approval.
 
 ## Active tasks
+
+- [Task 020 — Escape Remote Paths That sftp Would Glob](020-escape-glob-metacharacter-paths.md)

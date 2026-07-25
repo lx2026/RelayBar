@@ -96,7 +96,28 @@ struct RemoteFileEntry: Identifiable, Hashable, Sendable {
 enum RemotePath {
     static let maximumUTF8ByteCount = 32 * 1_024
 
+    /// `sftp(1)`: "Any special characters contained within pathnames that are
+    /// recognized by glob(3) must be escaped with backslashes". Quoting alone
+    /// does not suppress expansion, so a path carrying these characters would be
+    /// globbed rather than used literally — `/srv/a*` silently matches whatever
+    /// else exists. RelayBar refuses such a path instead of acting on a result
+    /// it cannot trust.
+    static let globMetacharacters: Set<Character> = ["*", "?", "["]
+
     static func validationMessage(for value: String) -> String? {
+        if let message = structuralValidationMessage(for: value) {
+            return message
+        }
+        guard !containsGlobMetacharacters(value) else {
+            return "The remote path cannot contain *, ?, or [."
+        }
+        return nil
+    }
+
+    /// Shape only. A listing may legitimately contain entries whose names hold
+    /// glob metacharacters; those rows stay visible even though opening them is
+    /// refused, so listing validation stops here.
+    static func structuralValidationMessage(for value: String) -> String? {
         guard !value.isEmpty else {
             return "Paste an absolute path from remote pwd."
         }
@@ -110,6 +131,10 @@ enum RemotePath {
             return "The remote path cannot contain line breaks or control characters."
         }
         return nil
+    }
+
+    static func containsGlobMetacharacters(_ value: String) -> Bool {
+        value.contains { globMetacharacters.contains($0) }
     }
 
     static func normalized(_ value: String) -> String {
@@ -132,6 +157,15 @@ enum RemotePath {
         guard normalizedPath != "/" else { return "/" }
         let parent = (normalizedPath as NSString).deletingLastPathComponent
         return parent.isEmpty ? "/" : parent
+    }
+
+    /// For arguments the remote side resolves. `batchQuoted` satisfies the sftp
+    /// tokenizer but not its globber, so remote arguments refuse metacharacters.
+    static func remoteBatchQuoted(_ value: String) throws -> String {
+        guard !containsGlobMetacharacters(value) else {
+            throw RemoteFileError.unsupportedPathCharacters
+        }
+        return try batchQuoted(value)
     }
 
     static func batchQuoted(_ value: String) throws -> String {
@@ -158,6 +192,7 @@ enum RemotePath {
 enum RemoteFileError: LocalizedError, Equatable {
     case invalidConnection
     case invalidPath
+    case unsupportedPathCharacters
     case tooManyEntries
     case responseTooLarge
     case previewTooLarge
@@ -175,6 +210,9 @@ enum RemoteFileError: LocalizedError, Equatable {
             return "This saved server contains an invalid host or blocked SSH option."
         case .invalidPath:
             return "The remote path is not valid."
+        case .unsupportedPathCharacters:
+            return "RelayBar cannot open remote paths containing *, ?, or [, "
+                + "because sftp expands those characters instead of using them literally."
         case .tooManyEntries:
             return "This folder contains too many items to show safely."
         case .responseTooLarge:
@@ -257,16 +295,19 @@ enum SFTPCommandBuilder {
     }
 
     static func listCommand(path: String) throws -> String {
-        "ls -la \(try RemotePath.batchQuoted(path))\n"
+        "ls -la \(try RemotePath.remoteBatchQuoted(path))\n"
     }
 
+    /// Only `remotePath` goes through the remote quoting. sftp resolves the
+    /// local destination literally, and a user's own folder may legitimately
+    /// contain a bracket.
     static func downloadCommand(
         remotePath: String,
         localPath: String,
         recursively: Bool
     ) throws -> String {
         let recursiveFlag = recursively ? "-R " : ""
-        return "get \(recursiveFlag)\(try RemotePath.batchQuoted(remotePath)) \(try RemotePath.batchQuoted(localPath))\n"
+        return "get \(recursiveFlag)\(try RemotePath.remoteBatchQuoted(remotePath)) \(try RemotePath.batchQuoted(localPath))\n"
     }
 
     private static func append(option: String, value: String, to result: inout [String]) {
@@ -342,7 +383,7 @@ enum SFTPListingParser {
             }
             guard name != ".", name != "..", isSafeEntryName(name) else { continue }
             let entryPath = RemotePath.joining(parentPath, name)
-            guard RemotePath.validationMessage(for: entryPath) == nil else {
+            guard RemotePath.structuralValidationMessage(for: entryPath) == nil else {
                 throw RemoteFileError.malformedListing
             }
             entries.append(

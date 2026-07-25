@@ -33,6 +33,8 @@ Remote Files opens an exact folder on a saved SSH server without adding search, 
 - Cancellation and failure remove the complete staging directory and leave an existing destination unchanged.
 - Cancellation and failure messages explicitly state that temporary data was removed and existing files were unchanged.
 - Transfer progress is scoped to its originating attempt; a delayed callback from a failed or cancelled attempt cannot update a retry.
+- Single-file progress polls every 250 ms. Recursive progress re-walks the partial tree, so its interval scales with the entry count from 1 second up to a bounded 8 seconds. The completion report is exact regardless of interval.
+- A cancelled transfer escalates to `SIGKILL` only while the process is recorded as still running; a process observed to have exited is never signalled again.
 
 ## Image preview
 
@@ -55,6 +57,8 @@ Empty folders show a single focused empty state with an explicit accessibility d
 
 - RelayBar invokes `/usr/bin/sftp` directly and never invokes a shell.
 - Remote and local batch paths are limited to 32 KiB of UTF-8 before quoting.
+- Quoting satisfies the sftp tokenizer but not its globber, so a remote argument containing `*`, `?`, or `[` is refused with a message naming those characters rather than sent for expansion. The refusal happens before any process launches. Local destinations are resolved literally and may contain those characters.
+- A listing whose entries carry those characters still parses and still renders every row; only opening or downloading such an entry is refused.
 - Captured standard output is capped at 32 MiB and standard error at 1 MiB.
 - Parsed listing lines are limited to 32 KiB, entry names to 4 KiB, entry sizes must be nonnegative, and supported entries remain capped at 10,000.
 - Listing rows may contain either basenames or absolute paths. An absolute entry is accepted only when it is a direct child of the requested folder, then reduced to its basename; out-of-folder absolute entries fail closed.

@@ -6,6 +6,9 @@ log_file="${RELAYBAR_FAKE_SSH_LOG:-}"
 counter_file="${RELAYBAR_FAKE_SSH_COUNTER:-}"
 fail_spec="${RELAYBAR_FAKE_SSH_FAIL_SPEC:-}"
 delay_spec="${RELAYBAR_FAKE_SSH_DELAY_SPEC:-}"
+# A forward that ignores SIGTERM, so a stopped launch's control operation stays
+# alive while the next launch starts. Used to exercise launch-generation scoping.
+ignore_term_spec="${RELAYBAR_FAKE_SSH_IGNORE_TERM_SPEC:-}"
 
 if [ -n "$log_file" ]; then
     {
@@ -55,6 +58,12 @@ if [ "$is_master" -eq 1 ]; then
 fi
 
 if [ "$operation" = "forward" ]; then
+    if [ -n "$ignore_term_spec" ] && [ "$forward_spec" = "$ignore_term_spec" ]; then
+        trap '' TERM INT
+        sleep 1
+        exit 0
+    fi
+
     if [ -n "$delay_spec" ] && [ "$forward_spec" = "$delay_spec" ]; then
         trap 'exit 124' TERM INT
         sleep 2

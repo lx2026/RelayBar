@@ -7,12 +7,6 @@ enum SSHCommandParser {
         var additionalArguments: [String]
         var reverseSOCKSPolicy: ReverseSOCKSPolicy?
         var streamLocalSettings: StreamLocalSettings
-
-        // Compatibility accessors for callers that still inspect a single local rule.
-        var localPort: Int { rules.first?.listen.tcp?.port ?? 0 }
-        var destinationHost: String { rules.first?.destination?.tcp?.host ?? "" }
-        var destinationPort: Int { rules.first?.destination?.tcp?.port ?? 0 }
-        var bindAddress: String? { rules.first?.listen.tcp?.bindAddress }
     }
 
     enum ParseError: LocalizedError, Equatable {

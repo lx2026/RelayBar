@@ -44,6 +44,35 @@ final class RemotePathTests: XCTestCase {
             )
         )
     }
+
+    // Task 005. sftp expands glob(3) metacharacters even inside quotes, so a
+    // path carrying them cannot be sent literally.
+    func testRefusesRemotePathsCarryingGlobMetacharacters() throws {
+        for path in ["/srv/a*", "/srv/report[2026]", "/srv/draft?"] {
+            XCTAssertEqual(
+                RemotePath.validationMessage(for: path),
+                "The remote path cannot contain *, ?, or [.",
+                "expected \(path) to be refused"
+            )
+            XCTAssertTrue(RemotePath.containsGlobMetacharacters(path))
+            XCTAssertThrowsError(try RemotePath.remoteBatchQuoted(path)) { error in
+                XCTAssertEqual(error as? RemoteFileError, .unsupportedPathCharacters)
+            }
+        }
+
+        // Shape-only validation still accepts them, so a listing that contains
+        // such an entry keeps rendering the row.
+        XCTAssertNil(
+            RemotePath.structuralValidationMessage(for: "/srv/report[2026]")
+        )
+        // Local destinations are resolved by sftp literally; a user's own
+        // folder may legitimately contain a bracket.
+        XCTAssertEqual(
+            try RemotePath.batchQuoted("/Users/me/Downloads/set[1]/payload"),
+            #""/Users/me/Downloads/set[1]/payload""#
+        )
+        XCTAssertNil(RemotePath.validationMessage(for: "/srv/app/output"))
+    }
 }
 
 final class RemoteServerTests: XCTestCase {
@@ -1456,6 +1485,32 @@ final class RemoteFilesKeyboardShortcutTests: XCTestCase {
 }
 
 final class SFTPCommandBuilderTests: XCTestCase {
+    // Task 005. The remote argument is refused; the local destination is not.
+    func testRefusesGlobMetacharactersOnlyInRemoteArguments() throws {
+        XCTAssertThrowsError(try SFTPCommandBuilder.listCommand(path: "/srv/a*")) { error in
+            XCTAssertEqual(error as? RemoteFileError, .unsupportedPathCharacters)
+        }
+        XCTAssertThrowsError(
+            try SFTPCommandBuilder.downloadCommand(
+                remotePath: "/srv/report[2026]",
+                localPath: "/Users/me/Downloads/report",
+                recursively: false
+            )
+        ) { error in
+            XCTAssertEqual(error as? RemoteFileError, .unsupportedPathCharacters)
+        }
+
+        let command = try SFTPCommandBuilder.downloadCommand(
+            remotePath: "/srv/report.csv",
+            localPath: "/Users/me/Downloads/set[1]/payload",
+            recursively: false
+        )
+        XCTAssertEqual(
+            command,
+            "get \"/srv/report.csv\" \"/Users/me/Downloads/set[1]/payload\"\n"
+        )
+    }
+
     func testTranslatesSSHPortAndLoginOptionsForSFTP() throws {
         let server = RemoteServer(
             id: UUID(),
@@ -1543,7 +1598,118 @@ final class SFTPCommandBuilderTests: XCTestCase {
     }
 }
 
+final class SyntaxHighlightCacheKeyTests: XCTestCase {
+    // Task 012. The key is built inside a SwiftUI render pass, so it must not
+    // scale with the code block.
+    func testCacheKeyIsStableDistinguishingAndLengthIndependent() {
+        let short = RelayBarCodeSyntaxHighlighter.cacheKey(
+            appearance: "dark",
+            language: "swift",
+            code: "let x = 1"
+        )
+        let long = RelayBarCodeSyntaxHighlighter.cacheKey(
+            appearance: "dark",
+            language: "swift",
+            code: String(repeating: "let x = 1\n", count: 4_000)
+        )
+        XCTAssertEqual(short.length, long.length)
+
+        XCTAssertEqual(
+            short,
+            RelayBarCodeSyntaxHighlighter.cacheKey(
+                appearance: "dark",
+                language: "swift",
+                code: "let x = 1"
+            )
+        )
+        XCTAssertNotEqual(
+            short,
+            RelayBarCodeSyntaxHighlighter.cacheKey(
+                appearance: "light",
+                language: "swift",
+                code: "let x = 1"
+            )
+        )
+        XCTAssertNotEqual(
+            short,
+            RelayBarCodeSyntaxHighlighter.cacheKey(
+                appearance: "dark",
+                language: "python",
+                code: "let x = 1"
+            )
+        )
+        XCTAssertNotEqual(short, long)
+
+        // The separator must keep field boundaries unambiguous.
+        XCTAssertNotEqual(
+            RelayBarCodeSyntaxHighlighter.cacheKey(
+                appearance: "dark",
+                language: "swift",
+                code: "code"
+            ),
+            RelayBarCodeSyntaxHighlighter.cacheKey(
+                appearance: "dark",
+                language: "swiftcode",
+                code: ""
+            )
+        )
+    }
+}
+
+final class ProgressPollingIntervalTests: XCTestCase {
+    // Task 011. Each directory poll re-walks the tree, so the gap widens with it.
+    func testDirectoryPollingWidensWithTreeSize() {
+        XCTAssertEqual(
+            SFTPRemoteFileService.progressPollingInterval(
+                forEntryCount: 12_000,
+                isDirectory: false
+            ),
+            .milliseconds(250)
+        )
+        XCTAssertEqual(
+            SFTPRemoteFileService.progressPollingInterval(
+                forEntryCount: 0,
+                isDirectory: true
+            ),
+            .seconds(1)
+        )
+        XCTAssertEqual(
+            SFTPRemoteFileService.progressPollingInterval(
+                forEntryCount: 3_500,
+                isDirectory: true
+            ),
+            .seconds(3)
+        )
+        XCTAssertEqual(
+            SFTPRemoteFileService.progressPollingInterval(
+                forEntryCount: 500_000,
+                isDirectory: true
+            ),
+            .seconds(8),
+            "the interval must stay bounded"
+        )
+    }
+}
+
 final class SFTPListingParserTests: XCTestCase {
+    // Task 005. Opening these entries is refused, but the listing that contains
+    // them must still parse; the rows stay visible.
+    func testKeepsEntriesWhoseNamesCarryGlobMetacharacters() throws {
+        let output = """
+        drwxr-xr-x    3 alice staff        96 Jul 23 21:04 report[2026]
+        -rw-r--r--    1 alice staff      4096 Jul 23 20:55 draft?.md
+        -rw-r--r--    1 alice staff      2048 Jul 23 20:56 notes*.md
+        """
+
+        let entries = try SFTPListingParser.parse(output, parentPath: "/srv/app")
+
+        XCTAssertEqual(
+            entries.map(\.name),
+            ["report[2026]", "draft?.md", "notes*.md"]
+        )
+        XCTAssertEqual(entries[0].path, "/srv/app/report[2026]")
+    }
+
     func testParsesSortsAndPreservesNamesWithSpaces() throws {
         let output = """
         drwxr-xr-x    3 alice staff        96 Jul 23 21:04 reports
@@ -1738,7 +1904,7 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
     func testNormalizesActionableConnectionErrors() async {
         let service = makeFixtureService()
         let cases: [(host: String, message: String)] = [
-            ("hostkey", "SSH could not verify this server's host key."),
+            ("hostkey", "SSH could not verify this server’s host key."),
             ("refused", "The server refused the connection.")
         ]
 

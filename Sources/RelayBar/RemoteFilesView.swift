@@ -403,7 +403,7 @@ private struct RemoteFileRow: View {
 
     private var sizeText: String {
         guard let size = entry.size else { return "—" }
-        return ByteCountFormatter.string(fromByteCount: size, countStyle: .file)
+        return size.formatted(.byteCount(style: .file))
     }
 
     private var accessibilityLabel: String {
@@ -547,12 +547,9 @@ private struct TransferStrip: View {
     }
 
     private var progressText: String {
-        let completed = ByteCountFormatter.string(
-            fromByteCount: transfer.completedBytes,
-            countStyle: .file
-        )
+        let completed = transfer.completedBytes.formatted(.byteCount(style: .file))
         guard let total = transfer.totalBytes else { return completed }
-        return "\(completed) of \(ByteCountFormatter.string(fromByteCount: total, countStyle: .file))"
+        return "\(completed) of \(total.formatted(.byteCount(style: .file)))"
     }
 }
 

@@ -6,7 +6,10 @@ import Foundation
 final class TunnelStore: ObservableObject {
     static let shared = TunnelStore()
 
-    @Published private(set) var tunnels: [Tunnel]
+    @Published private(set) var tunnels: [Tunnel] {
+        didSet { cachedGrouping = nil }
+    }
+    private var cachedGrouping: TunnelGrouping?
     @Published private(set) var phases: [UUID: TunnelPhase] = [:]
     @Published private(set) var runtimePorts: [UUID: [UUID: Int]] = [:]
 
@@ -20,6 +23,7 @@ final class TunnelStore: ObservableObject {
     private let storageKey = "savedTunnels.v2"
     private let legacyStorageKey = "savedTunnels.v1"
     private let controlOutputLimit = 64 * 1_024
+    private let masterErrorOutputLimit = 16 * 1_024
     private let localSocketPathLimit = 103
 
     private var processes: [UUID: Process] = [:]
@@ -35,15 +39,11 @@ final class TunnelStore: ObservableObject {
     private var controlSocketURLs: [UUID: URL] = [:]
     private var ownedLocalSockets: [UUID: [OwnedSocket]] = [:]
 
-    private var controlProcesses: [UUID: Process] = [:]
-    private var controlOutputPipes: [UUID: Pipe] = [:]
-    private var controlErrorPipes: [UUID: Pipe] = [:]
-    private var controlOutputBuffers: [UUID: Data] = [:]
-    private var controlErrorBuffers: [UUID: Data] = [:]
-    private var controlTimeoutTasks: [UUID: Task<Void, Never>] = [:]
-    private var controlContinuations: [
-        UUID: CheckedContinuation<ControlResult, Never>
-    ] = [:]
+    // Control operations are keyed by their own identifier and tagged with the
+    // launch generation that owns them, so a superseded launch's teardown can
+    // neither block nor complete the launch that replaced it.
+    private var controlOperations: [UUID: ControlOperation] = [:]
+    private var launchGenerations: [UUID: UUID] = [:]
 
     init(
         defaults: UserDefaults = .standard,
@@ -80,18 +80,24 @@ final class TunnelStore: ObservableObject {
     }
 
     var runningCount: Int {
-        phases.values.filter {
+        phases.values.count {
             switch $0 {
             case .starting, .retrying, .running:
                 true
             case .stopped, .failed:
                 false
             }
-        }.count
+        }
     }
 
+    /// Rebuilt only when `tunnels` changes. Views evaluate their bodies on every
+    /// phase publish, so deriving sections per evaluation would repeat the
+    /// bucketing and localized sort on every retry tick.
     var grouping: TunnelGrouping {
-        TunnelGrouping(tunnels: tunnels)
+        if let cachedGrouping { return cachedGrouping }
+        let grouping = TunnelGrouping(tunnels: tunnels)
+        cachedGrouping = grouping
+        return grouping
     }
 
     var groupNames: [String] {
@@ -267,7 +273,7 @@ final class TunnelStore: ObservableObject {
             .union(processes.keys)
             .union(retryTasks.keys)
             .union(startupTasks.keys)
-            .union(controlProcesses.keys)
+            .union(controlOperations.values.map(\.tunnelID))
         for id in activeIDs {
             stop(id: id)
         }
@@ -286,6 +292,8 @@ final class TunnelStore: ObservableObject {
     private func launchTunnel(id: UUID) {
         guard let tunnel = desiredTunnels[id], processes[id] == nil else { return }
 
+        let generation = UUID()
+        launchGenerations[id] = generation
         runtimePorts[id] = nil
         startupFailureMessages[id] = nil
         cleanupControlDirectory(for: id)
@@ -345,6 +353,7 @@ final class TunnelStore: ObservableObject {
             try process.run()
             waitForControlSocket(
                 id: id,
+                generation: generation,
                 process: process,
                 socketURL: controlLocations.socket
             )
@@ -383,6 +392,7 @@ final class TunnelStore: ObservableObject {
 
     private func waitForControlSocket(
         id: UUID,
+        generation: UUID,
         process: Process,
         socketURL: URL
     ) {
@@ -400,7 +410,11 @@ final class TunnelStore: ObservableObject {
                 }
 
                 if FileManager.default.fileExists(atPath: socketURL.path) {
-                    await self.installRules(id: id, process: process)
+                    await self.installRules(
+                        id: id,
+                        generation: generation,
+                        process: process
+                    )
                     return
                 }
 
@@ -420,7 +434,7 @@ final class TunnelStore: ObservableObject {
         }
     }
 
-    private func installRules(id: UUID, process: Process) async {
+    private func installRules(id: UUID, generation: UUID, process: Process) async {
         guard
             let tunnel = desiredTunnels[id],
             let socketURL = controlSocketURLs[id],
@@ -451,6 +465,7 @@ final class TunnelStore: ObservableObject {
 
             let result = await runControlForward(
                 tunnelID: id,
+                generation: generation,
                 tunnel: tunnel,
                 rule: rule,
                 socketURL: socketURL
@@ -505,13 +520,27 @@ final class TunnelStore: ObservableObject {
 
     private func runControlForward(
         tunnelID: UUID,
+        generation: UUID,
         tunnel: Tunnel,
         rule: ForwardingRule,
         socketURL: URL
     ) async -> ControlResult {
-        await withTaskCancellationHandler {
+        let operationID = UUID()
+        return await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
-                guard controlProcesses[tunnelID] == nil else {
+                guard launchGenerations[tunnelID] == generation else {
+                    continuation.resume(
+                        returning: ControlResult(
+                            status: -1,
+                            output: "",
+                            error: "This SSH launch was replaced before the rule was installed."
+                        )
+                    )
+                    return
+                }
+                guard !controlOperations.values.contains(
+                    where: { $0.generation == generation }
+                ) else {
                     continuation.resume(
                         returning: ControlResult(
                             status: -1,
@@ -525,12 +554,14 @@ final class TunnelStore: ObservableObject {
                 let process = Process()
                 let outputPipe = Pipe()
                 let errorPipe = Pipe()
-                controlProcesses[tunnelID] = process
-                controlOutputPipes[tunnelID] = outputPipe
-                controlErrorPipes[tunnelID] = errorPipe
-                controlOutputBuffers[tunnelID] = Data()
-                controlErrorBuffers[tunnelID] = Data()
-                controlContinuations[tunnelID] = continuation
+                controlOperations[operationID] = ControlOperation(
+                    tunnelID: tunnelID,
+                    generation: generation,
+                    process: process,
+                    outputPipe: outputPipe,
+                    errorPipe: errorPipe,
+                    continuation: continuation
+                )
 
                 process.executableURL = sshExecutableURL
                 process.arguments = [
@@ -543,34 +574,16 @@ final class TunnelStore: ObservableObject {
                 process.standardOutput = outputPipe
                 process.standardError = errorPipe
 
-                outputPipe.fileHandleForReading.readabilityHandler = { handle in
-                    let data = handle.availableData
-                    guard !data.isEmpty else { return }
-                    DispatchQueue.main.async {
-                        self.appendControlOutput(
-                            data,
-                            for: tunnelID,
-                            isError: false
-                        )
-                    }
-                }
-                errorPipe.fileHandleForReading.readabilityHandler = { handle in
-                    let data = handle.availableData
-                    guard !data.isEmpty else { return }
-                    DispatchQueue.main.async {
-                        self.appendControlOutput(
-                            data,
-                            for: tunnelID,
-                            isError: true
-                        )
-                    }
-                }
+                outputPipe.fileHandleForReading.readabilityHandler =
+                    controlOutputHandler(operationID: operationID, isError: false)
+                errorPipe.fileHandleForReading.readabilityHandler =
+                    controlOutputHandler(operationID: operationID, isError: true)
 
                 process.terminationHandler = { finishedProcess in
                     let status = finishedProcess.terminationStatus
                     DispatchQueue.main.async {
                         self.finishControlOperation(
-                            tunnelID: tunnelID,
+                            operationID: operationID,
                             process: finishedProcess,
                             status: status
                         )
@@ -579,10 +592,10 @@ final class TunnelStore: ObservableObject {
 
                 do {
                     try process.run()
-                    scheduleControlTimeout(tunnelID: tunnelID, process: process)
+                    scheduleControlTimeout(operationID: operationID, process: process)
                 } catch {
                     finishControlOperation(
-                        tunnelID: tunnelID,
+                        operationID: operationID,
                         process: process,
                         status: -1,
                         launchError: error.localizedDescription
@@ -591,54 +604,82 @@ final class TunnelStore: ObservableObject {
             }
         } onCancel: {
             Task { @MainActor [weak self] in
-                guard let process = self?.controlProcesses[tunnelID] else { return }
+                guard let process = self?.controlOperations[operationID]?.process else {
+                    return
+                }
                 if process.isRunning { process.terminate() }
             }
         }
     }
 
+    private func controlOutputHandler(
+        operationID: UUID,
+        isError: Bool
+    ) -> @Sendable (FileHandle) -> Void {
+        // Stays on the main queue rather than hopping through a Task so that
+        // appends keep FIFO order with the termination handler's dispatch.
+        { [self] handle in
+            let data = handle.availableData
+            guard !data.isEmpty else { return }
+            DispatchQueue.main.async {
+                self.appendControlOutput(
+                    data,
+                    operationID: operationID,
+                    isError: isError
+                )
+            }
+        }
+    }
+
     private func finishControlOperation(
-        tunnelID: UUID,
+        operationID: UUID,
         process: Process,
         status: Int32,
         launchError: String? = nil
     ) {
-        guard controlProcesses[tunnelID] === process else { return }
-
-        controlTimeoutTasks.removeValue(forKey: tunnelID)?.cancel()
-        appendRemainingControlPipeData(for: tunnelID)
-        let output = String(
-            data: controlOutputBuffers[tunnelID] ?? Data(),
-            encoding: .utf8
-        ) ?? ""
-        var error = String(
-            data: controlErrorBuffers[tunnelID] ?? Data(),
-            encoding: .utf8
-        ) ?? ""
-        if let launchError {
-            error = launchError
+        guard let operation = controlOperations[operationID],
+              operation.process === process
+        else {
+            return
         }
 
-        controlOutputPipes[tunnelID]?.fileHandleForReading.readabilityHandler = nil
-        controlErrorPipes[tunnelID]?.fileHandleForReading.readabilityHandler = nil
-        controlProcesses[tunnelID] = nil
-        controlOutputPipes[tunnelID] = nil
-        controlErrorPipes[tunnelID] = nil
-        controlOutputBuffers[tunnelID] = nil
-        controlErrorBuffers[tunnelID] = nil
-        let continuation = controlContinuations.removeValue(forKey: tunnelID)
-        continuation?.resume(
+        // Detach the readability handlers before reading the same descriptors
+        // synchronously, so one reader owns each pipe. Removing the operation
+        // first also makes any handler block still in flight inert.
+        operation.clearPipeHandlers()
+        controlOperations.removeValue(forKey: operationID)
+        operation.timeoutTask?.cancel()
+
+        var buffers = operation.buffers
+        // Only a launched process closes the write ends these reads wait on. If
+        // the launch itself failed, no child ever held them, there is nothing to
+        // drain, and reading to end of file would block the main queue forever.
+        if launchError == nil {
+            buffers.append(
+                operation.outputPipe.fileHandleForReading.readDataToEndOfFile(),
+                isError: false,
+                limit: controlOutputLimit
+            )
+            buffers.append(
+                operation.errorPipe.fileHandleForReading.readDataToEndOfFile(),
+                isError: true,
+                limit: controlOutputLimit
+            )
+        }
+
+        operation.continuation.resume(
             returning: ControlResult(
                 status: status,
-                output: output,
-                error: error
+                output: buffers.text(isError: false),
+                error: launchError ?? buffers.text(isError: true)
             )
         )
     }
 
-    private func scheduleControlTimeout(tunnelID: UUID, process: Process) {
-        controlTimeoutTasks.removeValue(forKey: tunnelID)?.cancel()
-        controlTimeoutTasks[tunnelID] = Task { @MainActor [weak self, weak process] in
+    private func scheduleControlTimeout(operationID: UUID, process: Process) {
+        controlOperations[operationID]?.timeoutTask?.cancel()
+        controlOperations[operationID]?.timeoutTask = Task {
+            @MainActor [weak self, weak process] in
             guard let self, let process else { return }
             do {
                 try await Task.sleep(for: .seconds(controlOperationTimeout))
@@ -646,48 +687,30 @@ final class TunnelStore: ObservableObject {
                 return
             }
             guard
-                controlProcesses[tunnelID] === process,
+                controlOperations[operationID]?.process === process,
                 process.isRunning
             else {
                 return
             }
             appendControlOutput(
                 Data("SSH control operation timed out.\n".utf8),
-                for: tunnelID,
+                operationID: operationID,
                 isError: true
             )
             process.terminate()
         }
     }
 
-    private func appendRemainingControlPipeData(for id: UUID) {
-        if let pipe = controlOutputPipes[id] {
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            appendControlOutput(data, for: id, isError: false)
-        }
-        if let pipe = controlErrorPipes[id] {
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            appendControlOutput(data, for: id, isError: true)
-        }
-    }
-
-    private func appendControlOutput(_ data: Data, for id: UUID, isError: Bool) {
-        guard !data.isEmpty else { return }
-        if isError {
-            var buffer = controlErrorBuffers[id] ?? Data()
-            buffer.append(data)
-            if buffer.count > controlOutputLimit {
-                buffer = buffer.suffix(controlOutputLimit)
-            }
-            controlErrorBuffers[id] = buffer
-        } else {
-            var buffer = controlOutputBuffers[id] ?? Data()
-            buffer.append(data)
-            if buffer.count > controlOutputLimit {
-                buffer = buffer.suffix(controlOutputLimit)
-            }
-            controlOutputBuffers[id] = buffer
-        }
+    private func appendControlOutput(
+        _ data: Data,
+        operationID: UUID,
+        isError: Bool
+    ) {
+        controlOperations[operationID]?.buffers.append(
+            data,
+            isError: isError,
+            limit: controlOutputLimit
+        )
     }
 
     private func parseAllocatedPort(_ output: String) -> Int? {
@@ -726,8 +749,9 @@ final class TunnelStore: ObservableObject {
         startupTasks[id] = nil
         phases[id] = .stopped
 
-        if let controlProcess = controlProcesses[id], controlProcess.isRunning {
-            controlProcess.terminate()
+        launchGenerations[id] = nil
+        for operation in controlOperations.values where operation.tunnelID == id {
+            if operation.process.isRunning { operation.process.terminate() }
         }
 
         if let process = processes[id] {
@@ -740,12 +764,11 @@ final class TunnelStore: ObservableObject {
     }
 
     private func appendMasterError(_ data: Data, for id: UUID) {
-        var buffer = errorBuffers[id] ?? Data()
-        buffer.append(data)
-        if buffer.count > 16_384 {
-            buffer = buffer.suffix(16_384)
-        }
-        errorBuffers[id] = buffer
+        errorBuffers[id] = appendingBounded(
+            data,
+            to: errorBuffers[id] ?? Data(),
+            limit: masterErrorOutputLimit
+        )
     }
 
     private func processDidExit(id: UUID, status: Int32, process: Process) {
@@ -845,6 +868,7 @@ final class TunnelStore: ObservableObject {
         if let process, processes[id] !== process {
             return
         }
+        launchGenerations[id] = nil
         startupTasks[id]?.cancel()
         startupTasks[id] = nil
         errorPipes[id]?.fileHandleForReading.readabilityHandler = nil
@@ -1050,6 +1074,50 @@ private struct OwnedSocket {
     let path: String
     let device: UInt64
     let inode: UInt64
+}
+
+/// Appends `data` and keeps only the trailing `limit` bytes. Every bounded
+/// process-output buffer in this file trims through here.
+private func appendingBounded(_ data: Data, to buffer: Data, limit: Int) -> Data {
+    guard !data.isEmpty else { return buffer }
+    var result = buffer
+    result.append(data)
+    return result.count > limit ? result.suffix(limit) : result
+}
+
+private struct ControlOutputBuffers {
+    private var output = Data()
+    private var error = Data()
+
+    mutating func append(_ data: Data, isError: Bool, limit: Int) {
+        if isError {
+            error = appendingBounded(data, to: error, limit: limit)
+        } else {
+            output = appendingBounded(data, to: output, limit: limit)
+        }
+    }
+
+    func text(isError: Bool) -> String {
+        String(data: isError ? error : output, encoding: .utf8) ?? ""
+    }
+}
+
+/// One `ssh -O forward` invocation. `generation` names the `launchTunnel` call
+/// that owns it so state from a replaced launch stays inert.
+private struct ControlOperation {
+    let tunnelID: UUID
+    let generation: UUID
+    let process: Process
+    let outputPipe: Pipe
+    let errorPipe: Pipe
+    let continuation: CheckedContinuation<ControlResult, Never>
+    var timeoutTask: Task<Void, Never>?
+    var buffers = ControlOutputBuffers()
+
+    func clearPipeHandlers() {
+        outputPipe.fileHandleForReading.readabilityHandler = nil
+        errorPipe.fileHandleForReading.readabilityHandler = nil
+    }
 }
 
 private struct ControlResult {

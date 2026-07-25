@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 import Highlighter
 import MarkdownUI
@@ -44,7 +45,9 @@ final class RelayBarCodeSyntaxHighlighter: CodeSyntaxHighlighter, @unchecked Sen
             return Text(code)
         }
 
-        let key = "\(appearanceKey)|\(language)|\(code)" as NSString
+        // Digest rather than the code itself: this runs inside a SwiftUI render
+        // pass, and a literal key would copy and hash up to 64 KB per lookup.
+        let key = Self.cacheKey(appearance: appearanceKey, language: language, code: code)
 
         lock.lock()
         defer { lock.unlock() }
@@ -64,6 +67,17 @@ final class RelayBarCodeSyntaxHighlighter: CodeSyntaxHighlighter, @unchecked Sen
         let immutable = NSAttributedString(attributedString: highlighted)
         cache.setObject(immutable, forKey: key, cost: code.utf16.count)
         return Text(AttributedString(immutable))
+    }
+
+    static func cacheKey(appearance: String, language: String, code: String) -> NSString {
+        var hasher = SHA256()
+        hasher.update(data: Data(appearance.utf8))
+        hasher.update(data: Data([0]))
+        hasher.update(data: Data(language.utf8))
+        hasher.update(data: Data([0]))
+        hasher.update(data: Data(code.utf8))
+        let digest = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        return digest as NSString
     }
 
     private func normalizedLanguage(_ language: String?) -> String? {

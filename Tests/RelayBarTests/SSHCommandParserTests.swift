@@ -329,19 +329,19 @@ final class TunnelTests: XCTestCase {
 
     func testBrowserURLUsesTypeCorrectLocalTCPRule() {
         XCTAssertEqual(
-            makeTunnel(bindAddress: nil).browserURL?.absoluteString,
+            makeTunnel(bindAddress: nil).unambiguousBrowserURL?.absoluteString,
             "http://localhost:8080/"
         )
         XCTAssertEqual(
-            makeTunnel(bindAddress: "0.0.0.0").browserURL?.host,
+            makeTunnel(bindAddress: "0.0.0.0").unambiguousBrowserURL?.host,
             "localhost"
         )
         XCTAssertEqual(
-            makeTunnel(bindAddress: "::").browserURL?.host,
+            makeTunnel(bindAddress: "::").unambiguousBrowserURL?.host,
             "localhost"
         )
         XCTAssertEqual(
-            makeTunnel(bindAddress: "[::1]").browserURL?.absoluteString,
+            makeTunnel(bindAddress: "[::1]").unambiguousBrowserURL?.absoluteString,
             "http://[::1]:8080/"
         )
 
@@ -355,7 +355,7 @@ final class TunnelTests: XCTestCase {
                 )
             ]
         )
-        XCTAssertNil(socks.browserURL)
+        XCTAssertNil(socks.unambiguousBrowserURL)
     }
 
     func testRejectsConflictingListenersAndMissingReversePolicy() {
@@ -449,7 +449,10 @@ final class TunnelTests: XCTestCase {
         )
 
         XCTAssertEqual(decoded, profile)
-        XCTAssertEqual(decoded.forwardArguments, profile.forwardArguments)
+        XCTAssertEqual(
+            decoded.rules.flatMap(\.sshArguments),
+            profile.rules.flatMap(\.sshArguments)
+        )
         XCTAssertTrue(decoded.isSafeToRun)
     }
 

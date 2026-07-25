@@ -230,6 +230,39 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         XCTAssertEqual(store.tunnels.count, 4)
     }
 
+    /// Task 009. `grouping` is cached so the list body does not rebuild sections
+    /// on every phase publish. Every mutation path must invalidate it.
+    func testGroupingCacheInvalidatesOnEveryMutationPath() throws {
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TunnelStore(defaults: defaults)
+
+        XCTAssertFalse(store.grouping.isGrouped)
+
+        var dashboard = makeLocalProfile()
+        dashboard.name = "Dashboard"
+        dashboard.groupTag = "Work"
+        store.add(dashboard)
+        XCTAssertEqual(store.grouping.groupNames, ["Work"])
+
+        var renamedDashboard = store.tunnels[0]
+        renamedDashboard.name = "Renamed"
+        store.update(renamedDashboard)
+        XCTAssertEqual(store.grouping.sections.first?.tunnels.first?.name, "Renamed")
+
+        store.move(store.tunnels[0], toGroup: "Personal")
+        XCTAssertEqual(store.grouping.groupNames, ["Personal"])
+
+        store.renameGroup("Personal", to: "Home")
+        XCTAssertEqual(store.grouping.groupNames, ["Home"])
+
+        store.ungroup("Home")
+        XCTAssertFalse(store.grouping.isGrouped)
+
+        store.delete(store.tunnels[0])
+        XCTAssertTrue(store.grouping.sections.allSatisfy { $0.tunnels.isEmpty })
+    }
+
     func testMoveAndTagOnlyUpdatePreserveStartingRunningAndPendingBrowserWork() async throws {
         let fixture = try makeFakeSSHFixture()
         defer { fixture.cleanup() }
@@ -273,7 +306,7 @@ final class TunnelStoreIntegrationTests: XCTestCase {
             parsedInvocations(try String(contentsOf: fixture.logURL)).count,
             invocationCount
         )
-        XCTAssertEqual(openedURLs, [try XCTUnwrap(profile.browserURL)])
+        XCTAssertEqual(openedURLs, [try XCTUnwrap(profile.unambiguousBrowserURL)])
         store.stop(profile)
     }
 
@@ -552,6 +585,46 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         XCTAssertEqual(store.runtimePorts(for: profile)[rule.id], 47_001)
     }
 
+    /// Task 007. The stopped launch's control operation outlives `stop`, because
+    /// the fixture ignores SIGTERM. Control state is scoped to the launch that
+    /// owns it, so the replacement launch must not see a conflict.
+    func testRestartIsNotBlockedByAStoppedLaunchesControlOperation() async throws {
+        let rule = ForwardingRule(
+            kind: .local,
+            listen: .tcp(bindAddress: "localhost", port: 4_501),
+            destination: .tcp(host: "localhost", port: 3_000)
+        )
+        let fixture = try makeFakeSSHFixture(
+            overrides: ["RELAYBAR_FAKE_SSH_IGNORE_TERM_SPEC": rule.specification]
+        )
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = makeFakeStore(defaults: defaults, fixture: fixture)
+        let profile = Tunnel(name: "Restart", sshHost: "server", rules: [rule])
+
+        store.start(profile)
+        let controlOperationStarted = await waitUntil {
+            let log = (try? String(contentsOf: fixture.logURL, encoding: .utf8)) ?? ""
+            return log.contains("ARG:forward")
+        }
+        XCTAssertTrue(controlOperationStarted)
+
+        // Still in flight: stop and restart before it can be reaped.
+        store.stop(profile)
+        XCTAssertEqual(store.phase(for: profile), .stopped)
+        store.start(profile)
+        defer { store.stop(profile) }
+
+        let restarted = await waitUntil(timeoutIterations: 800) {
+            store.phase(for: profile) == .running
+        }
+        if case .failed(let message) = store.phase(for: profile) {
+            XCTFail("Restart failed: \(message)")
+        }
+        XCTAssertTrue(restarted)
+    }
+
     func testRefusesToReplaceExistingLocalSocketPath() throws {
         let fixture = try makeFakeSSHFixture()
         defer { fixture.cleanup() }
@@ -670,7 +743,7 @@ final class TunnelStoreIntegrationTests: XCTestCase {
 
         let opened = await waitUntil { !openedURLs.isEmpty }
         XCTAssertTrue(opened)
-        XCTAssertEqual(openedURLs, [try XCTUnwrap(tunnel.browserURL)])
+        XCTAssertEqual(openedURLs, [try XCTUnwrap(tunnel.unambiguousBrowserURL)])
         XCTAssertEqual(store.phase(for: tunnel), .running)
         store.stop(tunnel)
     }

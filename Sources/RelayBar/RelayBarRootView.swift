@@ -63,7 +63,10 @@ private struct TunnelListView: View {
                         if grouping.isGrouped {
                             ForEach(grouping.sections) { section in
                                 VStack(spacing: 8) {
-                                    groupHeader(section)
+                                    groupHeader(
+                                        section,
+                                        availableGroups: grouping.groupNames
+                                    )
                                     ForEach(section.tunnels) { tunnel in
                                         tunnelRow(
                                             tunnel,
@@ -93,11 +96,14 @@ private struct TunnelListView: View {
     }
 
     @ViewBuilder
-    private func groupHeader(_ section: TunnelGroupSection) -> some View {
+    private func groupHeader(
+        _ section: TunnelGroupSection,
+        availableGroups: [String]
+    ) -> some View {
         if let name = section.name {
             TunnelGroupHeader(
                 name: name,
-                availableGroups: store.groupNames,
+                availableGroups: availableGroups,
                 onRename: { store.renameGroup(name, to: $0) },
                 onUngroupAll: { store.ungroup(name) }
             )
@@ -331,16 +337,12 @@ private struct TunnelRow: View {
                                     .disabled(true)
                             }
 
-                            if
-                                rule.kind == .local,
-                                rule.listen.kind == .unix,
-                                let path = rule.listen.path,
-                                FileManager.default.fileExists(atPath: path)
-                            {
+                            // Offered from the rule's shape alone. Probing the
+                            // filesystem here would put a stat in a body that
+                            // re-evaluates on every phase change.
+                            if let path = rule.createdLocalSocketPath {
                                 Button("Reveal Local Socket", systemImage: "finder") {
-                                    NSWorkspace.shared.activateFileViewerSelecting(
-                                        [URL(fileURLWithPath: path)]
-                                    )
+                                    revealSocket(at: path)
                                 }
                             }
                         }
@@ -533,6 +535,19 @@ private struct TunnelRow: View {
     private func copy(_ value: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(value, forType: .string)
+    }
+
+    /// Falls back to the enclosing folder when the socket is gone, so a stale
+    /// menu item still lands somewhere useful instead of doing nothing.
+    private func revealSocket(at path: String) {
+        let url = URL(fileURLWithPath: path)
+        if FileManager.default.fileExists(atPath: path) {
+            NSWorkspace.shared.activateFileViewerSelecting([url])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting(
+                [url.deletingLastPathComponent()]
+            )
+        }
     }
 }
 

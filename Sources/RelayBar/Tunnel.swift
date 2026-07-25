@@ -655,19 +655,9 @@ struct Tunnel: Identifiable, Codable, Equatable, Sendable {
         return rules[0].localBrowserURL
     }
 
-    var browserURL: URL? {
-        unambiguousBrowserURL
-    }
-
     var exposesBeyondLoopback: Bool {
         rules.contains { rule in
             rule.listen.tcp?.exposesBeyondLoopback == true
-        }
-    }
-
-    var usesUnixSockets: Bool {
-        rules.contains { rule in
-            rule.listen.kind == .unix || rule.destination?.kind == .unix
         }
     }
 
@@ -677,10 +667,6 @@ struct Tunnel: Identifiable, Codable, Equatable, Sendable {
 
     var createdLocalSocketPaths: [String] {
         rules.compactMap(\.createdLocalSocketPath)
-    }
-
-    var forwardArguments: [String] {
-        rules.flatMap(\.sshArguments)
     }
 
     var isSafeToRun: Bool {
@@ -729,31 +715,10 @@ struct Tunnel: Identifiable, Codable, Equatable, Sendable {
         return false
     }
 
-    // Compatibility accessors keep Remote Files and legacy callers source-compatible.
-    var localPort: Int {
-        rules.first?.listen.tcp?.port ?? 0
-    }
-
-    var destinationHost: String {
-        rules.first?.destination?.tcp?.host ?? ""
-    }
-
-    var destinationPort: Int {
-        rules.first?.destination?.tcp?.port ?? 0
-    }
-
-    var bindAddress: String? {
-        rules.first?.listen.tcp?.bindAddress
-    }
-
-    var forwardSpec: String {
-        rules.first?.specification ?? ""
-    }
-
-    var localEndpoint: String {
-        rules.first?.listen.displayText ?? ""
-    }
-
+    /// Used by `RemoteServer` to recognize a saved name that merely repeats the
+    /// generated endpoint text. The rest of the former compatibility accessors
+    /// were removed once Remote Files moved to `RemoteServer`; the legacy
+    /// `CodingKeys` that decode v1 records are unaffected.
     var destinationEndpoint: String {
         rules.first?.destination?.displayText ?? rules.first?.kind.label ?? ""
     }

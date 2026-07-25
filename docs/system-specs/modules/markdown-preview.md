@@ -8,7 +8,8 @@ Markdown preview is a safe, read-only state inside the Remote Files window.
 - Preview uses the active server snapshot and downloads to a private temporary directory.
 - The service rejects a known size above 2 MiB before transfer and aborts a transfer that crosses the same limit.
 - The decoder reads at most 2 MiB plus one byte, accepts UTF-8 with an optional BOM, and rejects NULs.
-- Parsing runs away from the main UI path. Preview cancellation is forwarded into the detached worker, and the compatibility pass checks cancellation throughout its line and lookahead loops.
+- Parsing runs away from the main UI path. Preview cancellation is forwarded into the detached worker, and the compatibility pass checks cancellation throughout its line and lookahead loops. Leaf scanners bounded by one run, token, or line carry no check of their own; they are always reached from a loop that already polls per line.
+- Highlighted results are cached under a fixed-length digest of appearance, language, and code, so a cache lookup does not scale with the size of the code block it looks up.
 - A generation token prevents a canceled or superseded preview from publishing stale state.
 - Published preview state keeps the parsed document and its private-reference token without additionally retaining the original and compatibility-transformed Markdown strings.
 - Leaving preview or closing the window removes its temporary directory.

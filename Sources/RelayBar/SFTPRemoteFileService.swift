@@ -27,6 +27,7 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         private var process: Process?
         private var cancellationRequested = false
         private var forceStopScheduled = false
+        private var hasExited = false
 
         func set(_ process: Process) {
             lock.lock()
@@ -40,6 +41,14 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             return !cancellationRequested
         }
 
+        /// Recorded from `terminationHandler`. Escalation consults this instead
+        /// of `isRunning`, so a recycled PID can never receive our `SIGKILL`.
+        func markExited() {
+            lock.lock()
+            hasExited = true
+            lock.unlock()
+        }
+
         func clear() {
             lock.lock()
             process = nil
@@ -50,9 +59,10 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             lock.lock()
             cancellationRequested = true
             let current = process
+            let alreadyExited = hasExited
             lock.unlock()
 
-            guard let current, current.isRunning else { return }
+            guard let current, !alreadyExited, current.isRunning else { return }
             lock.lock()
             let shouldScheduleForceStop = !forceStopScheduled
             forceStopScheduled = true
@@ -60,9 +70,13 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             current.terminate()
             if shouldScheduleForceStop {
                 DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
-                    if current.isRunning {
-                        Darwin.kill(current.processIdentifier, SIGKILL)
-                    }
+                    [weak self] in
+                    guard let self else { return }
+                    self.lock.lock()
+                    let exited = self.hasExited
+                    self.lock.unlock()
+                    guard !exited, current.isRunning else { return }
+                    Darwin.kill(current.processIdentifier, SIGKILL)
                 }
             }
         }
@@ -120,7 +134,10 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
     }
 
     func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
-        guard RemotePath.validationMessage(for: path) == nil else {
+        guard !RemotePath.containsGlobMetacharacters(path) else {
+            throw RemoteFileError.unsupportedPathCharacters
+        }
+        guard RemotePath.structuralValidationMessage(for: path) == nil else {
             throw RemoteFileError.invalidPath
         }
         let normalizedPath = RemotePath.normalized(path)
@@ -258,22 +275,30 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         progress: @escaping @Sendable (Int64) -> Void
     ) async throws {
         try await withThrowingTaskGroup(of: Bool.self) { group in
-            let pollingInterval: Duration = partialURL.hasDirectoryPath
-                ? .seconds(1)
-                : .milliseconds(250)
+            let isDirectory = partialURL.hasDirectoryPath
             group.addTask { [self] in
                 let result = try await run(server: server, batchInput: batchInput)
                 try validate(result)
                 return true
             }
             group.addTask { [self] in
+                var pollingInterval = Self.progressPollingInterval(
+                    forEntryCount: 0,
+                    isDirectory: isDirectory
+                )
                 while !Task.isCancelled {
                     securePartialPermissions(at: partialURL)
-                    let completedBytes = localSize(of: partialURL)
-                    progress(completedBytes)
-                    if let maximumBytes, completedBytes > maximumBytes {
+                    let measurement = measureLocal(partialURL)
+                    progress(measurement.bytes)
+                    if let maximumBytes, measurement.bytes > maximumBytes {
                         throw limitError
                     }
+                    // Each poll re-walks the tree, so widen the gap as the tree
+                    // grows instead of paying an O(entries) walk every second.
+                    pollingInterval = Self.progressPollingInterval(
+                        forEntryCount: measurement.entries,
+                        isDirectory: isDirectory
+                    )
                     try await Task.sleep(for: pollingInterval)
                 }
                 return false
@@ -351,6 +376,7 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                     }
 
                     process.terminationHandler = { finished in
+                        processBox.markExited()
                         outputMonitor.cancel()
                         outputHandle.closeFile()
                         errorHandle.closeFile()
@@ -429,6 +455,18 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         }
     }
 
+    /// Ordered: the first entry whose text appears in the detail wins, so
+    /// overlapping matches resolve the same way they did as a branch chain.
+    private static let messageTable: [(matches: [String], message: String)] = [
+        (["permission denied"], "Permission was denied for this server or path."),
+        (["host key verification failed"], "SSH could not verify this server’s host key."),
+        (["no such file", "not found"], "The remote path wasn’t found."),
+        (["could not resolve hostname"], "The saved server could not be found."),
+        (["operation timed out", "connection timed out"], "The connection timed out."),
+        (["connection refused"], "The server refused the connection."),
+        (["connection closed", "connection reset"], "The connection was lost.")
+    ]
+
     private func friendlyMessage(from errorOutput: String) -> String {
         let lines = errorOutput
             .split(whereSeparator: \.isNewline)
@@ -440,45 +478,33 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         }
         let detail = String(String.UnicodeScalarView(safeScalars).prefix(512))
 
-        if detail.localizedCaseInsensitiveContains("permission denied") {
-            return "Permission was denied for this server or path."
+        let match = Self.messageTable.first { entry in
+            entry.matches.contains { detail.localizedCaseInsensitiveContains($0) }
         }
-        if detail.localizedCaseInsensitiveContains("host key verification failed") {
-            return "SSH could not verify this server's host key."
-        }
-        if
-            detail.localizedCaseInsensitiveContains("no such file")
-                || detail.localizedCaseInsensitiveContains("not found")
-        {
-            return "The remote path wasn’t found."
-        }
-        if detail.localizedCaseInsensitiveContains("could not resolve hostname") {
-            return "The saved server could not be found."
-        }
-        if
-            detail.localizedCaseInsensitiveContains("operation timed out")
-                || detail.localizedCaseInsensitiveContains("connection timed out")
-        {
-            return "The connection timed out."
-        }
-        if detail.localizedCaseInsensitiveContains("connection refused") {
-            return "The server refused the connection."
-        }
-        if
-            detail.localizedCaseInsensitiveContains("connection closed")
-                || detail.localizedCaseInsensitiveContains("connection reset")
-        {
-            return "The connection was lost."
-        }
+        if let match { return match.message }
         return detail.isEmpty ? "The remote operation failed." : detail
     }
 
+    /// Progress polling scales with how much of the tree each walk has to visit.
+    /// Single files stay on the cheap fixed interval; one `stat` costs nothing.
+    static func progressPollingInterval(
+        forEntryCount entries: Int,
+        isDirectory: Bool
+    ) -> Duration {
+        guard isDirectory else { return .milliseconds(250) }
+        return .seconds(max(1, min(8, entries / 1_000)))
+    }
+
     private func localSize(of url: URL) -> Int64 {
+        measureLocal(url).bytes
+    }
+
+    private func measureLocal(_ url: URL) -> (bytes: Int64, entries: Int) {
         guard let attributes = try? fileManager.attributesOfItem(atPath: url.path) else {
-            return 0
+            return (0, 0)
         }
         if attributes[.type] as? FileAttributeType != .typeDirectory {
-            return (attributes[.size] as? NSNumber)?.int64Value ?? 0
+            return ((attributes[.size] as? NSNumber)?.int64Value ?? 0, 1)
         }
 
         guard let enumerator = fileManager.enumerator(
@@ -486,20 +512,22 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             includingPropertiesForKeys: [.fileSizeKey, .isRegularFileKey],
             options: []
         ) else {
-            return 0
+            return (0, 0)
         }
         var total: Int64 = 0
+        var entries = 0
         for case let fileURL as URL in enumerator {
-            guard !Task.isCancelled else { return total }
+            guard !Task.isCancelled else { return (total, entries) }
+            entries += 1
             guard
                 let values = try? fileURL.resourceValues(forKeys: [.fileSizeKey, .isRegularFileKey]),
                 values.isRegularFile == true
             else { continue }
             let result = total.addingReportingOverflow(Int64(values.fileSize ?? 0))
-            guard !result.overflow else { return .max }
+            guard !result.overflow else { return (.max, entries) }
             total = result.partialValue
         }
-        return total
+        return (total, entries)
     }
 
     private func securePartialPermissions(at url: URL) {

@@ -2100,7 +2100,6 @@ enum ObsidianMarkdownCompatibility {
         var output = ""
         output.reserveCapacity(value.count)
         for character in value {
-            guard !Task.isCancelled else { return value }
             if "\\`*_{}[]()<>#+-.!|".contains(character) {
                 output.append("\\")
             }
@@ -2114,7 +2113,6 @@ enum ObsidianMarkdownCompatibility {
         var longestRun = 0
         var index = 0
         while index < characters.count {
-            guard !Task.isCancelled else { return value }
             if characters[index] == "`" {
                 let run = repeatedCount(of: "`", at: index, in: characters)
                 longestRun = max(longestRun, run)
@@ -2183,7 +2181,6 @@ enum ObsidianMarkdownCompatibility {
     ) -> Int? {
         guard start < characters.count, budget > 0 else { return nil }
         for index in start..<characters.count {
-            guard !Task.isCancelled else { return nil }
             guard budget > 0 else { return nil }
             budget -= 1
             if characters[index] == character {
@@ -2201,7 +2198,6 @@ enum ObsidianMarkdownCompatibility {
     ) -> Int? {
         guard start < characters.count, budget > 0 else { return nil }
         for index in start..<characters.count {
-            guard !Task.isCancelled else { return nil }
             guard budget > 0 else { return nil }
             budget -= 1
             if characters[index] == character, !isEscaped(index, in: characters) {
@@ -2659,6 +2655,10 @@ enum ObsidianMarkdownCompatibility {
         return !characters[index].isLetter && !characters[index].isNumber
     }
 
+    // The leaf scanners below carry no cancellation check of their own. Each is
+    // bounded by one run or one line and is reached from a loop that already
+    // polls cancellation per line, so a check here would only add a
+    // concurrency-runtime call to every character of the document.
     private static func repeatedCount(
         of character: Character,
         at start: Int,
@@ -2667,7 +2667,6 @@ enum ObsidianMarkdownCompatibility {
         guard start < characters.count else { return 0 }
         var index = start
         while index < characters.count, characters[index] == character {
-            guard !Task.isCancelled else { return index - start }
             index += 1
         }
         return index - start
@@ -2678,7 +2677,6 @@ enum ObsidianMarkdownCompatibility {
         var slashCount = 0
         var cursor = index - 1
         while characters[cursor] == "\\" {
-            guard !Task.isCancelled else { return false }
             slashCount += 1
             guard cursor > 0 else { break }
             cursor -= 1
