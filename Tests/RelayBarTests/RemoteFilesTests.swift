@@ -1894,6 +1894,72 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
         }
     }
 
+    func testBatchInputDescriptorSuppressesSIGPIPE() throws {
+        let inputPipe = Pipe()
+        defer {
+            inputPipe.fileHandleForReading.closeFile()
+            inputPipe.fileHandleForWriting.closeFile()
+        }
+
+        try SFTPRemoteFileService.suppressSIGPIPE(
+            on: inputPipe.fileHandleForWriting.fileDescriptor
+        )
+
+        XCTAssertEqual(
+            fcntl(inputPipe.fileHandleForWriting.fileDescriptor, F_GETNOSIGPIPE),
+            1
+        )
+    }
+
+    func testSpawnInheritsBatchInputWhenPipeReaderIsStandardInput() throws {
+        let savedStandardInput = dup(STDIN_FILENO)
+        XCTAssertNotEqual(savedStandardInput, -1)
+        guard savedStandardInput != -1 else { return }
+        XCTAssertEqual(close(STDIN_FILENO), 0)
+        defer {
+            XCTAssertEqual(dup2(savedStandardInput, STDIN_FILENO), STDIN_FILENO)
+            XCTAssertEqual(close(savedStandardInput), 0)
+        }
+
+        let inputPipe = Pipe()
+        XCTAssertEqual(
+            inputPipe.fileHandleForReading.fileDescriptor,
+            STDIN_FILENO
+        )
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let outputURL = directory.appendingPathComponent("stdout")
+        let errorURL = directory.appendingPathComponent("stderr")
+        XCTAssertTrue(FileManager.default.createFile(atPath: outputURL.path, contents: nil))
+        XCTAssertTrue(FileManager.default.createFile(atPath: errorURL.path, contents: nil))
+
+        let processIdentifier = try SFTPRemoteFileService.spawnProcess(
+            executableURL: URL(fileURLWithPath: "/bin/cat"),
+            arguments: [],
+            inputPipe: inputPipe,
+            outputURL: outputURL,
+            errorURL: errorURL
+        )
+        inputPipe.fileHandleForReading.closeFile()
+        try inputPipe.fileHandleForWriting.write(
+            contentsOf: Data("batch input\n".utf8)
+        )
+        try inputPipe.fileHandleForWriting.close()
+
+        var waitStatus: Int32 = 0
+        var waitResult: pid_t
+        repeat {
+            waitResult = waitpid(processIdentifier, &waitStatus, 0)
+        } while waitResult == -1 && errno == EINTR
+
+        XCTAssertEqual(waitResult, processIdentifier)
+        XCTAssertEqual(waitStatus, 0)
+        XCTAssertEqual(
+            try String(contentsOf: outputURL, encoding: .utf8),
+            "batch input\n"
+        )
+    }
+
     func testRejectsAnOversizedPreviewBeforeStartingSFTP() async {
         let service = SFTPRemoteFileService(
             executableURL: URL(fileURLWithPath: "/path/that/does/not/exist"),

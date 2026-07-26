@@ -13,14 +13,19 @@ Completed: 2026-07-25
 ## Work
 
 - Own child-process reaping and serialize it with signal delivery so the PID cannot be recycled between an exit check and escalation.
+- Register the owned PID and its exit callback atomically so cancellation cannot reap the child before the pending continuation has a completion path.
 - Skip the escalation entirely once the process has been reaped.
 - Keep the two-second delay and the single-escalation guarantee for a process that genuinely ignores `SIGTERM`.
+- Suppress `SIGPIPE` on the parent batch-input descriptor so a child that exits before input is written returns a normal write error instead of terminating RelayBar.
+- Preserve batch input when its read descriptor is already standard input under close-by-default spawning.
 
 ## Acceptance
 
 - A process reaped after `SIGTERM` is never sent `SIGKILL`, and no signal can reach a recycled PID.
 - A process still running after the delay is still force-stopped exactly once.
 - Cancellation still resolves the pending continuation for both paths.
+- An early child exit cannot terminate the app with `SIGPIPE`.
+- Batch input still reaches the child when the pipe reader occupies descriptor zero.
 - `swift test` and `git diff --check` pass.
 
 Completion evidence is recorded in [Tasks 005–019 verification](../../verification/005-019-audit-remediation.md).

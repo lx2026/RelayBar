@@ -41,25 +41,19 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             self.signalProcess = signalProcess
         }
 
-        func set(_ processIdentifier: pid_t) {
-            lock.lock()
-            self.processIdentifier = processIdentifier
-            lock.unlock()
-        }
-
         var shouldStart: Bool {
             lock.lock()
             defer { lock.unlock() }
             return !cancellationRequested
         }
 
-        func beginWaiting(onExit: @escaping @Sendable (Int32) -> Void) {
+        func beginWaiting(
+            for processIdentifier: pid_t,
+            onExit: @escaping @Sendable (Int32) -> Void
+        ) {
             lock.lock()
+            self.processIdentifier = processIdentifier
             exitHandler = onExit
-            guard let processIdentifier else {
-                lock.unlock()
-                return
-            }
             let exitSource = DispatchSource.makeProcessSource(
                 identifier: processIdentifier,
                 eventMask: .exit,
@@ -449,6 +443,9 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                     )
 
                     let inputPipe = Pipe()
+                    try Self.suppressSIGPIPE(
+                        on: inputPipe.fileHandleForWriting.fileDescriptor
+                    )
                     let outputMonitor = DispatchSource.makeTimerSource(
                         queue: DispatchQueue(label: "RelayBar.SFTPOutputLimit")
                     )
@@ -508,8 +505,10 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                             errorURL: errorURL
                         )
                         inputPipe.fileHandleForReading.closeFile()
-                        processBox.set(processIdentifier)
-                        processBox.beginWaiting(onExit: finish)
+                        processBox.beginWaiting(
+                            for: processIdentifier,
+                            onExit: finish
+                        )
                     } catch {
                         outputMonitor.cancel()
                         inputPipe.fileHandleForReading.closeFile()
@@ -542,7 +541,17 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         }
     }
 
-    private static func spawnProcess(
+    /// Kept internal so the descriptor-level guarantee has deterministic
+    /// coverage without relying on a scheduling race against a short-lived child.
+    static func suppressSIGPIPE(on fileDescriptor: Int32) throws {
+        guard fcntl(fileDescriptor, F_SETNOSIGPIPE, 1) != -1 else {
+            throw posixError(errno)
+        }
+    }
+
+    /// Kept internal so descriptor-zero inheritance has deterministic
+    /// coverage without changing the test process's standard input asynchronously.
+    static func spawnProcess(
         executableURL: URL,
         arguments: [String],
         inputPipe: Pipe,
@@ -559,15 +568,17 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         let inputDescriptor = inputPipe.fileHandleForReading.fileDescriptor
         let inputWriteDescriptor = inputPipe.fileHandleForWriting.fileDescriptor
 
+        // Under POSIX_SPAWN_CLOEXEC_DEFAULT, even an existing descriptor zero
+        // must be named by a file action to survive into the child.
+        let duplicateInput = posix_spawn_file_actions_adddup2(
+            &actions,
+            inputDescriptor,
+            STDIN_FILENO
+        )
+        guard duplicateInput == 0 else {
+            throw posixError(duplicateInput)
+        }
         if inputDescriptor != STDIN_FILENO {
-            let duplicateInput = posix_spawn_file_actions_adddup2(
-                &actions,
-                inputDescriptor,
-                STDIN_FILENO
-            )
-            guard duplicateInput == 0 else {
-                throw posixError(duplicateInput)
-            }
             let closeInput = posix_spawn_file_actions_addclose(&actions, inputDescriptor)
             guard closeInput == 0 else {
                 throw posixError(closeInput)
