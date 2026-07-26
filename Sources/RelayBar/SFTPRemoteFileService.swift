@@ -24,14 +24,26 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
 
     private final class ProcessBox: @unchecked Sendable {
         private let lock = NSLock()
-        private var process: Process?
+        private let forceStopDelay: TimeInterval
+        private let signalProcess: @Sendable (pid_t, Int32) -> Int32
+        private var processIdentifier: pid_t?
+        private var exitSource: DispatchSourceProcess?
+        private var exitHandler: (@Sendable (Int32) -> Void)?
         private var cancellationRequested = false
         private var forceStopScheduled = false
-        private var hasExited = false
+        private var terminationSignalSent = false
 
-        func set(_ process: Process) {
+        init(
+            forceStopDelay: TimeInterval,
+            signalProcess: @escaping @Sendable (pid_t, Int32) -> Int32
+        ) {
+            self.forceStopDelay = forceStopDelay
+            self.signalProcess = signalProcess
+        }
+
+        func set(_ processIdentifier: pid_t) {
             lock.lock()
-            self.process = process
+            self.processIdentifier = processIdentifier
             lock.unlock()
         }
 
@@ -41,42 +53,48 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             return !cancellationRequested
         }
 
-        /// Recorded from `terminationHandler`. Escalation consults this instead
-        /// of `isRunning`, so a recycled PID can never receive our `SIGKILL`.
-        func markExited() {
+        func beginWaiting(onExit: @escaping @Sendable (Int32) -> Void) {
             lock.lock()
-            hasExited = true
-            lock.unlock()
-        }
-
-        func clear() {
-            lock.lock()
-            process = nil
+            exitHandler = onExit
+            guard let processIdentifier else {
+                lock.unlock()
+                return
+            }
+            let exitSource = DispatchSource.makeProcessSource(
+                identifier: processIdentifier,
+                eventMask: .exit,
+                queue: DispatchQueue.global(qos: .utility)
+            )
+            self.exitSource = exitSource
+            exitSource.setEventHandler { [weak self] in
+                self?.processDidExit()
+            }
+            exitSource.resume()
             lock.unlock()
         }
 
         func cancel() {
+            var shouldScheduleForceStop = false
             lock.lock()
             cancellationRequested = true
-            let current = process
-            let alreadyExited = hasExited
+            if let processIdentifier {
+                if !terminationSignalSent {
+                    terminationSignalSent = true
+                    _ = signalProcess(processIdentifier, SIGTERM)
+                }
+                if !forceStopScheduled {
+                    forceStopScheduled = true
+                    shouldScheduleForceStop = true
+                }
+            }
             lock.unlock()
 
-            guard let current, !alreadyExited, current.isRunning else { return }
-            lock.lock()
-            let shouldScheduleForceStop = !forceStopScheduled
-            forceStopScheduled = true
-            lock.unlock()
-            current.terminate()
             if shouldScheduleForceStop {
-                DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + 2) {
+                DispatchQueue.global(qos: .utility).asyncAfter(
+                    deadline: .now() + forceStopDelay
+                ) {
                     [weak self] in
-                    guard let self else { return }
-                    self.lock.lock()
-                    let exited = self.hasExited
-                    self.lock.unlock()
-                    guard !exited, current.isRunning else { return }
-                    Darwin.kill(current.processIdentifier, SIGKILL)
+                    self?.forceStop()
                 }
             }
         }
@@ -90,6 +108,82 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                 cancel()
             }
             return wasRequested
+        }
+
+        private func processDidExit() {
+            lock.lock()
+            let completion = reapExitedProcessLocked()
+            let shouldRetry = processIdentifier != nil
+            lock.unlock()
+            complete(completion)
+            if shouldRetry {
+                DispatchQueue.global(qos: .utility).asyncAfter(
+                    deadline: .now() + .milliseconds(10)
+                ) { [weak self] in
+                    self?.processDidExit()
+                }
+            }
+        }
+
+        private func forceStop() {
+            lock.lock()
+            let completion = reapExitedProcessLocked()
+            if completion == nil, let processIdentifier {
+                // Reaping and signalling share this lock. If the child exits
+                // after the nonblocking wait, it remains an unreaped zombie
+                // until this signal attempt finishes, so its PID cannot be
+                // recycled and the signal cannot reach an unrelated process.
+                _ = signalProcess(processIdentifier, SIGKILL)
+            }
+            lock.unlock()
+            complete(completion)
+        }
+
+        private func reapExitedProcessLocked() -> (
+            handler: @Sendable (Int32) -> Void,
+            status: Int32
+        )? {
+            guard let processIdentifier else { return nil }
+            var waitStatus: Int32 = 0
+            let result = waitpid(processIdentifier, &waitStatus, WNOHANG)
+            if result == processIdentifier {
+                return finishLocked(status: Self.terminationStatus(from: waitStatus))
+            }
+            if result == -1, errno != EINTR {
+                return finishLocked(status: -1)
+            }
+            return nil
+        }
+
+        private func finishLocked(status: Int32) -> (
+            handler: @Sendable (Int32) -> Void,
+            status: Int32
+        )? {
+            processIdentifier = nil
+            exitSource?.cancel()
+            exitSource = nil
+            guard let exitHandler else { return nil }
+            self.exitHandler = nil
+            return (exitHandler, status)
+        }
+
+        private func complete(
+            _ completion: (
+                handler: @Sendable (Int32) -> Void,
+                status: Int32
+            )?
+        ) {
+            if let completion {
+                completion.handler(completion.status)
+            }
+        }
+
+        private static func terminationStatus(from waitStatus: Int32) -> Int32 {
+            let signal = waitStatus & 0x7F
+            if signal == 0 {
+                return (waitStatus >> 8) & 0xFF
+            }
+            return signal
         }
     }
 
@@ -116,6 +210,8 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
     private let markdownPreviewSizeLimit: Int64
     private let standardOutputLimit: Int64
     private let standardErrorLimit: Int64
+    private let forceStopDelay: TimeInterval
+    private let signalProcess: @Sendable (pid_t, Int32) -> Int32
 
     init(
         executableURL: URL = URL(fileURLWithPath: "/usr/bin/sftp"),
@@ -123,7 +219,11 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         previewSizeLimit: Int64 = 100 * 1_024 * 1_024,
         markdownPreviewSizeLimit: Int64 = Int64(RemoteMarkdownDecoder.maximumByteCount),
         standardOutputLimit: Int64 = 32 * 1_024 * 1_024,
-        standardErrorLimit: Int64 = 1 * 1_024 * 1_024
+        standardErrorLimit: Int64 = 1 * 1_024 * 1_024,
+        forceStopDelay: TimeInterval = 2,
+        signalProcess: @escaping @Sendable (pid_t, Int32) -> Int32 = {
+            Darwin.kill($0, $1)
+        }
     ) {
         self.executableURL = executableURL
         self.fileManager = fileManager
@@ -131,6 +231,8 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         self.markdownPreviewSizeLimit = markdownPreviewSizeLimit
         self.standardOutputLimit = standardOutputLimit
         self.standardErrorLimit = standardErrorLimit
+        self.forceStopDelay = forceStopDelay
+        self.signalProcess = signalProcess
     }
 
     func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
@@ -313,7 +415,10 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
 
     private func run(server: RemoteServer, batchInput: String) async throws -> CommandResult {
         let arguments = try SFTPCommandBuilder.processArguments(for: server)
-        let processBox = ProcessBox()
+        let processBox = ProcessBox(
+            forceStopDelay: forceStopDelay,
+            signalProcess: signalProcess
+        )
         let outputLimitBox = OutputLimitBox()
         let outputLimit = standardOutputLimit
         let errorLimit = standardErrorLimit
@@ -343,19 +448,10 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                         attributes: [.posixPermissions: 0o600]
                     )
 
-                    let outputHandle = try FileHandle(forWritingTo: outputURL)
-                    let errorHandle = try FileHandle(forWritingTo: errorURL)
                     let inputPipe = Pipe()
-                    let process = Process()
                     let outputMonitor = DispatchSource.makeTimerSource(
                         queue: DispatchQueue(label: "RelayBar.SFTPOutputLimit")
                     )
-                    process.executableURL = executableURL
-                    process.arguments = arguments
-                    process.standardInput = inputPipe
-                    process.standardOutput = outputHandle
-                    process.standardError = errorHandle
-                    processBox.set(process)
 
                     outputMonitor.schedule(
                         deadline: .now() + .milliseconds(250),
@@ -372,11 +468,8 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                         processBox.cancel()
                     }
 
-                    process.terminationHandler = { finished in
-                        processBox.markExited()
+                    let finish: @Sendable (Int32) -> Void = { status in
                         outputMonitor.cancel()
-                        outputHandle.closeFile()
-                        errorHandle.closeFile()
                         if
                             Self.fileSize(at: outputURL) > outputLimit
                                 || Self.fileSize(at: errorURL) > errorLimit
@@ -392,10 +485,9 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                             maximumBytes: errorLimit
                         )
                         try? FileManager.default.removeItem(at: temporaryDirectory)
-                        processBox.clear()
                         continuation.resume(
                             returning: CommandResult(
-                                status: finished.terminationStatus,
+                                status: status,
                                 output: output,
                                 error: error,
                                 exceededOutputLimit: outputLimitBox.hasExceeded
@@ -408,13 +500,21 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                         guard processBox.shouldStart else {
                             throw CancellationError()
                         }
-                        try process.run()
+                        let processIdentifier = try Self.spawnProcess(
+                            executableURL: executableURL,
+                            arguments: arguments,
+                            inputPipe: inputPipe,
+                            outputURL: outputURL,
+                            errorURL: errorURL
+                        )
+                        inputPipe.fileHandleForReading.closeFile()
+                        processBox.set(processIdentifier)
+                        processBox.beginWaiting(onExit: finish)
                     } catch {
                         outputMonitor.cancel()
-                        outputHandle.closeFile()
-                        errorHandle.closeFile()
+                        inputPipe.fileHandleForReading.closeFile()
+                        inputPipe.fileHandleForWriting.closeFile()
                         try? fileManager.removeItem(at: temporaryDirectory)
-                        processBox.clear()
                         continuation.resume(throwing: error)
                         return
                     }
@@ -432,7 +532,6 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                     try? inputPipe.fileHandleForWriting.close()
                 } catch {
                     try? fileManager.removeItem(at: temporaryDirectory)
-                    processBox.clear()
                     continuation.resume(throwing: error)
                 }
             }
@@ -441,6 +540,143 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         } onCancel: {
             processBox.cancel()
         }
+    }
+
+    private static func spawnProcess(
+        executableURL: URL,
+        arguments: [String],
+        inputPipe: Pipe,
+        outputURL: URL,
+        errorURL: URL
+    ) throws -> pid_t {
+        var actions: posix_spawn_file_actions_t?
+        let actionsResult = posix_spawn_file_actions_init(&actions)
+        guard actionsResult == 0 else {
+            throw posixError(actionsResult)
+        }
+        defer { posix_spawn_file_actions_destroy(&actions) }
+
+        let inputDescriptor = inputPipe.fileHandleForReading.fileDescriptor
+        let inputWriteDescriptor = inputPipe.fileHandleForWriting.fileDescriptor
+
+        if inputDescriptor != STDIN_FILENO {
+            let duplicateInput = posix_spawn_file_actions_adddup2(
+                &actions,
+                inputDescriptor,
+                STDIN_FILENO
+            )
+            guard duplicateInput == 0 else {
+                throw posixError(duplicateInput)
+            }
+            let closeInput = posix_spawn_file_actions_addclose(&actions, inputDescriptor)
+            guard closeInput == 0 else {
+                throw posixError(closeInput)
+            }
+        }
+        let closeInputWriter = posix_spawn_file_actions_addclose(
+            &actions,
+            inputWriteDescriptor
+        )
+        guard closeInputWriter == 0 else {
+            throw posixError(closeInputWriter)
+        }
+        let openOutput = outputURL.path.withCString { outputPath in
+            posix_spawn_file_actions_addopen(
+                &actions,
+                STDOUT_FILENO,
+                outputPath,
+                O_WRONLY | O_TRUNC,
+                mode_t(0o600)
+            )
+        }
+        guard openOutput == 0 else {
+            throw posixError(openOutput)
+        }
+        let openError = errorURL.path.withCString { errorPath in
+            posix_spawn_file_actions_addopen(
+                &actions,
+                STDERR_FILENO,
+                errorPath,
+                O_WRONLY | O_TRUNC,
+                mode_t(0o600)
+            )
+        }
+        guard openError == 0 else {
+            throw posixError(openError)
+        }
+
+        var attributes: posix_spawnattr_t?
+        let attributesResult = posix_spawnattr_init(&attributes)
+        guard attributesResult == 0 else {
+            throw posixError(attributesResult)
+        }
+        defer { posix_spawnattr_destroy(&attributes) }
+
+        var defaultSignals = sigset_t()
+        guard sigfillset(&defaultSignals) == 0 else {
+            throw posixError(errno)
+        }
+        _ = sigdelset(&defaultSignals, SIGKILL)
+        _ = sigdelset(&defaultSignals, SIGSTOP)
+        var signalMask = sigset_t()
+        guard sigemptyset(&signalMask) == 0 else {
+            throw posixError(errno)
+        }
+        let signalConfiguration = [
+            posix_spawnattr_setsigdefault(&attributes, &defaultSignals),
+            posix_spawnattr_setsigmask(&attributes, &signalMask)
+        ]
+        if let error = signalConfiguration.first(where: { $0 != 0 }) {
+            throw posixError(error)
+        }
+
+        let flagsResult = posix_spawnattr_setflags(
+            &attributes,
+            Int16(
+                POSIX_SPAWN_CLOEXEC_DEFAULT
+                    | POSIX_SPAWN_SETSIGDEF
+                    | POSIX_SPAWN_SETSIGMASK
+            )
+        )
+        guard flagsResult == 0 else {
+            throw posixError(flagsResult)
+        }
+
+        var argumentPointers: [UnsafeMutablePointer<CChar>?] = []
+        defer {
+            for argumentPointer in argumentPointers {
+                free(argumentPointer)
+            }
+        }
+        for argument in [executableURL.path] + arguments {
+            guard let argumentPointer = strdup(argument) else {
+                throw POSIXError(.ENOMEM)
+            }
+            argumentPointers.append(argumentPointer)
+        }
+        argumentPointers.append(nil)
+
+        var processIdentifier: pid_t = 0
+        let spawnResult = executableURL.path.withCString { executablePath in
+            argumentPointers.withUnsafeMutableBufferPointer { buffer in
+                posix_spawn(
+                    &processIdentifier,
+                    executablePath,
+                    &actions,
+                    &attributes,
+                    buffer.baseAddress!,
+                    environ
+                )
+            }
+        }
+        guard spawnResult == 0 else {
+            throw posixError(spawnResult)
+        }
+        return processIdentifier
+    }
+
+    private static func posixError(_ code: Int32) -> POSIXError {
+        POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
     }
 
     private func validate(_ result: CommandResult) throws {

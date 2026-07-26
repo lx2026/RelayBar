@@ -39,9 +39,14 @@ case "$host" in
     slow)
         mkdir -p "$(dirname "$local_path")"
         printf 'partial' > "$local_path"
-        trap 'exit 143' TERM INT
+        exec /bin/sleep 60
+        ;;
+    stubborn)
+        mkdir -p "$(dirname "$local_path")"
+        trap '' TERM
+        printf 'partial' > "$local_path"
         while :; do
-            sleep 1
+            :
         done
         ;;
     *)

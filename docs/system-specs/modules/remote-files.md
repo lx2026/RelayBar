@@ -34,7 +34,7 @@ Remote Files opens an exact folder on a saved SSH server without adding search, 
 - Cancellation and failure messages explicitly state that temporary data was removed and existing files were unchanged.
 - Transfer progress is scoped to its originating attempt; a delayed callback from a failed or cancelled attempt cannot update a retry.
 - Single-file progress polls every 250 ms. Recursive progress re-walks the partial tree, so its interval scales with the entry count from 1 second up to a bounded 8 seconds. The completion report is exact regardless of interval.
-- A cancelled transfer escalates to `SIGKILL` only while the process is recorded as still running; a process observed to have exited is never signalled again.
+- A cancelled SFTP operation receives `SIGTERM` once. After two seconds, RelayBar reaps the child first and sends `SIGKILL` at most once only while it still owns that child. Reaping and signal delivery are serialized, so the PID cannot be recycled between the decision and the signal.
 
 ## Image preview
 

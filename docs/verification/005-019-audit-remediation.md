@@ -8,7 +8,7 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 
 ## Automated evidence
 
-- `swift test` passed 149 tests with 11 opt-in tests skipped and no failures, up from 133 before the change. With `RELAYBAR_LOOPBACK_SSH_DIR` set, the two live tests also pass against a real OpenSSH server.
+- `swift test` passed 150 tests with 11 opt-in tests skipped and no failures, up from 133 before the change. With `RELAYBAR_LOOPBACK_SSH_DIR` set, the two live tests also pass against a real OpenSSH server.
 - `swift test -Xswiftc -warnings-as-errors`, the first CI check, passed.
 - The Release app build, the second CI check, succeeded:
 
@@ -27,6 +27,7 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 - **Task 007.** `testRestartIsNotBlockedByAStoppedLaunchesControlOperation` starts a profile, stops it while its control operation is still in flight, and restarts immediately. The fake SSH fixture gained `RELAYBAR_FAKE_SSH_IGNORE_TERM_SPEC`, a forward that ignores `SIGTERM`, so the stopped launch's operation is guaranteed to outlive the restart.
 
   This test was confirmed to be a regression test, not a tautology: with the per-operation guard temporarily reverted to the previous per-profile guard, it fails with `Restart failed: Another SSH control operation is still running. Automatic retry stopped after 1 attempts.` — the exact defect Task 007 describes.
+- **Task 008.** `testCancellationStopsTheProcessAndRemovesPartial` records a cooperative child's signals and verifies `SIGTERM` is delivered without the delayed `SIGKILL`. `testCancellationForceStopsAProcessThatIgnoresTermination` verifies a stubborn child receives exactly one `SIGTERM` and one `SIGKILL`, the continuation resolves as cancellation, and partial data is removed. Both paths passed 30 consecutive final iterations.
 - **Task 009.** `testGroupingCacheInvalidatesOnEveryMutationPath` covers add, update, move, rename, ungroup, and delete, because the change introduces a cache whose only real risk is staleness.
 - **Task 011.** `ProgressPollingIntervalTests` covers the fixed single-file interval, the 1-second directory floor, growth with entry count, and the 8-second bound.
 - **Task 014.** `RemoteByteCountTests` asserts the reused formatter's output against `ByteCountFormatter` for twelve sizes, and pins the specific wording for 999 bytes, 1 KB, and 843 KB.
@@ -53,6 +54,7 @@ These fifteen tasks came from one review pass over the app sources for reliabili
 
 - Task 009's cache is invalidated from a `didSet` on the saved list, so every mutation path clears it, including in-place subscript assignment. The initial value assigned in `init` does not need invalidation because the cache starts empty.
 - Task 007 keeps the single-operation-at-a-time rule; it is now scoped to a launch generation rather than a profile. Continuations still resume exactly once on completion, stop, cancellation, timeout, and launch failure, because a superseded operation stays registered until its own termination handler runs.
+- Task 008 now launches the SFTP child directly and owns its exit observation and `waitpid`. Reaping and signal delivery share one lock: if the child exits immediately before escalation, it remains an unreaped zombie until the signal attempt finishes, so its PID cannot be reassigned to an unrelated process. The child starts with default, unblocked signal handling to preserve cooperative `SIGTERM` cancellation.
 - Task 006's handler detachment happens before the synchronous drain, and the operation is removed from the registry first, so a handler block still in flight becomes inert instead of recreating a buffer. Control output stays on the main queue rather than hopping through a `Task`, which preserves FIFO ordering with the termination handler's dispatch.
 - Reviewing that rewrite surfaced a pre-existing latent hang on the same path: the drain also ran when `Process.run()` itself threw. No child ever held those pipes' write ends in that case, so `readDataToEndOfFile` would wait on the main queue for an end of file that cannot arrive. The drain is now skipped when the launch failed, where there is nothing to read anyway.
 - Task 014 replaced a filesystem probe in a menu builder with a shape test. Reveal now falls back to the enclosing folder when the socket is gone, which is a small behavior change in the stale case and is recorded in the tunnel-management spec.

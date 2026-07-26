@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import XCTest
 @testable import RelayBar
 
@@ -2020,7 +2021,14 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
         let directory = try makeTemporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let destination = directory.appendingPathComponent("result.txt")
-        let service = makeFixtureService()
+        let signals = LockedSignalRecorder()
+        let service = SFTPRemoteFileService(
+            executableURL: fixtureExecutableURL,
+            forceStopDelay: 0.2,
+            signalProcess: { processIdentifier, signal in
+                signals.send(processIdentifier: processIdentifier, signal: signal)
+            }
+        )
         let server = makeFixtureServer(host: "slow")
         let entry = makeFileEntry()
         let task = Task {
@@ -2032,7 +2040,11 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
         }
 
         try await waitUntil(timeout: 2) {
-            !self.partialItems(in: directory).isEmpty
+            self.partialItems(in: directory).contains {
+                FileManager.default.fileExists(
+                    atPath: $0.appendingPathComponent("payload").path
+                )
+            }
         }
         let stagingDirectory = try XCTUnwrap(partialItems(in: directory).first)
         let stagingAttributes = try FileManager.default.attributesOfItem(
@@ -2053,6 +2065,53 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
 
         XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
         XCTAssertTrue(partialItems(in: directory).isEmpty)
+        try await Task.sleep(for: .milliseconds(250))
+        XCTAssertEqual(signals.values, [SIGTERM])
+    }
+
+    func testCancellationForceStopsAProcessThatIgnoresTermination() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let destination = directory.appendingPathComponent("result.txt")
+        let signals = LockedSignalRecorder()
+        let service = SFTPRemoteFileService(
+            executableURL: fixtureExecutableURL,
+            forceStopDelay: 0.05,
+            signalProcess: { processIdentifier, signal in
+                signals.send(processIdentifier: processIdentifier, signal: signal)
+            }
+        )
+        let server = makeFixtureServer(host: "stubborn")
+        let entry = makeFileEntry()
+        let task = Task {
+            try await service.download(
+                server: server,
+                entry: entry,
+                to: destination
+            ) { _ in }
+        }
+
+        try await waitUntil(timeout: 2) {
+            self.partialItems(in: directory).contains {
+                FileManager.default.fileExists(
+                    atPath: $0.appendingPathComponent("payload").path
+                )
+            }
+        }
+        task.cancel()
+
+        do {
+            try await task.value
+            XCTFail("Expected cancellation.")
+        } catch is CancellationError {
+            // Expected.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+
+        XCTAssertFalse(FileManager.default.fileExists(atPath: destination.path))
+        XCTAssertTrue(partialItems(in: directory).isEmpty)
+        XCTAssertEqual(signals.values, [SIGTERM, SIGKILL])
     }
 
     func testFolderProgressIncludesHiddenFiles() async throws {
@@ -2719,6 +2778,24 @@ private final class LockedDownloadProgressCallbacks: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         return callbacks.count
+    }
+}
+
+private final class LockedSignalRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedValues: [Int32] = []
+
+    func send(processIdentifier: pid_t, signal: Int32) -> Int32 {
+        lock.lock()
+        recordedValues.append(signal)
+        lock.unlock()
+        return Darwin.kill(processIdentifier, signal)
+    }
+
+    var values: [Int32] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recordedValues
     }
 }
 
