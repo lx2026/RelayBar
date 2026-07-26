@@ -2,7 +2,7 @@
 
 RelayBar is a tiny native macOS menu-bar app for structured SSH forwarding profiles and exact-path remote file access. It runs macOS's built-in `/usr/bin/ssh` and `/usr/bin/sftp` directly.
 
-[Download v1.2.0-beta.1](https://github.com/lx2026/RelayBar/releases/download/v1.2.0-beta.1/RelayBar.zip)
+[Download v1.2.0](https://github.com/lx2026/RelayBar/releases/download/v1.2.0/RelayBar.zip)
 · [Changelog](CHANGELOG.md)
 
 ## Screenshots
@@ -97,12 +97,12 @@ To create a signed ZIP:
 This writes `.build/RelayBar.zip`. A Developer ID signature identifies the publisher, but a downloaded app should also be notarized to pass Gatekeeper without warnings. After storing one `notarytool` keychain profile, notarize and staple with:
 
 ```bash
-xcrun notarytool store-credentials relaybar-notary \
+xcrun notarytool store-credentials YOUR_NOTARY_PROFILE \
   --apple-id YOUR_APPLE_ID \
   --team-id YOUR_TEAM_ID \
   --password YOUR_APP_SPECIFIC_PASSWORD
 
-NOTARY_PROFILE=relaybar-notary ./scripts/notarize-release.sh
+NOTARY_PROFILE=YOUR_NOTARY_PROFILE ./scripts/notarize-release.sh
 ```
 
 Set `SIGNING_IDENTITY` only when a Mac has multiple Developer ID certificates and the automatic choice is not the one you want.
