@@ -18,3 +18,10 @@ The Xcode target prunes unused renderer resources from the generated app bundle.
 Release builds generate a dSYM and then apply non-global symbol stripping to the installed executable. Debug builds remain unstripped. The dSYM and executable UUIDs must match before a release artifact is accepted.
 
 The app is distributed outside the Mac App Store, uses the hardened runtime, and is intentionally not sandboxed.
+
+## Project Website
+
+The GitHub Pages site is a build-free static site under `docs/`. Its
+`index.html`, `styles.css`, and local image assets are sufficient to render the
+page; it does not require a generated page runtime or third-party font request.
+Release download links identify the current stable version explicitly.

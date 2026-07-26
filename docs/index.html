@@ -1,79 +1,86 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#090c11">
     <title>RelayBar | SSH tunnels, one click away</title>
     <meta
       name="description"
       content="A native macOS menu-bar app for structured SSH forwarding profiles and exact-path remote files."
-    />
-    <link rel="canonical" href="https://lx2026.github.io/RelayBar/" />
-    <link rel="icon" href="./favicon.png" />
-    <link rel="apple-touch-icon" href="./relaybar-icon.png" />
-    <link rel="stylesheet" href="./styles.css?v=1.2.0" />
+    >
+    <link rel="canonical" href="https://lx2026.github.io/RelayBar/">
+    <link rel="icon" href="./favicon.png">
+    <link rel="apple-touch-icon" href="./relaybar-icon.png">
+    <link rel="stylesheet" href="./styles.css?v=20260726">
 
-    <meta property="og:type" content="website" />
-    <meta property="og:title" content="RelayBar | SSH tunnels, one click away" />
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="RelayBar | SSH tunnels, one click away">
     <meta
       property="og:description"
       content="A native macOS menu-bar app for structured SSH forwarding profiles and exact-path remote files."
-    />
-    <meta property="og:url" content="https://lx2026.github.io/RelayBar/" />
+    >
+    <meta property="og:url" content="https://lx2026.github.io/RelayBar/">
     <meta
       property="og:image"
       content="https://lx2026.github.io/RelayBar/relaybar-social.png"
-    />
+    >
     <meta
       property="og:image:alt"
       content="RelayBar. SSH tunnels, one click away."
-    />
-    <meta property="og:image:width" content="1729" />
-    <meta property="og:image:height" content="910" />
+    >
+    <meta property="og:image:width" content="1729">
+    <meta property="og:image:height" content="910">
 
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="RelayBar | SSH tunnels, one click away" />
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="RelayBar | SSH tunnels, one click away">
     <meta
       name="twitter:description"
       content="A native macOS menu-bar app for structured SSH forwarding profiles and exact-path remote files."
-    />
+    >
     <meta
       name="twitter:image"
       content="https://lx2026.github.io/RelayBar/relaybar-social.png"
-    />
+    >
   </head>
   <body>
-    <main>
+    <a class="skip-link" href="#content">Skip to content</a>
+
+    <header class="site-header">
       <nav class="nav shell" aria-label="Primary navigation">
         <a class="brand" href="#top" aria-label="RelayBar home">
-          <img src="./favicon.png" alt="" width="34" height="34" />
+          <img src="./favicon.png" alt="" width="30" height="30">
           <span>RelayBar</span>
+          <span class="version-badge">v1.2.0</span>
         </a>
         <div class="nav-links">
-          <a href="#how-it-works">How it works</a>
           <a href="#remote-files">Remote Files</a>
-          <a href="https://github.com/lx2026/RelayBar/blob/main/CHANGELOG.md"
-            >Changelog</a
+          <a href="#how-it-works">How it works</a>
+          <a href="#whats-new">What’s new</a>
+          <a
+            href="https://github.com/lx2026/RelayBar/blob/main/docs/SECURITY_REVIEW.md"
           >
-          <a href="https://github.com/lx2026/RelayBar/blob/main/docs/SECURITY_REVIEW.md"
-            >Security</a
-          >
+            Security
+          </a>
           <a class="nav-cta" href="https://github.com/lx2026/RelayBar">
             GitHub <span aria-hidden="true">↗</span>
           </a>
         </div>
       </nav>
+    </header>
 
+    <main id="content">
       <section class="hero shell" id="top">
         <div class="hero-copy">
-          <div class="eyebrow">
-            <span class="eyebrow-dot"></span>
-            Native macOS menu bar app
+          <div class="release-pill">
+            <span aria-hidden="true"></span>
+            v1.2.0 · notarized · open source
           </div>
-          <h1>SSH tunnels,<br />one click away.</h1>
+          <h1>SSH tunnels,<br>one click away.</h1>
           <p class="hero-lede">
-            Import local, SOCKS, remote, and Unix-socket rules. Group profiles
-            and browse exact remote paths from your menu bar.
+            A tiny native macOS menu-bar app. Paste an SSH command, get a saved
+            profile—local, SOCKS, remote, and Unix-socket rules over one managed
+            connection.
           </p>
           <div class="hero-actions">
             <a
@@ -81,120 +88,81 @@
               href="https://github.com/lx2026/RelayBar/releases/download/v1.2.0/RelayBar.zip"
               aria-label="Download RelayBar 1.2.0 for macOS"
             >
-              Download v1.2.0 <span aria-hidden="true">↓</span>
+              Download for macOS <span aria-hidden="true">↓</span>
             </a>
             <a class="button secondary" href="https://github.com/lx2026/RelayBar">
               View source <span aria-hidden="true">↗</span>
             </a>
           </div>
-          <p class="release-note">Apple notarized · Free and open source · macOS 13 or newer</p>
-          <div class="terminal" aria-label="Example SSH command">
-            <span class="terminal-prompt">$</span>
-            <code>ssh -N -L 3000:127.0.0.1:3000 -D 1080 devbox.local</code>
+          <p class="release-note">
+            Free · Apple notarized · macOS 13+ · No accounts · No analytics
+          </p>
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+              <span aria-hidden="true"></span>
+              <small>paste_auto_quick_add</small>
+            </div>
+            <div class="terminal-command">
+              <span class="terminal-prompt">$</span>
+              <code>ssh -N -L 3000:127.0.0.1:3000 -D 1080 devbox.local</code>
+            </div>
           </div>
         </div>
 
-        <div class="hero-visual" aria-label="RelayBar tunnel list screenshot">
-          <div class="glow glow-one"></div>
-          <div class="glow glow-two"></div>
+        <div class="hero-visual">
+          <div class="hero-orbit" aria-hidden="true"></div>
           <div class="screenshot-window">
             <div class="window-bar">
-              <div class="traffic-lights" aria-hidden="true">
-                <span></span>
-                <span></span>
-                <span></span>
-              </div>
-              <span class="window-title">Menu bar</span>
+              <span>menu_bar</span>
+              <span class="window-live"><i aria-hidden="true"></i> live</span>
             </div>
             <img
-              src="./relaybar-tunnels.png"
+              src="./relaybar-tunnels-hires.png"
               alt="RelayBar showing saved SSH forwarding profiles grouped into Personal and Work sections"
-              width="760"
-              height="880"
-            />
+              width="1165"
+              height="1350"
+            >
           </div>
         </div>
       </section>
 
       <section class="proof shell" aria-label="Product highlights">
         <div>
-          <strong>Native SwiftUI</strong>
-          <span>Built for macOS 13 and newer.</span>
+          <span class="proof-label">/usr/bin/ssh</span>
+          <strong>Uses the SSH already on your Mac.</strong>
+          <p>Your config, keys, known hosts, and agent stay untouched.</p>
         </div>
         <div>
-          <strong>System OpenSSH</strong>
-          <span>Calls built-in <code>ssh</code> and <code>sftp</code>.</span>
+          <span class="proof-label">native SwiftUI</span>
+          <strong>A real Mac app for macOS 13 and newer.</strong>
+          <p>No Electron, no background service, no replacement SSH stack.</p>
         </div>
         <div>
-          <strong>Stored locally</strong>
-          <span>Tunnel definitions stay on your Mac.</span>
+          <span class="proof-label">stored locally</span>
+          <strong>Your tunnel definitions stay on your Mac.</strong>
+          <p>No account, analytics SDK, or cloud sync phones home.</p>
         </div>
       </section>
 
-      <section class="workflow shell" id="how-it-works">
-        <div class="section-copy">
-          <span class="section-kicker">How it works</span>
-          <h2>Set it up once.</h2>
-          <p>
-            RelayBar reads your typed forwarding rules, fills in the profile,
-            and keeps it ready in your menu bar.
-          </p>
-
-          <ol class="steps">
-            <li>
-              <span>1</span>
-              <div>
-                <strong>Paste your command</strong>
-                <p>Import repeated <code>-L</code>, <code>-D</code>, and <code>-R</code> rules.</p>
-              </div>
-            </li>
-            <li>
-              <span>2</span>
-              <div>
-                <strong>Save the tunnel</strong>
-                <p>Name it once. RelayBar remembers the safe options.</p>
-              </div>
-            </li>
-            <li>
-              <span>3</span>
-              <div>
-                <strong>Click to connect</strong>
-                <p>Start and stop it without opening Terminal.</p>
-              </div>
-            </li>
-          </ol>
-        </div>
-
-        <div class="editor-shot">
-          <div class="shot-caption">
-            <span>Actual app screenshot</span>
-            <span>Quick add</span>
+      <section class="section shell" id="remote-files">
+        <div class="section-heading split-heading">
+          <div>
+            <span class="section-kicker">Remote Files</span>
+            <h2>Your server,<br>right where you left it.</h2>
           </div>
-          <img
-            src="./relaybar-add-tunnel.png"
-            alt="RelayBar new profile screen with mixed SSH forwarding import and an optional Work group"
-            width="760"
-            height="880"
-          />
-        </div>
-      </section>
-
-      <section class="remote-files shell" id="remote-files">
-        <div class="remote-files-intro section-copy">
-          <span class="section-kicker">Remote Files</span>
-          <h2>Browse, preview, and download.</h2>
           <p>
             Paste an absolute remote path, choose a saved SSH connection, and
-            work with exactly that folder. Navigate, refresh, preview supported
-            images and Markdown, or download files and folders with progress
-            and cancellation.
+            open exactly that folder. No indexing. No sync engine. Just SFTP
+            through the SSH setup you already trust.
           </p>
         </div>
 
-        <div class="capability-shot">
-          <div class="shot-caption">
-            <span>Remote Files workflow</span>
-            <span>Browse · Preview · Download</span>
+        <div class="media-frame remote-frame">
+          <div class="frame-bar">
+            <span>remote_files.workflow</span>
+            <span>browse · preview · download</span>
           </div>
           <img
             src="./designs/media/001/remote-files-concept-a.png"
@@ -202,155 +170,215 @@
             width="1804"
             height="872"
             loading="lazy"
-          />
+          >
+        </div>
+
+        <div class="feature-grid">
+          <article>
+            <span class="feature-number">01</span>
+            <h3>Open the exact path</h3>
+            <p>
+              Paste the result of remote <code>pwd</code> and RelayBar opens
+              that folder—without crawling the server.
+            </p>
+          </article>
+          <article>
+            <span class="feature-number">02</span>
+            <h3>Preview safely</h3>
+            <p>
+              Read supported images and Markdown in a bounded, inert preview.
+              Raw HTML and remote embeds stay off.
+            </p>
+          </article>
+          <article>
+            <span class="feature-number">03</span>
+            <h3>Download with control</h3>
+            <p>
+              Transfer files or folders, watch progress, cancel cleanly, and
+              reveal the result in Finder.
+            </p>
+          </article>
         </div>
       </section>
 
-      <section class="roadmap shell" id="roadmap">
-        <div class="roadmap-intro">
-          <span class="section-kicker">Roadmap</span>
-          <h2>Port forwarding and Remote Files are complete.</h2>
+      <section class="section workflow shell" id="how-it-works">
+        <div class="workflow-copy">
+          <span class="section-kicker">How it works</span>
+          <h2>From command<br>to one click.</h2>
+          <p class="section-lede">
+            RelayBar parses typed forwarding arguments without invoking a
+            shell, turns them into a visible profile, and keeps the controls in
+            your menu bar.
+          </p>
+
+          <ol class="steps">
+            <li>
+              <span>01</span>
+              <div>
+                <h3>Paste your SSH command</h3>
+                <p>
+                  Import repeated or mixed <code>-L</code>, <code>-D</code>,
+                  and <code>-R</code> rules.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <h3>Review and save</h3>
+                <p>
+                  Name the profile, check each typed endpoint, and optionally
+                  place it in a group.
+                </p>
+              </div>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <h3>Connect from the menu bar</h3>
+                <p>
+                  Start, stop, retry, and open supported endpoints without
+                  keeping a Terminal tab around.
+                </p>
+              </div>
+            </li>
+          </ol>
+        </div>
+
+        <div class="media-frame editor-frame">
+          <div class="frame-bar">
+            <span>quick_add.profile</span>
+            <span>actual app screenshot</span>
+          </div>
+          <img
+            src="./relaybar-add-tunnel.png"
+            alt="RelayBar new profile screen with mixed SSH forwarding import and an optional Work group"
+            width="760"
+            height="880"
+            loading="lazy"
+          >
+        </div>
+      </section>
+
+      <section class="section release-section shell" id="whats-new">
+        <div class="section-heading release-heading">
+          <span class="section-kicker">What’s new in 1.2.0</span>
+          <h2>More forwarding.<br>Still a narrow job.</h2>
           <p>
-            RelayBar handles the few steps between a remote server and your Mac.
-            Use Claude Code, Codex, or a terminal to search and edit on the
-            remote machine.
+            Version 1.2.0 turns a simple local-forward tool into a structured
+            SSH workspace while keeping every boundary visible.
           </p>
         </div>
 
-        <div class="roadmap-track">
-          <article class="roadmap-stage complete">
-            <div class="roadmap-stage-header">
-              <span class="roadmap-number">1</span>
-              <span class="status complete">Complete</span>
+        <div class="release-grid">
+          <article>
+            <div class="card-topline">
+              <span>01</span>
+              <i aria-hidden="true"></i>
             </div>
-            <h3>Port forwarding</h3>
-            <ul class="roadmap-done">
-              <li>Import repeated and mixed <code>-L</code>, <code>-D</code>, and <code>-R</code> rules.</li>
-              <li>Add, edit, and delete a forward by hand.</li>
-              <li>Save forward definitions locally.</li>
-              <li>Start and stop each forward from the menu bar.</li>
-              <li>Start a stopped forward and open its URL in the default browser.</li>
-              <li>Retry an unexpected disconnect up to 10 times.</li>
-              <li>Show connection errors beside the affected forward.</li>
-              <li>Stop managed SSH processes when RelayBar quits.</li>
-              <li>Use TCP ports, Unix sockets, local SOCKS, and reverse SOCKS.</li>
-              <li>Show automatic remote ports and type-correct endpoint actions.</li>
-              <li>Group saved profiles into lightweight menu-bar sections.</li>
-            </ul>
-          </article>
-
-          <article class="roadmap-stage complete">
-            <div class="roadmap-stage-header">
-              <span class="roadmap-number">2</span>
-              <span class="status complete">Complete</span>
-            </div>
-            <h3>Remote files</h3>
+            <h3>Flexible profiles</h3>
             <p>
-              Paste the absolute path from remote <code>pwd</code>, choose a
-              saved server, and open exactly that folder.
+              Repeated and mixed local, SOCKS, remote, TCP, and Unix-socket
+              forwarding rules share one managed SSH connection.
             </p>
-
-            <ol class="roadmap-items">
-              <li>
-                <span>2.1</span>
-                <div>
-                  <strong>Open a pasted path</strong>
-                  <p>Select a server and load the requested folder.</p>
-                </div>
-              </li>
-              <li>
-                <span>2.2</span>
-                <div>
-                  <strong>Navigate folders</strong>
-                  <p>List, enter, go back, and refresh. No search or indexing.</p>
-                </div>
-              </li>
-              <li>
-                <span>2.3</span>
-                <div>
-                  <strong>Download a file</strong>
-                  <p>Choose a destination, track progress, and reveal it in Finder.</p>
-                </div>
-              </li>
-              <li>
-                <span>2.4</span>
-                <div>
-                  <strong>Download a folder</strong>
-                  <p>Transfer it recursively, show progress, and allow cancellation.</p>
-                </div>
-              </li>
-              <li>
-                <span>2.5</span>
-                <div>
-                  <strong>Preview images</strong>
-                  <p>Preview one supported remote image at a time.</p>
-                </div>
-              </li>
-              <li>
-                <span>2.6</span>
-                <div>
-                  <strong>Render Markdown</strong>
-                  <p>
-                    Native read-only GFM with safe Obsidian conventions,
-                    syntax highlighting, footnotes, callouts, and math.
-                  </p>
-                </div>
-              </li>
-            </ol>
+          </article>
+          <article>
+            <div class="card-topline">
+              <span>02</span>
+              <i aria-hidden="true"></i>
+            </div>
+            <h3>Profile groups</h3>
+            <p>
+              Organize profiles into lightweight menu sections. Move, rename,
+              or ungroup them without restarting active SSH processes.
+            </p>
+          </article>
+          <article>
+            <div class="card-topline">
+              <span>03</span>
+              <i aria-hidden="true"></i>
+            </div>
+            <h3>Exact-path Remote Files</h3>
+            <p>
+              Browse, refresh, preview, download, cancel, and reveal files
+              through saved SSH connections.
+            </p>
+          </article>
+          <article>
+            <div class="card-topline">
+              <span>04</span>
+              <i aria-hidden="true"></i>
+            </div>
+            <h3>Release hardening</h3>
+            <p>
+              Structured parsing, fixed executable arguments, safer process
+              cleanup, and a signed, notarized, stapled universal app.
+            </p>
           </article>
         </div>
 
-        <p class="roadmap-boundary">
-          Remote file operations stop at opening, previewing, and downloading.
-        </p>
+        <a
+          class="text-link"
+          href="https://github.com/lx2026/RelayBar/blob/main/CHANGELOG.md"
+        >
+          Read the complete changelog <span aria-hidden="true">↗</span>
+        </a>
       </section>
 
       <section class="principles shell">
-        <div class="principles-heading">
-          <span class="section-kicker">A narrow job</span>
-          <h2>Your SSH setup stays yours.</h2>
+        <div>
+          <span class="section-kicker">Deliberately small</span>
+          <h2>Your SSH setup<br>stays yours.</h2>
         </div>
         <div class="principles-copy">
           <p>
             RelayBar manages visible typed forwarding rules over one SSH
-            connection per profile. It adds no account, analytics SDK,
+            connection per profile. It doesn’t add an account, analytics SDK,
             background service, or replacement SSH stack.
           </p>
           <p>
-            It runs <code>/usr/bin/ssh</code> directly, so it uses your existing
-            config, keys, known hosts, and SSH agent.
+            It runs <code>/usr/bin/ssh</code> and <code>/usr/bin/sftp</code>
+            directly, so your existing config, keys, known hosts, and SSH agent
+            remain the source of truth.
           </p>
         </div>
       </section>
 
       <section class="cta shell">
-        <img src="./relaybar-icon.png" alt="" width="92" height="92" />
-        <div>
-          <h2>Keep the tunnel. Lose the terminal tab.</h2>
-          <p>Open source. Native macOS. Runs on macOS 13 or newer.</p>
+        <div class="cta-stripes" aria-hidden="true"></div>
+        <img src="./relaybar-icon.png" alt="" width="88" height="88">
+        <div class="cta-copy">
+          <span>Ready when you are.</span>
+          <h2>Keep the tunnel.<br>Lose the terminal tab.</h2>
         </div>
         <a
-          class="button light"
+          class="button cta-button"
           href="https://github.com/lx2026/RelayBar/releases/download/v1.2.0/RelayBar.zip"
           aria-label="Download RelayBar 1.2.0 for macOS"
         >
           Download for macOS <span aria-hidden="true">↓</span>
         </a>
       </section>
-
-      <footer class="footer shell">
-        <a class="brand small" href="#top">
-          <img src="./favicon.png" alt="" width="26" height="26" />
-          <span>RelayBar</span>
-        </a>
-        <p>SSH tunnels, one click away.</p>
-        <div>
-          <a href="https://github.com/lx2026/RelayBar">GitHub</a>
-          <a href="https://github.com/lx2026/RelayBar/blob/main/CHANGELOG.md">Changelog</a>
-          <a href="https://github.com/lx2026/RelayBar/blob/main/PRIVACY.md">Privacy</a>
-          <a href="https://github.com/lx2026/RelayBar/blob/main/SECURITY.md">Security</a>
-        </div>
-      </footer>
     </main>
+
+    <footer class="footer shell">
+      <a class="brand footer-brand" href="#top">
+        <img src="./favicon.png" alt="" width="26" height="26">
+        <span>RelayBar</span>
+      </a>
+      <p>SSH tunnels, one click away.</p>
+      <div>
+        <a href="https://github.com/lx2026/RelayBar">GitHub</a>
+        <a href="https://github.com/lx2026/RelayBar/blob/main/CHANGELOG.md">
+          Changelog
+        </a>
+        <a href="https://github.com/lx2026/RelayBar/blob/main/PRIVACY.md">
+          Privacy
+        </a>
+        <a href="https://github.com/lx2026/RelayBar/blob/main/SECURITY.md">
+          Security
+        </a>
+      </div>
+    </footer>
   </body>
 </html>
