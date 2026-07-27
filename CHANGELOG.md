@@ -2,6 +2,27 @@
 
 Notable RelayBar changes are recorded here.
 
+## [1.3.0-beta.1] - 2026-07-26
+
+### Added
+
+- A native in-popover Settings screen can register RelayBar to launch when the
+  current user logs in, while leaving every saved forwarding profile stopped.
+- Named group menus can start inactive members, stop active members, or restart
+  only the members that were active when the command began.
+
+### Fixed
+
+- Login-item operation errors preserve the system-reported toggle state so a
+  failed change remains truthful and retryable.
+- The forwarding-rule type segmented control no longer squeezes its redundant
+  **Type** label into a vertical column at the 380-point popover width.
+
+### Security
+
+- The universal beta ZIP is signed with a Developer ID, notarized by Apple, and
+  stapled for offline Gatekeeper verification.
+
 ## [1.2.1] - 2026-07-26
 
 ### Added
@@ -75,6 +96,7 @@ Notable RelayBar changes are recorded here.
 - Remote Markdown remains inert: raw HTML is not activated, remote embeds are not fetched, and unsafe links are blocked.
 - Release builds retain the hardened runtime, Developer ID signing, notarization, and Gatekeeper verification workflow.
 
+[1.3.0-beta.1]: https://github.com/lx2026/RelayBar/releases/tag/v1.3.0-beta.1
 [1.2.1]: https://github.com/lx2026/RelayBar/releases/tag/v1.2.1
 [1.2.0]: https://github.com/lx2026/RelayBar/releases/tag/v1.2.0
 [1.2.0-beta.1]: https://github.com/lx2026/RelayBar/releases/tag/v1.2.0-beta.1
