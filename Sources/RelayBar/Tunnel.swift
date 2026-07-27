@@ -863,4 +863,13 @@ enum TunnelPhase: Equatable {
     case retrying(attempt: Int, maxAttempts: Int, delay: TimeInterval, message: String)
     case running
     case failed(String)
+
+    /// Whether the profile currently owns lifecycle work. Group batch actions
+    /// and per-row controls agree on this one definition of "active".
+    var isLifecycleActive: Bool {
+        switch self {
+        case .starting, .retrying, .running: true
+        case .stopped, .failed: false
+        }
+    }
 }

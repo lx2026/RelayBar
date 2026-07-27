@@ -62,9 +62,38 @@ final class VisualSnapshotHarness: XCTestCase {
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
             let label = appearanceName == .aqua ? "light" : "dark"
             try capture(
-                view: RelayBarRootView().environmentObject(store),
+                view: RelayBarRootView(
+                    loginItemService: LoginItemServiceSpy(status: .enabled)
+                )
+                .environmentObject(store),
                 appearance: appearanceName,
                 to: outputDirectory.appendingPathComponent("tunnel-list-\(label).png")
+            )
+            try capture(
+                view: SettingsView(
+                    launchAtLogin: LaunchAtLoginModel(
+                        service: LoginItemServiceSpy(status: .enabled)
+                    ),
+                    onBack: {}
+                )
+                .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearanceName,
+                to: outputDirectory.appendingPathComponent("settings-\(label).png")
+            )
+            // The approval-required caption is the tallest Launch at Login
+            // variant; capture it to verify the card's second row.
+            try capture(
+                view: SettingsView(
+                    launchAtLogin: LaunchAtLoginModel(
+                        service: LoginItemServiceSpy(status: .requiresApproval)
+                    ),
+                    onBack: {}
+                )
+                .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearanceName,
+                to: outputDirectory.appendingPathComponent(
+                    "settings-login-approval-\(label).png"
+                )
             )
         }
     }
@@ -109,10 +138,37 @@ final class VisualSnapshotHarness: XCTestCase {
         }
     }
 
+    func testCaptureTask025Snapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            try capture(
+                view: TunnelEditorView(
+                    tunnel: nil,
+                    availableGroups: ["Personal", "Work"],
+                    onCancel: {},
+                    onSave: { _ in }
+                )
+                .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearanceName,
+                size: NSSize(width: 380, height: 440),
+                scrollOffsetY: 300,
+                to: outputDirectory.appendingPathComponent(
+                    "task-025-rule-type-\(label).png"
+                )
+            )
+        }
+    }
+
     private func capture(
         view: some View,
         appearance: NSAppearance.Name,
         size: NSSize = NSSize(width: 380, height: 440),
+        scrollOffsetY: CGFloat? = nil,
         to url: URL
     ) throws {
         let hosting = NSHostingView(rootView: view)
@@ -136,10 +192,52 @@ final class VisualSnapshotHarness: XCTestCase {
             RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
         }
 
+        if let scrollOffsetY {
+            let scrollView = try XCTUnwrap(
+                firstScrollableView(in: hosting),
+                "Expected the captured view to contain a vertical scroll view."
+            )
+            let documentView = try XCTUnwrap(scrollView.documentView)
+            let maximumOffset = max(
+                0,
+                documentView.bounds.height - scrollView.contentView.bounds.height
+            )
+            let offset = min(max(0, scrollOffsetY), maximumOffset)
+            let targetY = documentView.isFlipped
+                ? documentView.bounds.minY + offset
+                : documentView.bounds.minY + maximumOffset - offset
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+
+            let scrollDeadline = Date().addingTimeInterval(0.25)
+            while Date() < scrollDeadline {
+                RunLoop.current.run(
+                    mode: .default,
+                    before: Date().addingTimeInterval(0.05)
+                )
+            }
+        }
+
         let rep = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
         let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
         try data.write(to: url)
         XCTAssertGreaterThan(data.count, 2_000, "snapshot looks empty")
+    }
+
+    private func firstScrollableView(in view: NSView) -> NSScrollView? {
+        if
+            let scrollView = view as? NSScrollView,
+            let documentView = scrollView.documentView,
+            documentView.bounds.height > scrollView.contentView.bounds.height + 1
+        {
+            return scrollView
+        }
+        for subview in view.subviews {
+            if let match = firstScrollableView(in: subview) {
+                return match
+            }
+        }
+        return nil
     }
 }

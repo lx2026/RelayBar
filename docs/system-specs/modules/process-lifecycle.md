@@ -23,6 +23,7 @@
 - Each retry creates a new control directory and clears prior runtime port allocations.
 - Stop, edit, delete, and quit terminate the master and every helper owned by that profile, cancel startup and pending retries, and clean owned sockets and control files.
 - Group-only edits and group move, rename, or ungroup actions do not stop or launch SSH. They preserve stopped, starting, retrying, running, or failed phase and all process-owned runtime state.
+- Group Start All, Stop All, and Restart All snapshot the group's saved members at invocation and reuse the per-profile start and stop paths unchanged — including retry, generation, cleanup, and error behavior — so each member's outcome is independent and no second process manager or group runtime state exists.
 - Exhaustion changes the profile to failed and requires another user start.
 
 Phases are `stopped`, `starting`, `retrying`, `running`, and `failed`.

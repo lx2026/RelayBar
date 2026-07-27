@@ -80,14 +80,7 @@ final class TunnelStore: ObservableObject {
     }
 
     var runningCount: Int {
-        phases.values.count {
-            switch $0 {
-            case .starting, .retrying, .running:
-                true
-            case .stopped, .failed:
-                false
-            }
-        }
+        phases.values.count(where: \.isLifecycleActive)
     }
 
     /// Rebuilt only when `tunnels` changes. Views evaluate their bodies on every
@@ -276,6 +269,39 @@ final class TunnelStore: ObservableObject {
             .union(controlOperations.values.map(\.tunnelID))
         for id in activeIDs {
             stop(id: id)
+        }
+    }
+
+    // Group batch actions snapshot their targets from the saved list at
+    // invocation and reuse the per-profile lifecycle unchanged, so one
+    // member's failure never blocks its peers and no second process manager
+    // or group runtime state exists.
+
+    func startGroup(_ groupName: String) {
+        for tunnel in savedMembers(ofGroup: groupName)
+        where desiredTunnels[tunnel.id] == nil {
+            start(tunnel)
+        }
+    }
+
+    func stopGroup(_ groupName: String) {
+        // Restricted to lifecycle-active members so a stopped or failed
+        // peer keeps its phase and failure message untouched.
+        for tunnel in savedMembers(ofGroup: groupName)
+        where desiredTunnels[tunnel.id] != nil {
+            stop(id: tunnel.id)
+        }
+    }
+
+    func restartGroup(_ groupName: String) {
+        let activeMembers = savedMembers(ofGroup: groupName).filter {
+            desiredTunnels[$0.id] != nil
+        }
+        for tunnel in activeMembers {
+            stop(id: tunnel.id)
+        }
+        for tunnel in activeMembers {
+            start(tunnel)
         }
     }
 
@@ -1042,6 +1068,21 @@ final class TunnelStore: ObservableObject {
     private func save() {
         guard let data = try? JSONEncoder().encode(tunnels) else { return }
         defaults.set(data, forKey: storageKey)
+    }
+
+    /// Current saved profiles whose tags share the requested group's
+    /// canonical identity, tolerating case and harmless whitespace
+    /// differences in both the request and the stored tags.
+    private func savedMembers(ofGroup groupName: String) -> [Tunnel] {
+        guard
+            case .valid(let normalized) = TunnelGroupTag.validate(groupName)
+        else {
+            return []
+        }
+        let key = TunnelGroupTag.canonicalKey(normalized)
+        return tunnels.filter {
+            $0.groupTag.map(TunnelGroupTag.canonicalKey) == key
+        }
     }
 
     private func resolvingGroupTag(in tunnel: Tunnel) -> Tunnel? {

@@ -663,7 +663,9 @@ private struct ForwardingRuleEditor: View {
                     Text(kind.label).tag(kind)
                 }
             }
+            .labelsHidden()
             .pickerStyle(.segmented)
+            .accessibilityLabel("Rule \(position) type")
             .onChange(of: draft.kind) { newKind in
                 if newKind.isDynamic {
                     draft.listenKind = .tcp

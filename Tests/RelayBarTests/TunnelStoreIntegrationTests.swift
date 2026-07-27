@@ -356,6 +356,268 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         retryStore.stop(retrying)
     }
 
+    /// Task 024. Start All targets only inactive members of the canonical
+    /// group, marks unsafe members failed without blocking safe peers, and
+    /// never relaunches an active member.
+    func testStartAllStartsInactiveMembersOnceAndSkipsPeersOutsideTheGroup() async throws {
+        let fixture = try makeFakeSSHFixture()
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = makeFakeStore(defaults: defaults, fixture: fixture)
+        let running = makeGroupedProfile(name: "Running", port: 43_220, group: "Work")
+        let stopped = makeGroupedProfile(name: "Stopped", port: 43_221, group: "Work")
+        let unsafe = makeGroupedProfile(
+            name: "Unsafe",
+            port: 43_222,
+            group: "Work",
+            sshHost: "-blocked"
+        )
+        let otherGroup = makeGroupedProfile(name: "Other", port: 43_223, group: "Personal")
+        let ungrouped = makeGroupedProfile(name: "Ungrouped", port: 43_224, group: nil)
+        for profile in [running, stopped, unsafe, otherGroup, ungrouped] {
+            store.add(profile)
+        }
+        store.start(running)
+        let firstMemberRunning = await waitUntil {
+            store.phase(for: running) == .running
+        }
+        XCTAssertTrue(firstMemberRunning)
+        defer { store.stopAll() }
+
+        store.startGroup("work")
+
+        let stoppedMemberStarted = await waitUntil {
+            store.phase(for: stopped) == .running
+        }
+        XCTAssertTrue(stoppedMemberStarted)
+        XCTAssertEqual(store.phase(for: running), .running)
+        guard case .failed = store.phase(for: unsafe) else {
+            return XCTFail("Expected the unsafe member to fail visibly.")
+        }
+        XCTAssertEqual(store.phase(for: otherGroup), .stopped)
+        XCTAssertEqual(store.phase(for: ungrouped), .stopped)
+        let mastersAfterFirstBatch = masterInvocationCount(
+            try String(contentsOf: fixture.logURL)
+        )
+        XCTAssertEqual(mastersAfterFirstBatch, 2)
+
+        // A repeated batch start must not relaunch active members; the failed
+        // unsafe member fails again before any process is spawned.
+        store.startGroup("Work")
+        try await Task.sleep(for: .milliseconds(100))
+
+        XCTAssertEqual(
+            masterInvocationCount(try String(contentsOf: fixture.logURL)),
+            2
+        )
+    }
+
+    /// Task 024. Stop All cancels only lifecycle-active members, so stopped
+    /// peers stay stopped and a failed member keeps its visible message.
+    func testStopAllStopsActiveMembersAndPreservesStoppedAndFailedPeers() async throws {
+        let retryingSpec = "43231:127.0.0.1:80"
+        let fixture = try makeFakeSSHFixture(
+            overrides: ["RELAYBAR_FAKE_SSH_FAIL_SPEC": retryingSpec]
+        )
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = makeFakeStore(
+            defaults: defaults,
+            fixture: fixture,
+            maxRetryAttempts: 5,
+            retryDelay: 60
+        )
+        let running = makeGroupedProfile(name: "Running", port: 43_230, group: "Work")
+        let retrying = makeGroupedProfile(name: "Retrying", port: 43_231, group: "Work")
+        let failed = makeGroupedProfile(
+            name: "Failed",
+            port: 43_232,
+            group: "Work",
+            sshHost: "-blocked"
+        )
+        let stopped = makeGroupedProfile(name: "Stopped", port: 43_233, group: "Work")
+        let outside = makeGroupedProfile(name: "Outside", port: 43_234, group: nil)
+        for profile in [running, retrying, failed, stopped, outside] {
+            store.add(profile)
+        }
+        store.start(running)
+        store.start(retrying)
+        store.start(outside)
+        store.start(failed)
+        let failedPhase = store.phase(for: failed)
+        guard case .failed = failedPhase else {
+            return XCTFail("Expected the invalid member to fail immediately.")
+        }
+        let activeMembersSettled = await waitUntil {
+            var isRetrying = false
+            if case .retrying = store.phase(for: retrying) { isRetrying = true }
+            return isRetrying
+                && store.phase(for: running) == .running
+                && store.phase(for: outside) == .running
+        }
+        XCTAssertTrue(activeMembersSettled)
+        defer { store.stopAll() }
+
+        store.stopGroup("Work")
+
+        XCTAssertEqual(store.phase(for: running), .stopped)
+        XCTAssertEqual(store.phase(for: retrying), .stopped)
+        XCTAssertEqual(store.phase(for: failed), failedPhase)
+        XCTAssertEqual(store.phase(for: stopped), .stopped)
+        XCTAssertEqual(store.phase(for: outside), .running)
+        XCTAssertEqual(store.runningCount, 1)
+    }
+
+    /// Task 024. Restart All replaces each member active at invocation with
+    /// one fresh launch and does not start members that were stopped.
+    func testRestartAllRelaunchesActiveMembersAndSkipsStoppedOnes() async throws {
+        let fixture = try makeFakeSSHFixture()
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = makeFakeStore(defaults: defaults, fixture: fixture)
+        let active = makeGroupedProfile(name: "Active", port: 43_240, group: "Work")
+        let stopped = makeGroupedProfile(name: "Stopped", port: 43_241, group: "Work")
+        let outside = makeGroupedProfile(name: "Outside", port: 43_242, group: "Personal")
+        for profile in [active, stopped, outside] {
+            store.add(profile)
+        }
+        // Started one at a time: concurrent launches interleave their blocks
+        // in the shared fake-ssh log and the invocation count becomes lossy.
+        store.start(active)
+        let firstRunning = await waitUntil {
+            store.phase(for: active) == .running
+        }
+        XCTAssertTrue(firstRunning)
+        store.start(outside)
+        let secondRunning = await waitUntil {
+            store.phase(for: outside) == .running
+        }
+        XCTAssertTrue(secondRunning)
+        defer { store.stopAll() }
+
+        store.restartGroup("Work")
+
+        let restarted = await waitUntil {
+            store.phase(for: active) == .running
+        }
+        XCTAssertTrue(restarted)
+        XCTAssertEqual(store.phase(for: stopped), .stopped)
+        XCTAssertEqual(store.phase(for: outside), .running)
+        // One extra master launch for the restarted member only.
+        XCTAssertEqual(
+            masterInvocationCount(try String(contentsOf: fixture.logURL)),
+            3
+        )
+    }
+
+    /// Task 024. Batch actions resolve members by canonical group identity,
+    /// so stored tags and requests that differ only by case or harmless
+    /// whitespace address one group.
+    func testGroupLifecycleActionsMatchCanonicalGroupIdentity() async throws {
+        let fixture = try makeFakeSSHFixture()
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        // Seeded through storage because interactive tagging normalizes new
+        // tags to the existing spelling; decoded data may legitimately keep
+        // members of one canonical group under differing case.
+        let first = makeGroupedProfile(name: "First", port: 43_250, group: "Work")
+        let second = makeGroupedProfile(name: "Second", port: 43_251, group: "wORK")
+        let outside = makeGroupedProfile(name: "Outside", port: 43_252, group: "Personal")
+        defaults.set(
+            try JSONEncoder().encode([first, second, outside]),
+            forKey: "savedTunnels.v2"
+        )
+        let store = makeFakeStore(defaults: defaults, fixture: fixture)
+        XCTAssertEqual(store.tunnels.map(\.groupTag), ["Work", "wORK", "Personal"])
+        defer { store.stopAll() }
+
+        store.startGroup("  work ")
+
+        let bothStarted = await waitUntil {
+            store.phase(for: first) == .running
+                && store.phase(for: second) == .running
+        }
+        XCTAssertTrue(bothStarted)
+        XCTAssertEqual(store.phase(for: outside), .stopped)
+
+        store.stopGroup("WORK")
+
+        XCTAssertEqual(store.phase(for: first), .stopped)
+        XCTAssertEqual(store.phase(for: second), .stopped)
+        XCTAssertEqual(store.runningCount, 0)
+    }
+
+    /// Task 024. Membership is snapshotted when an action begins, so a member
+    /// moved to another group beforehand is no longer targeted.
+    func testGroupActionsResolveMembershipAtInvocation() async throws {
+        let fixture = try makeFakeSSHFixture()
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = makeFakeStore(defaults: defaults, fixture: fixture)
+        let moved = makeGroupedProfile(name: "Moved", port: 43_260, group: "Work")
+        let remaining = makeGroupedProfile(name: "Remaining", port: 43_261, group: "Work")
+        store.add(moved)
+        store.add(remaining)
+        store.start(moved)
+        store.start(remaining)
+        let bothRunning = await waitUntil {
+            store.phase(for: moved) == .running
+                && store.phase(for: remaining) == .running
+        }
+        XCTAssertTrue(bothRunning)
+        defer { store.stopAll() }
+
+        store.move(moved, toGroup: "Personal")
+        store.stopGroup("Work")
+
+        XCTAssertEqual(store.phase(for: remaining), .stopped)
+        XCTAssertEqual(store.phase(for: moved), .running)
+
+        store.stopGroup("Personal")
+
+        XCTAssertEqual(store.phase(for: moved), .stopped)
+    }
+
+    /// Task 024. One member failing its forwarding rules must not prevent an
+    /// eligible peer from reaching Running in the same batch.
+    func testStartAllKeepsIndependentOutcomesWhenOneMemberFailsItsRules() async throws {
+        let failingSpec = "43271:127.0.0.1:80"
+        let fixture = try makeFakeSSHFixture(
+            overrides: ["RELAYBAR_FAKE_SSH_FAIL_SPEC": failingSpec]
+        )
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = makeFakeStore(
+            defaults: defaults,
+            fixture: fixture,
+            maxRetryAttempts: 0
+        )
+        let healthy = makeGroupedProfile(name: "Healthy", port: 43_270, group: "Work")
+        let failing = makeGroupedProfile(name: "Failing", port: 43_271, group: "Work")
+        store.add(healthy)
+        store.add(failing)
+        defer { store.stopAll() }
+
+        store.startGroup("Work")
+
+        let outcomesSettled = await waitUntil {
+            var didFail = false
+            if case .failed = store.phase(for: failing) { didFail = true }
+            return didFail && store.phase(for: healthy) == .running
+        }
+        XCTAssertTrue(outcomesSettled)
+        guard case .failed(let message) = store.phase(for: failing) else {
+            return XCTFail("Expected the failing member to surface its error.")
+        }
+        XCTAssertTrue(message.contains("fake forwarding failure"))
+    }
+
     func testTagMutationKeepsAutomaticRuntimePortAndConnectionEditStillStops() async throws {
         let fixture = try makeFakeSSHFixture()
         defer { fixture.cleanup() }
@@ -767,6 +1029,7 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         defaults: UserDefaults,
         fixture: FakeSSHFixture,
         maxRetryAttempts: Int = 1,
+        retryDelay: TimeInterval = 0.01,
         browserOpener: @escaping (URL) -> Void = { _ in },
         controlOperationTimeout: TimeInterval = 10
     ) -> TunnelStore {
@@ -774,11 +1037,31 @@ final class TunnelStoreIntegrationTests: XCTestCase {
             defaults: defaults,
             sshExecutableURL: fakeSSHURL,
             maxRetryAttempts: maxRetryAttempts,
-            retryDelayProvider: { _ in 0.01 },
+            retryDelayProvider: { _ in retryDelay },
             browserOpener: browserOpener,
             processEnvironment: fixture.environment,
             controlOperationTimeout: controlOperationTimeout
         )
+    }
+
+    private func makeGroupedProfile(
+        name: String,
+        port: Int,
+        group: String?,
+        sshHost: String = "example.com"
+    ) -> Tunnel {
+        Tunnel(
+            name: name,
+            localPort: port,
+            destinationHost: "127.0.0.1",
+            destinationPort: 80,
+            sshHost: sshHost,
+            groupTag: group
+        )
+    }
+
+    private func masterInvocationCount(_ log: String) -> Int {
+        parsedInvocations(log).count { $0.contains("-M") }
     }
 
     private var fakeSSHURL: URL {

@@ -3,11 +3,19 @@ import SwiftUI
 
 struct RelayBarRootView: View {
     @EnvironmentObject private var store: TunnelStore
+    @StateObject private var launchAtLogin: LaunchAtLoginModel
     @State private var screen: Screen = .list
 
     private enum Screen {
         case list
         case editor(Tunnel?)
+        case settings
+    }
+
+    init(loginItemService: any LoginItemServicing = MainAppLoginItemService()) {
+        _launchAtLogin = StateObject(
+            wrappedValue: LaunchAtLoginModel(service: loginItemService)
+        )
     }
 
     var body: some View {
@@ -19,7 +27,8 @@ struct RelayBarRootView: View {
                     onEdit: { screen = .editor($0) },
                     onRemoteFiles: {
                         RemoteFilesWindowController.shared.show(tunnels: store.tunnels)
-                    }
+                    },
+                    onSettings: { screen = .settings }
                 )
             case .editor(let tunnel):
                 TunnelEditorView(
@@ -35,6 +44,11 @@ struct RelayBarRootView: View {
                         screen = .list
                     }
                 )
+            case .settings:
+                SettingsView(
+                    launchAtLogin: launchAtLogin,
+                    onBack: { screen = .list }
+                )
             }
         }
         .frame(width: 380, height: 440)
@@ -47,6 +61,7 @@ private struct TunnelListView: View {
     let onAdd: () -> Void
     let onEdit: (Tunnel) -> Void
     let onRemoteFiles: () -> Void
+    let onSettings: () -> Void
 
     var body: some View {
         let grouping = store.grouping
@@ -104,6 +119,15 @@ private struct TunnelListView: View {
             TunnelGroupHeader(
                 name: name,
                 availableGroups: availableGroups,
+                hasActiveMembers: section.tunnels.contains {
+                    store.phase(for: $0).isLifecycleActive
+                },
+                hasInactiveMembers: section.tunnels.contains {
+                    !store.phase(for: $0).isLifecycleActive
+                },
+                onStartAll: { store.startGroup(name) },
+                onStopAll: { store.stopGroup(name) },
+                onRestartAll: { store.restartGroup(name) },
                 onRename: { store.renameGroup(name, to: $0) },
                 onUngroupAll: { store.ungroup(name) }
             )
@@ -152,15 +176,28 @@ private struct TunnelListView: View {
 
             Spacer()
 
-            Button(action: onAdd) {
-                Image(systemName: "plus")
-                    .font(.system(size: 13, weight: .semibold))
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Color.accentColor.opacity(0.12)))
+            HStack(spacing: 8) {
+                Button(action: onSettings) {
+                    Image(systemName: "gearshape")
+                        .font(.system(size: 12.5, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.primary.opacity(0.06)))
+                }
+                .buttonStyle(.plain)
+                .help("Settings")
+                .accessibilityLabel("Settings")
+
+                Button(action: onAdd) {
+                    Image(systemName: "plus")
+                        .font(.system(size: 13, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.accentColor.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .help("Add tunnel")
+                .accessibilityLabel("Add tunnel")
             }
-            .buttonStyle(.plain)
-            .help("Add tunnel")
-            .accessibilityLabel("Add tunnel")
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 11)
@@ -448,12 +485,7 @@ private struct TunnelRow: View {
     }
 
     private var isActive: Bool {
-        switch phase {
-        case .starting, .retrying, .running:
-            return true
-        case .stopped, .failed:
-            return false
-        }
+        phase.isLifecycleActive
     }
 
     private var showsProgress: Bool {
@@ -554,6 +586,11 @@ private struct TunnelRow: View {
 private struct TunnelGroupHeader: View {
     let name: String
     let availableGroups: [String]
+    let hasActiveMembers: Bool
+    let hasInactiveMembers: Bool
+    let onStartAll: () -> Void
+    let onStopAll: () -> Void
+    let onRestartAll: () -> Void
     let onRename: (String) -> Void
     let onUngroupAll: () -> Void
 
@@ -613,6 +650,22 @@ private struct TunnelGroupHeader: View {
 
     @ViewBuilder
     private var groupActions: some View {
+        Button("Start All", systemImage: "play") {
+            onStartAll()
+        }
+        .disabled(!hasInactiveMembers)
+        .accessibilityLabel("Start all tunnels in \(name)")
+        Button("Stop All", systemImage: "stop") {
+            onStopAll()
+        }
+        .disabled(!hasActiveMembers)
+        .accessibilityLabel("Stop all tunnels in \(name)")
+        Button("Restart All", systemImage: "arrow.clockwise") {
+            onRestartAll()
+        }
+        .disabled(!hasActiveMembers)
+        .accessibilityLabel("Restart all tunnels in \(name)")
+        Divider()
         Button("Rename Group…", systemImage: "pencil") {
             isRenaming = true
         }

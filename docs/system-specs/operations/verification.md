@@ -2,7 +2,7 @@
 
 ## Required checks
 
-- Run `swift test` for the complete forwarding parser matrix, migration, typed-profile and group-tag validation, grouping and metadata-only mutation behavior, control sequencing, rollback and timeout, runtime port mapping, socket refusal, retry, cancellation, browser URL behavior, Remote Files connection deduplication, path/argument handling, listing parsing, navigation state, Markdown compatibility, link policy, and renderer limits.
+- Run `swift test` for the complete forwarding parser matrix, migration, typed-profile and group-tag validation, grouping and metadata-only mutation behavior, group lifecycle batching (mixed phases, partial failure, canonical matching, group isolation, and membership snapshots), control sequencing, rollback and timeout, runtime port mapping, socket refusal, retry, cancellation, browser URL behavior, login-item state mapping through the injected service boundary, Remote Files connection deduplication, path/argument handling, listing parsing, navigation state, Markdown compatibility, link policy, and renderer limits. Login-item tests never read or change the developer machine's real registration.
 - Build the Xcode app target with complete Swift strict-concurrency checking and warnings treated as errors.
 - Run `plutil -lint` against the application property list.
 - Run `git diff --check` before committing.
@@ -23,7 +23,9 @@ Before a live server is available, use the DEBUG-only Remote Files fixture to re
 
 Start a DEBUG build with `--preview-window --flexible-forwarding-preview` to review rule-aware profile rows and the editor without reading or changing the user's saved profiles. Review add, type switching, duplicate, reorder, remove, automatic ports, Unix fields, exposure warnings, reverse-SOCKS policy, scrolling, keyboard focus, and accessibility labels in light and dark appearance.
 
-Start a DEBUG build with `--preview-window --grouping-preview <scenario>` to review saved-profile grouping without reading or changing the user's saved profiles. Supported scenarios are `empty`, `zero-tag`, `all-untagged`, `one-bucket`, `mixed`, `all-tagged`, `long-tag`, and `many-sections`. Review the flat-list threshold, section order, Ungrouped placement, long-label truncation, scrolling, picker and row-menu parity, inline Return/Escape behavior, rename, ungroup-all, keyboard focus, and accessibility labels in light and dark appearance.
+Start a DEBUG build with `--preview-window --grouping-preview <scenario>` to review saved-profile grouping without reading or changing the user's saved profiles. Supported scenarios are `empty`, `zero-tag`, `all-untagged`, `one-bucket`, `mixed`, `all-tagged`, `long-tag`, and `many-sections`. Review the flat-list threshold, section order, Ungrouped placement, long-label truncation, scrolling, picker and row-menu parity, inline Return/Escape behavior, rename, ungroup-all, the Start All/Stop All/Restart All commands with state-aware enablement, keyboard focus, and accessibility labels in light and dark appearance.
+
+Launch at Login changes require a signed packaged build verified manually for enable, login relaunch as the menu-bar-only app with every saved profile stopped, disable without quitting the running app, and state synchronization after changes made directly in System Settings. Use the offscreen snapshot harness for the settings screen and its approval-required caption in light and dark appearance.
 
 For a native live-transport review without changing the user's saved tunnels, start a DEBUG build with `--remote-files-live-preview <ssh-host>`. This route uses the real SFTP service while keeping review downloads inside the same private temporary directory and suppressing Finder launch.
 
