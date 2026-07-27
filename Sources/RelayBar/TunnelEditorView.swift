@@ -75,7 +75,7 @@ struct TunnelEditorView: View {
             editorHeader
             Divider()
 
-            ScrollView {
+            ScrollView(.vertical) {
                 VStack(alignment: .leading, spacing: 18) {
                     if tunnel == nil { quickImport }
                     connectionDetails
@@ -85,6 +85,7 @@ struct TunnelEditorView: View {
                     safetyMessages
                 }
                 .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             Divider()
@@ -126,11 +127,14 @@ struct TunnelEditorView: View {
                 .accessibilityLabel("SSH command")
                 .textFieldStyle(.roundedBorder)
                 .font(.system(size: 11.5, design: .monospaced))
+                .frame(minWidth: 0)
+                .layoutPriority(1)
                 .focused($focusedField, equals: .command)
                 .onSubmit(importCommand)
 
                 Button("Import", action: importCommand)
                     .buttonStyle(.bordered)
+                    .fixedSize()
                     .disabled(command.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
 
@@ -538,6 +542,7 @@ private struct GroupSelectionControl: View {
                     Text("New Group…").tag(GroupPickerChoice.newGroup)
                 }
                 .pickerStyle(.menu)
+                .labelsHidden()
                 .accessibilityLabel("Group, Optional")
             }
         }

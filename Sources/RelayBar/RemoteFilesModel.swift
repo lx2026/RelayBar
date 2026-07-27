@@ -161,8 +161,10 @@ final class RemoteFilesModel: ObservableObject {
 
     private let service: RemoteFileServing
     private let presenter: RemoteFilePresenting
+    private let serverCatalog: RemoteServerCatalog
     private let imageDecoder: @Sendable (URL) throws -> CGImage
     private let markdownDecoder: (URL) async throws -> RemoteMarkdownDocument
+    private var tunnels: [Tunnel]
     private var activeServer: RemoteServer?
     private var navigationHistory: [String] = []
     private var loadTask: Task<Void, Never>?
@@ -188,15 +190,19 @@ final class RemoteFilesModel: ObservableObject {
         imageDecoder: @escaping @Sendable (URL) throws -> CGImage =
             { try RemoteImageDecoder.decodeCGImage(contentsOf: $0) },
         markdownDecoder: @escaping (URL) async throws -> RemoteMarkdownDocument =
-            { try await RemoteMarkdownDecoder.load(contentsOf: $0) }
+            { try await RemoteMarkdownDecoder.load(contentsOf: $0) },
+        serverCatalog: RemoteServerCatalog? = nil
     ) {
-        let initialServers = Self.makeServers(from: tunnels)
+        let catalog = serverCatalog ?? RemoteServerCatalog()
+        let initialServers = catalog.servers(from: tunnels)
         servers = initialServers
         selectedServerID = initialServers.first?.id
         self.service = service
         self.presenter = presenter ?? AppKitRemoteFilePresenter()
+        self.serverCatalog = catalog
         self.imageDecoder = imageDecoder
         self.markdownDecoder = markdownDecoder
+        self.tunnels = tunnels
     }
 
     var pathValidationMessage: String? {
@@ -225,8 +231,9 @@ final class RemoteFilesModel: ObservableObject {
     }
 
     func updateTunnels(_ tunnels: [Tunnel]) {
+        self.tunnels = tunnels
         let selectedConnection = selectedServer?.connectionIdentity
-        let updatedServers = Self.makeServers(from: tunnels)
+        let updatedServers = serverCatalog.servers(from: tunnels)
         servers = updatedServers
 
         if
@@ -241,9 +248,29 @@ final class RemoteFilesModel: ObservableObject {
         }
     }
 
+    func servers(from source: RemoteServer.Source) -> [RemoteServer] {
+        servers.filter { $0.source == source }
+    }
+
+    var canRemoveSelectedServer: Bool {
+        guard let selectedServerID else { return false }
+        return serverCatalog.isSavedServer(id: selectedServerID)
+    }
+
+    func addServer(name: String, sshHost: String) throws {
+        let server = try serverCatalog.add(name: name, sshHost: sshHost)
+        refreshServers(preferredConnection: server.connectionIdentity)
+    }
+
+    func removeSelectedServer() {
+        guard let selectedServerID else { return }
+        serverCatalog.removeSavedServer(id: selectedServerID)
+        refreshServers(preferredConnection: nil)
+    }
+
     func openRemotePath() {
         guard let server = selectedServer else {
-            errorMessage = "Save a tunnel before opening remote files."
+            errorMessage = "Add or select an SSH server before opening remote files."
             return
         }
         guard pathValidationMessage == nil else {
@@ -505,6 +532,8 @@ final class RemoteFilesModel: ObservableObject {
                 isRefreshing = false
                 retryLoadRequest = nil
                 screen = .browser
+                serverCatalog.recordSuccessfulOpen(server)
+                refreshServers(preferredConnection: server.connectionIdentity)
             } catch is CancellationError {
                 if loadGeneration == generation {
                     isLoading = false
@@ -601,31 +630,20 @@ final class RemoteFilesModel: ObservableObject {
         previewURL = nil
     }
 
-    private static func makeServers(from tunnels: [Tunnel]) -> [RemoteServer] {
-        var serversByConnection: [RemoteServer.ConnectionIdentity: RemoteServer] = [:]
-        var duplicateConnections: Set<RemoteServer.ConnectionIdentity> = []
-
-        for tunnel in tunnels {
-            let server = RemoteServer(tunnel: tunnel)
-            if serversByConnection[server.connectionIdentity] == nil {
-                serversByConnection[server.connectionIdentity] = server
-            } else {
-                duplicateConnections.insert(server.connectionIdentity)
-            }
-        }
-
-        let servers = serversByConnection.map { identity, server in
-            guard duplicateConnections.contains(identity) else { return server }
-            return RemoteServer(
-                id: server.id,
-                name: server.sshHost,
-                sshHost: server.sshHost,
-                additionalArguments: server.additionalArguments
-            )
-        }
-
-        return servers.sorted {
-            $0.displayName.localizedStandardCompare($1.displayName) == .orderedAscending
+    private func refreshServers(
+        preferredConnection: RemoteServer.ConnectionIdentity?
+    ) {
+        let updatedServers = serverCatalog.servers(from: tunnels)
+        servers = updatedServers
+        if
+            let preferredConnection,
+            let preferred = updatedServers.first(where: {
+                $0.connectionIdentity == preferredConnection
+            })
+        {
+            selectedServerID = preferred.id
+        } else {
+            selectedServerID = updatedServers.first?.id
         }
     }
 

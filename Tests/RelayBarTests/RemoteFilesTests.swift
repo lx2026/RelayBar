@@ -243,6 +243,153 @@ final class RemoteServerTests: XCTestCase {
     }
 }
 
+final class SSHConfigHostReaderTests: XCTestCase {
+    func testParsesConcreteAliasesAndIgnoresPatternsNegationAndComments() {
+        let aliases = SSHConfigHostReader.parse(
+            """
+            Host *
+              ServerAliveInterval 30
+            Host devbox staging
+              HostName devbox.example.com
+            host DEVBOX
+            Host !blocked *.internal bracket[0-9] question?
+            Host "quoted-host" # trailing comment
+            Match host other
+              User ignored
+            """
+        )
+
+        XCTAssertEqual(aliases, ["devbox", "staging", "quoted-host"])
+    }
+
+    func testBoundsTheNumberOfConfigAliases() {
+        let contents = (0..<300)
+            .map { "Host server-\($0)" }
+            .joined(separator: "\n")
+
+        let aliases = SSHConfigHostReader.parse(contents)
+
+        XCTAssertEqual(aliases.count, SSHConfigHostReader.maximumHostCount)
+        XCTAssertEqual(aliases.first, "server-0")
+        XCTAssertEqual(aliases.last, "server-255")
+    }
+
+    func testRejectsAConfigLargerThanTheReadBound() throws {
+        let temporaryDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        let configURL = temporaryDirectory.appendingPathComponent("config")
+        let oversizedConfig =
+            Data("Host should-not-load\n".utf8)
+            + Data(repeating: 0x20, count: SSHConfigHostReader.maximumFileSize)
+        try oversizedConfig.write(to: configURL)
+
+        XCTAssertTrue(SSHConfigHostReader.load(from: configURL).isEmpty)
+    }
+}
+
+@MainActor
+final class RemoteServerCatalogTests: XCTestCase {
+    func testCombinesSourcesInPriorityOrderAndDeduplicatesConnections() throws {
+        let temporaryDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+        let configURL = temporaryDirectory.appendingPathComponent("config")
+        try """
+        Host config-only
+        Host duplicate.example.com
+        Host *
+        """.write(to: configURL, atomically: true, encoding: .utf8)
+
+        let catalog = RemoteServerCatalog(sshConfigURL: configURL)
+        let saved = try catalog.add(name: "Saved", sshHost: "saved.example.com")
+        let profile = Tunnel(
+            name: "Dashboard",
+            localPort: 8_080,
+            destinationHost: "localhost",
+            destinationPort: 3_000,
+            sshHost: "duplicate.example.com"
+        )
+        catalog.recordSuccessfulOpen(
+            RemoteServer(
+                id: UUID(),
+                name: "Recent",
+                sshHost: "recent.example.com",
+                additionalArguments: [],
+                source: .sshConfig
+            )
+        )
+
+        let servers = catalog.servers(from: [profile])
+
+        XCTAssertEqual(
+            servers.map(\.sshHost),
+            [
+                "recent.example.com",
+                saved.sshHost,
+                "duplicate.example.com",
+                "config-only"
+            ]
+        )
+        XCTAssertEqual(
+            servers.map(\.source),
+            [.recent, .saved, .forwardingProfile, .sshConfig]
+        )
+    }
+
+    func testPersistsStandaloneHostsAndRemovalAlsoDropsTheirRecentEntry() throws {
+        let suiteName = "RelayBar.RemoteServerCatalog.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let catalog = RemoteServerCatalog(defaults: defaults)
+        let saved = try catalog.add(name: "Build Server", sshHost: "builder.example.com")
+        catalog.recordSuccessfulOpen(saved)
+
+        let reloaded = RemoteServerCatalog(defaults: defaults)
+        XCTAssertEqual(reloaded.servers(from: []).map(\.source), [.recent])
+        XCTAssertEqual(reloaded.servers(from: []).first?.displayName, "Build Server — builder.example.com")
+
+        reloaded.removeSavedServer(id: saved.id)
+
+        XCTAssertTrue(reloaded.servers(from: []).isEmpty)
+        XCTAssertTrue(RemoteServerCatalog(defaults: defaults).servers(from: []).isEmpty)
+    }
+
+    func testRejectsDuplicateAndInvalidStandaloneHosts() throws {
+        let catalog = RemoteServerCatalog()
+        _ = try catalog.add(name: "", sshHost: "devbox")
+
+        XCTAssertThrowsError(try catalog.add(name: "Duplicate", sshHost: "devbox")) {
+            XCTAssertEqual($0 as? RemoteServerCatalogError, .duplicateSavedHost)
+        }
+        XCTAssertThrowsError(try catalog.add(name: "", sshHost: "-oProxyCommand=bad")) {
+            XCTAssertEqual($0 as? RemoteServerCatalogError, .invalidHost)
+        }
+        XCTAssertThrowsError(try catalog.add(name: "Build\nServer", sshHost: "builder")) {
+            XCTAssertEqual($0 as? RemoteServerCatalogError, .invalidName)
+        }
+    }
+
+    func testRecentConnectionsStayBoundedAndNewestFirst() {
+        let catalog = RemoteServerCatalog()
+        for index in 0..<12 {
+            catalog.recordSuccessfulOpen(
+                RemoteServer(
+                    id: UUID(),
+                    name: "Server \(index)",
+                    sshHost: "server-\(index)",
+                    additionalArguments: []
+                )
+            )
+        }
+
+        let servers = catalog.servers(from: [])
+
+        XCTAssertEqual(servers.count, 8)
+        XCTAssertEqual(servers.first?.sshHost, "server-11")
+        XCTAssertEqual(servers.last?.sshHost, "server-4")
+        XCTAssertTrue(servers.allSatisfy { $0.source == .recent })
+    }
+}
+
 final class RemoteImageDecoderTests: XCTestCase {
     func testDecodesAValidImageToABoundedNSImage() throws {
         let directory = try makeTemporaryDirectory()
@@ -2272,6 +2419,60 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
 
 @MainActor
 final class RemoteFilesModelTests: XCTestCase {
+    func testStandaloneHostOpensWithoutAForwardingProfileAndBecomesRecent() async throws {
+        let catalog = RemoteServerCatalog()
+        let service = StubRemoteFileService()
+        service.listings["/srv/app"] = []
+        let model = RemoteFilesModel(
+            tunnels: [],
+            service: service,
+            serverCatalog: catalog
+        )
+
+        try model.addServer(name: "Devbox", sshHost: "user@devbox")
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+
+        XCTAssertEqual(service.listRequests.first?.server.sshHost, "user@devbox")
+        XCTAssertEqual(model.servers.first?.source, .recent)
+        XCTAssertEqual(model.servers.first?.displayName, "Devbox — user@devbox")
+    }
+
+    func testFailedStandaloneOpenDoesNotBecomeRecent() async throws {
+        let catalog = RemoteServerCatalog()
+        let service = StubRemoteFileService()
+        service.errors["/missing"] = RemoteFileError.commandFailed("Not found.")
+        let model = RemoteFilesModel(
+            tunnels: [],
+            service: service,
+            serverCatalog: catalog
+        )
+
+        try model.addServer(name: "", sshHost: "devbox")
+        model.remotePath = "/missing"
+        model.openRemotePath()
+        try await waitUntil { model.errorMessage == "Not found." && !model.isLoading }
+
+        XCTAssertEqual(model.servers.map(\.source), [.saved])
+    }
+
+    func testRemovingStandaloneHostLeavesForwardingProfilesAvailable() throws {
+        let profile = makeTunnel(name: "Profile", host: "profile.example.com")
+        let catalog = RemoteServerCatalog()
+        let model = RemoteFilesModel(
+            tunnels: [profile],
+            serverCatalog: catalog
+        )
+
+        try model.addServer(name: "Standalone", sshHost: "standalone.example.com")
+        XCTAssertTrue(model.canRemoveSelectedServer)
+        model.removeSelectedServer()
+
+        XCTAssertEqual(model.servers.map(\.sshHost), ["profile.example.com"])
+        XCTAssertEqual(model.servers.first?.source, .forwardingProfile)
+    }
+
     func testSavedServerSelectionSurvivesDuplicateRepresentativeReplacement() {
         let original = Tunnel(
             name: "Virtual Desktop",

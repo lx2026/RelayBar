@@ -2,6 +2,31 @@
 
 Notable RelayBar changes are recorded here.
 
+## [1.2.1] - 2026-07-26
+
+### Added
+
+- Remote Files can save a standalone SSH host without creating or starting a
+  port-forwarding profile.
+- The server picker combines recent successful connections, saved hosts,
+  forwarding profiles, and concrete aliases from `~/.ssh/config`.
+- Standalone hosts can be removed without changing forwarding profiles or SSH
+  config.
+
+### Fixed
+
+- The New Profile form now stays inside the 380-point menu width and no longer
+  clips its left edge.
+- The Group field displays one label instead of repeating the native picker
+  label.
+
+### Security
+
+- SSH-config discovery is read-only and bounded to 1 MiB and 256 concrete host
+  aliases. Wildcard, character-pattern, and negated aliases are ignored.
+- The universal macOS ZIP is signed with a Developer ID, notarized by Apple,
+  and stapled for offline Gatekeeper verification.
+
 ## [1.2.0] - 2026-07-25
 
 ### Added
@@ -50,5 +75,6 @@ Notable RelayBar changes are recorded here.
 - Remote Markdown remains inert: raw HTML is not activated, remote embeds are not fetched, and unsafe links are blocked.
 - Release builds retain the hardened runtime, Developer ID signing, notarization, and Gatekeeper verification workflow.
 
+[1.2.1]: https://github.com/lx2026/RelayBar/releases/tag/v1.2.1
 [1.2.0]: https://github.com/lx2026/RelayBar/releases/tag/v1.2.0
 [1.2.0-beta.1]: https://github.com/lx2026/RelayBar/releases/tag/v1.2.0-beta.1

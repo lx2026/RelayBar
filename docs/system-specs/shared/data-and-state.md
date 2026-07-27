@@ -24,3 +24,10 @@
 - private control locations and app-owned local socket identities.
 
 The desired-active state lets a retrying profile remain stoppable while no process exists. A metadata-only group mutation updates both the saved and desired-active profile copies without replacing any runtime state. Remote Files derives saved SSH connections from profile-level host and argument data and continues deduplicating equivalent connections regardless of rule count or group tag.
+
+## Remote Files server catalog
+
+- Standalone Remote Files hosts are JSON records in `UserDefaults` under `remoteFiles.savedServers.v1`. Each stores a stable UUID, bounded display name, validated SSH host, and safe connection arguments. The collection is capped at 128 records.
+- Successful Remote Files connections are JSON records under `remoteFiles.recentServers.v1`. The newest connection is first, equivalent connections collapse by SSH host and arguments, and the collection is capped at eight records.
+- Forwarding profiles and concrete aliases discovered from `~/.ssh/config` remain external inputs to the catalog. Config aliases are read on refresh and are not persisted as standalone RelayBar hosts.
+- The combined picker order is recent, standalone saved host, forwarding profile, then OpenSSH config. The first connection at each SSH-host-and-arguments identity wins.

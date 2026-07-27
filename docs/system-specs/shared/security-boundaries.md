@@ -8,6 +8,7 @@
 - Host values cannot be empty, option-shaped, whitespace-separated, or contain control characters.
 - Additional arguments must match the explicit allowlist in `SSHArgumentPolicy`; values must be nonempty and contain no control or newline characters.
 - Options that execute commands, choose arbitrary config files, or write logs are blocked.
+- Remote Files reads at most 1 MiB from `~/.ssh/config` and exposes at most 256 concrete `Host` aliases. Wildcard, character-pattern, and negated aliases are ignored; RelayBar does not modify the config.
 - SSH uses batch mode; password prompts are unsupported.
 - Private control sockets live in random app-owned `0700` temporary directories. Control output is bounded and operations time out.
 - Normal SSH configuration, known hosts, identity files, and the user's SSH agent remain available.

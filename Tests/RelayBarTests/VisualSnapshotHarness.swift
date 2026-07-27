@@ -69,12 +69,52 @@ final class VisualSnapshotHarness: XCTestCase {
         }
     }
 
+    func testCaptureTask021Snapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let catalog = RemoteServerCatalog()
+        _ = try catalog.add(name: "Development server", sshHost: "devbox.local")
+        let remoteFilesModel = RemoteFilesModel(
+            tunnels: [],
+            serverCatalog: catalog
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            try capture(
+                view: TunnelEditorView(
+                    tunnel: nil,
+                    availableGroups: ["Personal", "Work"],
+                    onCancel: {},
+                    onSave: { _ in }
+                )
+                .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearanceName,
+                size: NSSize(width: 380, height: 440),
+                to: outputDirectory.appendingPathComponent(
+                    "task-021-new-profile-\(label).png"
+                )
+            )
+            try capture(
+                view: RemoteFilesView(model: remoteFilesModel),
+                appearance: appearanceName,
+                size: NSSize(width: 360, height: 300),
+                to: outputDirectory.appendingPathComponent(
+                    "task-021-remote-files-\(label).png"
+                )
+            )
+        }
+    }
+
     private func capture(
         view: some View,
         appearance: NSAppearance.Name,
+        size: NSSize = NSSize(width: 380, height: 440),
         to url: URL
     ) throws {
-        let size = NSSize(width: 380, height: 440)
         let hosting = NSHostingView(rootView: view)
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.appearance = NSAppearance(named: appearance)

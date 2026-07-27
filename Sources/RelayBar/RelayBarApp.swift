@@ -56,7 +56,8 @@ final class RelayBarAppDelegate: NSObject, NSApplicationDelegate {
             remoteFilesPreviewPresenter = presenter
             RemoteFilesWindowController.shared.show(
                 tunnels: [tunnel],
-                presenter: presenter
+                presenter: presenter,
+                catalog: RemoteServerCatalog()
             )
             return
         }
@@ -97,7 +98,8 @@ final class RelayBarAppDelegate: NSObject, NSApplicationDelegate {
             RemoteFilesWindowController.shared.show(
                 tunnels: tunnels,
                 service: RemoteFilesPreviewService(),
-                presenter: presenter
+                presenter: presenter,
+                catalog: RemoteServerCatalog()
             )
             return
         }

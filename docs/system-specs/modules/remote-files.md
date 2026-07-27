@@ -1,14 +1,19 @@
 # Remote Files
 
-Remote Files opens an exact folder on a saved SSH server without adding search, indexing, mounting, or editing.
+Remote Files opens an exact folder on an SSH server without adding search, indexing, mounting, or editing.
 
 ## Entry and window
 
 - A labeled **Remote Files…** row appears below the tunnel list.
 - The row opens or focuses one separate native window.
-- The launcher requires an absolute remote path and a saved server.
-- The server picker collapses forwarding presets that have the exact same SSH host and SSH arguments into one SSH-host entry. Group tags and forwarding-rule differences do not split equivalent connections. Different host aliases or SSH arguments remain separate because they may select different credentials, ports, or routes.
+- The launcher requires an absolute remote path and one available SSH server. A forwarding profile is not required.
+- The server picker combines successfully opened recent connections, standalone hosts saved in RelayBar, forwarding-profile connections, and concrete aliases from `~/.ssh/config`, in that priority order.
+- Equivalent entries with the exact same SSH host and SSH arguments collapse into one SSH-host entry. Group tags and forwarding-rule differences do not split equivalent connections. Different host aliases or SSH arguments remain separate because they may select different credentials, ports, or routes.
 - A single Quick Add tunnel whose generated name matches its forwarded destination is labelled by its SSH host in the server picker. An intentional custom name remains visible with the SSH host for context when that SSH connection is not duplicated.
+- **Add SSH Host** accepts an optional local display name and a validated `user@server`-style SSH target. It saves Remote Files metadata only: it does not create a forwarding profile, add a forwarding rule, start SSH, or edit OpenSSH config.
+- A standalone saved host can be removed from the launcher after confirmation. Removal also drops its matching recent entry but does not change forwarding profiles or OpenSSH config.
+- Only successful folder opens are promoted to the recent section, which retains at most eight connections with the newest first. Failed opens do not change recents.
+- OpenSSH config discovery reads at most 1 MiB from `~/.ssh/config`, exposes at most 256 concrete `Host` aliases, and ignores wildcard, character-pattern, and negated aliases. Config aliases remain read-only and are not copied into RelayBar storage.
 - A successful open changes the compact launcher into a wider browser window.
 - Missing-path output from SFTP is normalized to a short user-facing error while preserving the entered path and server for retry.
 

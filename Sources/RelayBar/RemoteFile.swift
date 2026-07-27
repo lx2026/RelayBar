@@ -1,6 +1,29 @@
 import Foundation
 
 struct RemoteServer: Identifiable, Hashable, Sendable {
+    enum Source: Hashable, Sendable, CaseIterable {
+        case recent
+        case saved
+        case forwardingProfile
+        case sshConfig
+
+        static let pickerOrder: [Source] = [
+            .recent,
+            .saved,
+            .forwardingProfile,
+            .sshConfig
+        ]
+
+        var pickerSectionTitle: String {
+            switch self {
+            case .recent: "Recent"
+            case .saved: "Saved Hosts"
+            case .forwardingProfile: "Port Forwarding"
+            case .sshConfig: "SSH Config"
+            }
+        }
+    }
+
     struct ConnectionIdentity: Hashable, Sendable {
         let sshHost: String
         let additionalArguments: [String]
@@ -10,18 +33,27 @@ struct RemoteServer: Identifiable, Hashable, Sendable {
     let name: String
     let sshHost: String
     let additionalArguments: [String]
+    let source: Source
 
-    init(id: UUID, name: String, sshHost: String, additionalArguments: [String]) {
+    init(
+        id: UUID,
+        name: String,
+        sshHost: String,
+        additionalArguments: [String],
+        source: Source = .saved
+    ) {
         self.id = id
         self.name = name
         self.sshHost = sshHost
         self.additionalArguments = additionalArguments
+        self.source = source
     }
 
     init(tunnel: Tunnel) {
         id = tunnel.id
         sshHost = tunnel.sshHost
         additionalArguments = tunnel.additionalArguments
+        source = .forwardingProfile
 
         let savedName = tunnel.name.trimmingCharacters(in: .whitespacesAndNewlines)
         let generatedSingleRuleName = tunnel.rules.first?.displaySummary

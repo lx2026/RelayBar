@@ -9,11 +9,13 @@ final class RemoteFilesWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var model: RemoteFilesModel?
     private var screenObserver: AnyCancellable?
+    private let serverCatalog = RemoteServerCatalog.appDefault()
 
     func show(
         tunnels: [Tunnel],
         service: RemoteFileServing? = nil,
-        presenter: RemoteFilePresenting? = nil
+        presenter: RemoteFilePresenting? = nil,
+        catalog: RemoteServerCatalog? = nil
     ) {
         if let window, let model {
             model.updateTunnels(tunnels)
@@ -26,7 +28,8 @@ final class RemoteFilesWindowController: NSObject, NSWindowDelegate {
         let model = RemoteFilesModel(
             tunnels: tunnels,
             service: service ?? SFTPRemoteFileService(),
-            presenter: presenter
+            presenter: presenter,
+            serverCatalog: catalog ?? serverCatalog
         )
         let view = RemoteFilesView(model: model)
         let window = NSWindow(

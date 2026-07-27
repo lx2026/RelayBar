@@ -23,6 +23,8 @@ enum RemoteByteCount {
 struct RemoteFilesView: View {
     @ObservedObject var model: RemoteFilesModel
     @FocusState private var isPathFocused: Bool
+    @State private var isAddingServer = false
+    @State private var isConfirmingServerRemoval = false
 
     var body: some View {
         Group {
@@ -69,26 +71,61 @@ struct RemoteFilesView: View {
             VStack(alignment: .leading, spacing: 7) {
                 Text("Server")
                     .font(.system(size: 12, weight: .semibold))
-                if model.servers.isEmpty {
-                    Text("Save a tunnel first.")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .frame(height: 25)
-                        .background(
-                            RoundedRectangle(cornerRadius: 6)
-                                .fill(Color.primary.opacity(0.05))
-                        )
-                        .foregroundStyle(.secondary)
-                } else {
-                    Picker("Server", selection: $model.selectedServerID) {
-                        ForEach(model.servers) { server in
-                            Text(server.displayName)
-                                .tag(Optional(server.id))
+                HStack(spacing: 8) {
+                    if model.servers.isEmpty {
+                        Text("No SSH servers found")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .frame(height: 25)
+                            .background(
+                                RoundedRectangle(cornerRadius: 6)
+                                    .fill(Color.primary.opacity(0.05))
+                            )
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Picker("Server", selection: $model.selectedServerID) {
+                            ForEach(RemoteServer.Source.pickerOrder, id: \.self) { source in
+                                let sourceServers = model.servers(from: source)
+                                if !sourceServers.isEmpty {
+                                    Section(source.pickerSectionTitle) {
+                                        ForEach(sourceServers) { server in
+                                            Text(server.displayName)
+                                                .tag(Optional(server.id))
+                                        }
+                                    }
+                                }
+                            }
                         }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
+                        .frame(maxWidth: .infinity)
                     }
-                    .labelsHidden()
-                    .frame(maxWidth: .infinity)
+
+                    Button {
+                        isAddingServer = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .buttonStyle(.bordered)
+                    .help("Add SSH host")
+                    .accessibilityLabel("Add SSH host")
+
+                    if model.canRemoveSelectedServer {
+                        Button(role: .destructive) {
+                            isConfirmingServerRemoval = true
+                        } label: {
+                            Image(systemName: "trash")
+                        }
+                        .buttonStyle(.bordered)
+                        .help("Remove saved host")
+                        .accessibilityLabel("Remove saved host")
+                    }
                 }
+
+                Text("Includes recents, RelayBar profiles, and SSH config.")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
             }
 
             if let errorMessage = model.errorMessage {
@@ -115,6 +152,22 @@ struct RemoteFilesView: View {
         .padding(24)
         .onAppear {
             isPathFocused = true
+        }
+        .sheet(isPresented: $isAddingServer) {
+            AddRemoteServerView { name, sshHost in
+                try model.addServer(name: name, sshHost: sshHost)
+            }
+        }
+        .confirmationDialog(
+            "Remove this saved host?",
+            isPresented: $isConfirmingServerRemoval
+        ) {
+            Button("Remove Saved Host", role: .destructive) {
+                model.removeSelectedServer()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Forwarding profiles and SSH config will not be changed.")
         }
     }
 
@@ -336,6 +389,74 @@ struct RemoteFilesView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+    }
+}
+
+private struct AddRemoteServerView: View {
+    let onAdd: (String, String) throws -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @State private var name = ""
+    @State private var sshHost = ""
+    @State private var errorMessage: String?
+    @FocusState private var isHostFocused: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add SSH Host")
+                .font(.system(size: 17, weight: .semibold))
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Name · Optional")
+                    .font(.system(size: 11, weight: .medium))
+                TextField("Development server", text: $name)
+                    .textFieldStyle(.roundedBorder)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("SSH host")
+                    .font(.system(size: 11, weight: .medium))
+                TextField("user@server", text: $sshHost)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($isHostFocused)
+                    .onSubmit(add)
+                Text("RelayBar uses your existing OpenSSH config, keys, and agent.")
+                    .font(.system(size: 10))
+                    .foregroundStyle(.secondary)
+            }
+
+            if let errorMessage {
+                Text(errorMessage)
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.red)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Add Host", action: add)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(
+                        sshHost.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    )
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 360)
+        .onAppear {
+            isHostFocused = true
+        }
+    }
+
+    private func add() {
+        do {
+            try onAdd(name, sshHost)
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
     }
 }
 
