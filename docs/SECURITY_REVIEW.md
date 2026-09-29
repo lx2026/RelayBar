@@ -1,10 +1,10 @@
 # RelayBar security review
 
-Review date: August 25, 2026
+Review date: September 29, 2026 (1.6.0 additions; prior findings retained)
 
 ## Scope and threat model
 
-This review covers command import, tunnel persistence, child-process management, Remote Files paths/listings/transfers/image and Markdown previews, diagnostic output, network exposure, rendering dependencies, Developer ID packaging, and accidental secret publication. It assumes an attacker may provide a crafted command or remote path, tamper with RelayBar's preferences, or control names, metadata, bytes, Markdown, code snippets, formulas, URLs, and diagnostics returned by a remote SSH server. The user's existing SSH configuration is trusted to the same extent it is when running the macOS OpenSSH clients in Terminal.
+This review covers command import, tunnel persistence, child-process management, Remote Files paths/listings/transfers/deletion/image, Markdown, JSON and MP4 previews, diagnostic output, network exposure, rendering dependencies, Developer ID packaging, and accidental secret publication. It assumes an attacker may provide a crafted command or remote path, tamper with RelayBar's preferences, or control names, metadata, bytes, Markdown, code snippets, formulas, URLs, and diagnostics returned by a remote SSH server. The user's existing SSH configuration is trusted to the same extent it is when running the macOS OpenSSH clients in Terminal.
 
 ## Findings remediated
 
@@ -84,11 +84,42 @@ missing capabilities, SSH-master replacement, and raced-in hard-link targets
 fail closed. Cancellation and failure remove only the exact app-generated
 staging path, and uncertain cleanup is reported rather than hidden.
 
+### SR-12 — Accidental remote deletion is irreversible (high)
+
+Single and bulk deletion now wait five seconds before any service submission,
+with a visible Undo action. Closing the window or app during that interval
+cancels the request. Destructive styling and separation from Download reduce
+misclicks. Selection includes only presented regular files; each exact path,
+kind, size, and displayed modification value is revalidated through the owned
+SSH master immediately before one quoted SFTP `rm`. Batches are sequential,
+with no recursion, wildcard expansion, shell, or automatic retry. Only server
+acknowledgement is reported as success; unknown outcomes remain explicit.
+
+The preflight is not an atomic identity check: a server-side writer can replace
+a path after validation, and equal size/mtime cannot prove file identity.
+Deletion after submission is permanent; RelayBar provides no remote trash or
+post-submission recovery. Verification used isolated fake services, not live
+destructive operations against a production server.
+
+### SR-13 — JSON and media previews expand untrusted parsing (medium)
+
+JSON retrieval and decoding enforce a 2 MiB limit, validate UTF-8, reject NULs,
+and render only native selectable text; strings and URLs are never executed or
+resolved. MP4 retrieval is capped at 512 MiB and stored in a private temporary
+directory. AVFoundation must find a playable asset with a video track before
+AVKit receives the local URL. Playback starts paused. Cancellation and preview
+generations prevent stale publication, and exit clears the player and temporary
+bytes. Native JSON and media parsers remain part of the trusted computing base.
+
 ## Positive controls verified
 
 - Executable paths are fixed to `/usr/bin/ssh` and `/usr/bin/sftp`.
 - Arguments are passed through `Process` as an array; there is no shell expansion.
 - SSH is non-interactive and uses `BatchMode`, a connection timeout, forward-failure detection, and keepalives.
+- Automatic retries are bounded by a saved 0–100 limit and exponential delays
+  from 5 seconds to 5 minutes. Brief reconnects retain their retry budget;
+  setting the limit to zero cancels pending retries. This reduces connection
+  bursts but cannot guarantee compliance with every server's rate limits.
 - One private master owns each forwarding profile; visible rules are installed with bounded, time-limited control operations and all-or-nothing startup.
 - Standard input and output are closed where unused; master and control diagnostics are bounded.
 - Detached SSH (`-f`) is discarded, and tracked children are terminated on stop and app quit.

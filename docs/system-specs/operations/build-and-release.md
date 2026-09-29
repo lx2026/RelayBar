@@ -57,6 +57,12 @@ The app is distributed outside the Mac App Store, uses the hardened runtime, and
 
 ## Stable GitHub release
 
+The current stable release is **1.6.0, build 11**, published as `v1.6.0` with
+one immutable `RelayBar.zip`. GitHub, the signed Sparkle feed, the website,
+and the maintainer Homebrew cask use that artifact. See
+[Task 049 verification](../../verification/049-relaybar-1.6.0-release.md) for
+the source commit, final checksum, notarization, and update/install evidence.
+
 A stable release starts from a clean commit with consistent marketing version,
 monotonic build number, bundle identifier, and deployment target. Any
 post-freeze application change requires a new build number and a complete

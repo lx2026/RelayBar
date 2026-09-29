@@ -10,7 +10,7 @@ Notable RelayBar changes are recorded here.
   it to 0 to disable automatic retries. Delays grow from 5 seconds to a
   5-minute cap, and brief reconnects no longer reset the retry budget.
 - Remote Files previews bounded UTF-8 JSON with selectable syntax highlighting,
-  wrapping, and horizontal scrolling, plus MP4 video with native playback
+  wrapping, and vertical scrolling, plus MP4 video with native playback
   controls that start paused.
 - Single and bulk remote-file deletion share a five-second Undo window before
   any removal reaches the server. Selection mode supports file-only bulk actions.

@@ -24,3 +24,4 @@ Task verification reports record automated, visual, manual, security, and live-s
 - [Task 044 — MP4 Video Preview](044-mp4-video-preview.md)
 - [Task 045 — Configurable SSH Retries](045-configurable-ssh-retries.md)
 - [Tasks 046–048 — Remote Files and Editor Usability](046-048-remote-files-and-editor-usability.md)
+- [Task 049 — RelayBar 1.6.0 Release](049-relaybar-1.6.0-release.md)

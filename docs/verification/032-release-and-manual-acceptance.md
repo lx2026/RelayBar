@@ -1,13 +1,13 @@
 # Task 032 — Release and Manual Acceptance Verification
 
-Updated: 2026-08-25
+Updated: 2026-09-29
 
 Result: In progress. VoiceOver inspection is excluded by maintainer decision.
-RelayBar 1.5.0 build 9 is now the stable GitHub release, signed public appcast,
-website download, and Homebrew cask. The maintainer explicitly waived a
-1.4-to-1.5 updater rehearsal for this release. Offline recovery-key restore, an
-actual macOS 13 pass, and the remaining scheduled-update/active-tunnel/failure
-matrix remain open.
+RelayBar 1.6.0 build 11 is the stable release; see
+[Task 049 verification](049-relaybar-1.6.0-release.md) for its signed public
+artifact and prior-version Sparkle installation evidence. Offline recovery-key
+restore, an actual macOS 13 pass, and the remaining scheduled-update,
+active-tunnel, and failure matrix remain open.
 
 ## Maintainer checklist
 

@@ -35,11 +35,11 @@ Files workspace keeps recent folders and host paths one click away.
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/remote-files-workspace.png" alt="RelayBar 1.5 Remote Files workspace with recent folders, recent hosts, Add Path, browsing, and upload" width="760">
+  <img src="docs/screenshots/remote-files-workspace.png" alt="RelayBar 1.6 Remote Files workspace with recent folders, recent hosts, Add Path, browsing, and upload" width="760">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/remote-files-preview.png" alt="RelayBar 1.5 safely previewing a remote Markdown file beside recent locations" width="760">
+  <img src="docs/screenshots/remote-files-preview.png" alt="RelayBar 1.6 safely previewing a remote Markdown file beside recent locations" width="760">
 </p>
 
 ## What it does

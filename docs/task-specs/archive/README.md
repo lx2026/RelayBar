@@ -43,3 +43,4 @@ Tasks 005 through 019 came from one review pass over the app sources for reliabi
 - [Task 046 — Remote Delete Undo Window](046-remote-delete-undo-window.md)
 - [Task 047 — Readable Connection and Path Labels](047-readable-connection-and-path-labels.md)
 - [Task 048 — Profile Editor Validation and Layout](048-profile-editor-validation-and-layout.md)
+- [Task 049 — RelayBar 1.6.0 Stable Release](049-relaybar-1.6.0-release.md)

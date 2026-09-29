@@ -31,7 +31,6 @@ Completion does not authorize a commit, push, release, or deployment. Follow [`A
 
 ## Active tasks
 
-- [Task 049 — RelayBar 1.6.0 Stable Release](049-relaybar-1.6.0-release.md)
 - [Task 032 — Release and Manual Acceptance](032-release-and-manual-acceptance.md)
 - [Task 037 — Implement Remote Files Workspace](037-implement-remote-files-workspace.md) —
   in progress

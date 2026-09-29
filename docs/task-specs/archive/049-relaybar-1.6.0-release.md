@@ -1,8 +1,10 @@
 # Task 049 — RelayBar 1.6.0 Stable Release
 
-Status: In progress
+Status: Complete
 
 Started: 2026-09-29
+
+Accepted: 2026-09-29
 
 ## Outcome
 
@@ -39,3 +41,5 @@ The broader outstanding manual matrix in Task 032 remains separate.
 - GitHub, the signed public appcast, README, website, and cask identify the same
   version and immutable archive. Feature-branch commits are pushed without a PR.
 - The final notarized app is installed and launches from `/Applications/RelayBar.app`.
+
+Evidence: [Task 049 verification](../../verification/049-relaybar-1.6.0-release.md).
