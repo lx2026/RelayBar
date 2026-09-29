@@ -41,6 +41,10 @@ Do not commit or push merely because a task is complete; follow the Git workflow
 
 ## Deployment approval
 
+- For macOS releases, first read `docs/system-specs/operations/build-and-release.md`.
+  It contains the maintainer's working notarization profile and the signing,
+  Sparkle, GitHub Pages, and Homebrew publication sequence. The personal
+  `macos-release` skill provides the reusable local signing workflow.
 - Do not deploy or publish changes until the user explicitly approves the specific deployment.
 - Approval to design, implement, test, commit, or push is not deployment approval.
 - Deployment includes publishing a GitHub release, uploading distributable artifacts, notarizing for distribution, changing production hosting, or running any release/deployment command against an external service.

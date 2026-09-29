@@ -6,6 +6,15 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <channel>
         <title>RelayBar</title>
         <item>
+            <title>1.6.0</title>
+            <pubDate>Mon, 28 Sep 2026 22:34:31 -0700</pubDate>
+            <link>https://lx2026.github.io/RelayBar/</link>
+            <sparkle:version>11</sparkle:version>
+            <sparkle:shortVersionString>1.6.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>13.0</sparkle:minimumSystemVersion>
+            <enclosure url="https://github.com/lx2026/RelayBar/releases/download/v1.6.0/RelayBar.zip" length="6897850" type="application/octet-stream" sparkle:edSignature="gCm1i2JkFIPD+X3KdatbzniQU/tvEKYdUBeiMm4dCDvvXnVIR4eT/0pfzcppmrwRLc/E7j6tdwd2mr34X520DQ=="/>
+        </item>
+        <item>
             <title>1.5.1</title>
             <pubDate>Thu, 27 Aug 2026 11:16:33 -0400</pubDate>
             <link>https://lx2026.github.io/RelayBar/</link>
@@ -35,6 +44,6 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     </channel>
 </rss>
 <!-- sparkle-signatures:
-edSignature: LwlfpvKPkDwNThmWnkdw3WvcvqOlduMpm09PpD7QM80Qjhv/2F/dKRBvE26cknqgGcFfBovAxjsxhI6r3PA9CA==
-length: 2392
+edSignature: ndk7Lor8OV3RIPz484IwS8512Gnb+hbvYGOgpImQqWKdV/puIt1RHOSLo+Juy1ZTpeV3QcfdqmuUkDtZLRDdBw==
+length: 3046
 -->

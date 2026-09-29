@@ -148,6 +148,11 @@ NOTARY_PROFILE=YOUR_NOTARY_PROFILE ./scripts/notarize-release.sh
 
 Set `SIGNING_IDENTITY` only when a Mac has multiple Developer ID certificates and the automatic choice is not the one you want.
 
+Maintainer releases use the existing `AC_NOTARY` Keychain profile:
+`NOTARY_PROFILE=AC_NOTARY ./scripts/notarize-release.sh`. See the
+[release guide](docs/system-specs/operations/build-and-release.md) for credential
+verification, signing, Sparkle, GitHub, website, and Homebrew publication.
+
 ## Test
 
 ```bash
