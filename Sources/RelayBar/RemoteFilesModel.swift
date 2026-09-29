@@ -143,6 +143,61 @@ private struct DecodedRemoteImage: @unchecked Sendable {
     let value: CGImage
 }
 
+struct RemoteJSONDocument: Equatable, Sendable {
+    let formattedText: String
+}
+
+enum RemoteJSONDecoder {
+    static let maximumByteCount = 2 * 1_024 * 1_024
+
+    static func load(contentsOf url: URL) async throws -> RemoteJSONDocument {
+        try await Task.detached(priority: .userInitiated) {
+            let values = try url.resourceValues(forKeys: [.fileSizeKey])
+            if let size = values.fileSize, size > maximumByteCount {
+                throw RemoteFileError.jsonTooLarge
+            }
+            let data = try Data(contentsOf: url, options: [.mappedIfSafe])
+            guard data.count <= maximumByteCount else {
+                throw RemoteFileError.jsonTooLarge
+            }
+
+            let utf8: Data
+            if data.starts(with: [0xEF, 0xBB, 0xBF]) {
+                utf8 = data.dropFirst(3)
+            } else {
+                utf8 = data
+            }
+            guard !utf8.contains(0), String(data: utf8, encoding: .utf8) != nil else {
+                throw RemoteFileError.invalidJSONEncoding
+            }
+
+            let value: Any
+            do {
+                value = try JSONSerialization.jsonObject(
+                    with: utf8,
+                    options: [.fragmentsAllowed]
+                )
+            } catch {
+                throw RemoteFileError.malformedJSON
+            }
+
+            let formatted: Data
+            do {
+                formatted = try JSONSerialization.data(
+                    withJSONObject: value,
+                    options: [.prettyPrinted, .sortedKeys, .fragmentsAllowed, .withoutEscapingSlashes]
+                )
+            } catch {
+                throw RemoteFileError.malformedJSON
+            }
+            guard let text = String(data: formatted, encoding: .utf8) else {
+                throw RemoteFileError.invalidJSONEncoding
+            }
+            return RemoteJSONDocument(formattedText: text)
+        }.value
+    }
+}
+
 struct RemoteDirectoryCache {
     struct Key: Hashable {
         let connection: RemoteServer.ConnectionIdentity
@@ -273,7 +328,84 @@ final class RemoteFilesModel: ObservableObject {
         let connectionIdentity: RemoteServer.ConnectionIdentity
         let remoteDirectory: String
         var phase: Phase
+        var operationPhase: RemoteUploadPhase
+        var completedBytes: Int64
+        var totalBytes: Int64
+        var isStagingComplete: Bool
         var message: String?
+
+        var fraction: Double? {
+            guard operationPhase == .staging else { return nil }
+            if totalBytes == 0 { return isStagingComplete ? 1 : 0 }
+            return min(max(Double(completedBytes) / Double(totalBytes), 0), 1)
+        }
+
+        var percentage: Int? {
+            guard let fraction else { return nil }
+            return min(Int(fraction * 100), isStagingComplete ? 100 : 99)
+        }
+    }
+
+    struct PreviewProgressPresentation: Equatable {
+        var completedBytes: Int64
+        let totalBytes: Int64?
+        var message: String
+
+        var fraction: Double? {
+            guard let totalBytes, totalBytes > 0 else { return nil }
+            return min(max(Double(completedBytes) / Double(totalBytes), 0), 1)
+        }
+
+        var percentage: Int? {
+            guard let fraction else { return nil }
+            return min(Int(fraction * 100), 99)
+        }
+    }
+
+    struct DeletionPresentation: Identifiable {
+        enum Phase: Equatable {
+            case pendingUndo
+            case active
+            case failed
+            case outcomeUnknown
+        }
+
+        let id = UUID()
+        let entries: [RemoteFileEntry]
+        var currentIndex: Int
+        var completedCount: Int
+        var phase: Phase
+        var message: String?
+        var undoDeadline: Date?
+
+        var entry: RemoteFileEntry {
+            entries[min(max(currentIndex, 0), entries.count - 1)]
+        }
+
+        init(
+            entry: RemoteFileEntry,
+            phase: Phase,
+            message: String?
+        ) {
+            entries = [entry]
+            currentIndex = 0
+            completedCount = 0
+            self.phase = phase
+            self.message = message
+        }
+
+        init(
+            entries: [RemoteFileEntry],
+            phase: Phase,
+            message: String?
+        ) {
+            precondition(!entries.isEmpty)
+            self.entries = entries
+            currentIndex = 0
+            completedCount = 0
+            self.phase = phase
+            self.message = message
+        }
     }
 
     @Published private(set) var screen: Screen = .welcome
@@ -285,15 +417,22 @@ final class RemoteFilesModel: ObservableObject {
     @Published private(set) var pendingPath: String?
     @Published private(set) var entries: [RemoteFileEntry] = []
     @Published var selectedEntryID: String?
+    @Published private(set) var isSelectingFiles = false
+    @Published private(set) var selectedFileIDs: Set<String> = []
     @Published private(set) var isLoading = false
     @Published private(set) var isRefreshing = false
     @Published private(set) var errorMessage: String?
     @Published private(set) var previewEntry: RemoteFileEntry?
     @Published private(set) var previewImage: NSImage?
     @Published private(set) var previewMarkdown: RemoteMarkdownDocument?
+    @Published private(set) var previewJSON: RemoteJSONDocument?
+    @Published private(set) var previewVideoURL: URL?
+    @Published private(set) var previewProgress: PreviewProgressPresentation?
     @Published private(set) var isLoadingPreview = false
     @Published private(set) var transfer: TransferPresentation?
     @Published private(set) var upload: UploadPresentation?
+    @Published private(set) var deletion: DeletionPresentation?
+    @Published private(set) var deletionAnnouncement: String?
     @Published private(set) var activeLocationID: UUID?
     @Published private(set) var failedLocationID: UUID?
     @Published private(set) var successfulOpenSequence = 0
@@ -303,6 +442,9 @@ final class RemoteFilesModel: ObservableObject {
     private let serverCatalog: RemoteServerCatalog
     private let imageDecoder: @Sendable (URL) throws -> CGImage
     private let markdownDecoder: (URL) async throws -> RemoteMarkdownDocument
+    private let jsonDecoder: (URL) async throws -> RemoteJSONDocument
+    private let videoValidator: (URL) async throws -> Void
+    private let deletionUndoDelay: TimeInterval
     private var tunnels: [Tunnel]
     private var activeServer: RemoteServer?
     private var isFolderOpen = false
@@ -312,11 +454,13 @@ final class RemoteFilesModel: ObservableObject {
     private var previewTask: Task<Void, Never>?
     private var transferTask: Task<Void, Never>?
     private var uploadTask: Task<Void, Never>?
+    private var deletionTask: Task<Void, Never>?
     private var previewURL: URL?
     private var loadGeneration = UUID()
     private var previewGeneration = UUID()
     private var transferGeneration = UUID()
     private var uploadGeneration = UUID()
+    private var deletionGeneration = UUID()
     private var pendingRootLocationID: UUID?
     private var deferredShutdownTask: Task<Void, Never>?
     private var shutdownCompletions: [@MainActor () -> Void] = []
@@ -338,6 +482,11 @@ final class RemoteFilesModel: ObservableObject {
             { try RemoteImageDecoder.decodeCGImage(contentsOf: $0) },
         markdownDecoder: @escaping (URL) async throws -> RemoteMarkdownDocument =
             { try await RemoteMarkdownDecoder.load(contentsOf: $0) },
+        jsonDecoder: @escaping (URL) async throws -> RemoteJSONDocument =
+            { try await RemoteJSONDecoder.load(contentsOf: $0) },
+        videoValidator: @escaping (URL) async throws -> Void =
+            { try await RemoteVideoPreview.validate(contentsOf: $0) },
+        deletionUndoDelay: TimeInterval = 5,
         serverCatalog: RemoteServerCatalog? = nil
     ) {
         let catalog = serverCatalog ?? RemoteServerCatalog()
@@ -346,10 +495,13 @@ final class RemoteFilesModel: ObservableObject {
         recentLocations = catalog.recentLocations(from: tunnels)
         selectedServerID = initialServers.first?.id
         self.service = service
+        self.deletionUndoDelay = max(0, deletionUndoDelay)
         self.presenter = presenter ?? AppKitRemoteFilePresenter()
         self.serverCatalog = catalog
         self.imageDecoder = imageDecoder
         self.markdownDecoder = markdownDecoder
+        self.jsonDecoder = jsonDecoder
+        self.videoValidator = videoValidator
         self.tunnels = tunnels
     }
 
@@ -361,6 +513,7 @@ final class RemoteFilesModel: ObservableObject {
         selectedServer != nil && pathValidationMessage == nil && !isLoading
             && !isRefreshing
             && !isTransferRunning
+            && !isSelectingFiles
     }
 
     var presentedPath: String {
@@ -368,7 +521,7 @@ final class RemoteFilesModel: ObservableObject {
     }
 
     var canGoBack: Bool {
-        guard !isTransferRunning else { return false }
+        guard !isTransferRunning, !isSelectingFiles else { return false }
         if screen == .preview {
             return true
         }
@@ -390,6 +543,10 @@ final class RemoteFilesModel: ObservableObject {
         entries.first { $0.id == selectedEntryID }
     }
 
+    var selectedFiles: [RemoteFileEntry] {
+        entries.filter { selectedFileIDs.contains($0.id) }
+    }
+
     var previewableEntries: [RemoteFileEntry] {
         entries.filter(\.isPreviewable)
     }
@@ -400,16 +557,69 @@ final class RemoteFilesModel: ObservableObject {
     }
 
     var canActivateLocation: Bool {
-        !isLoading && !isRefreshing && !isTransferRunning
+        !isLoading && !isRefreshing && !isTransferRunning && !isSelectingFiles
     }
 
     var canActivateEntry: Bool {
+        !isLoading && !isTransferRunning && !isSelectingFiles
+    }
+
+    var canInteractWithFileList: Bool {
         !isLoading && !isTransferRunning
     }
 
     var canUpload: Bool {
         screen == .browser && isFolderOpen && !currentPath.isEmpty
-            && !isLoading && !isTransferRunning
+            && !isLoading && !isTransferRunning && !isSelectingFiles
+    }
+
+    func canDelete(_ entry: RemoteFileEntry) -> Bool {
+        entry.kind == .file
+            && entries.contains(entry)
+            && RemotePath.parent(of: entry.path) == RemotePath.normalized(currentPath)
+            && activeServer != nil
+            && deletion == nil
+            && !isLoading
+            && !isRefreshing
+            && !isLoadingPreview
+            && !isTransferRunning
+            && !isSelectingFiles
+    }
+
+    var canDeletePreviewEntry: Bool {
+        guard let previewEntry else { return false }
+        return canDelete(previewEntry)
+    }
+
+    var canBeginFileSelection: Bool {
+        screen == .browser
+            && isFolderOpen
+            && entries.contains(where: { $0.kind == .file })
+            && !isLoading
+            && !isRefreshing
+            && !isTransferRunning
+            && deletion == nil
+            && !isSelectingFiles
+    }
+
+    var canDeleteSelectedFiles: Bool {
+        guard
+            screen == .browser,
+            isSelectingFiles,
+            !selectedFileIDs.isEmpty,
+            selectedFiles.count == selectedFileIDs.count,
+            activeServer != nil,
+            deletion == nil,
+            !isLoading,
+            !isRefreshing,
+            !isLoadingPreview,
+            !isTransferRunning
+        else { return false }
+        let normalizedDirectory = RemotePath.normalized(currentPath)
+        return selectedFiles.allSatisfy {
+            $0.kind == .file
+                && RemotePath.parent(of: $0.path) == normalizedDirectory
+        }
     }
 
     var recentFolderLocations: [RemoteLocation] {
@@ -595,7 +805,8 @@ final class RemoteFilesModel: ObservableObject {
             !currentPath.isEmpty,
             !isLoading,
             !isRefreshing,
-            !isTransferRunning
+            !isTransferRunning,
+            !isSelectingFiles
         else { return }
         load(path: currentPath, server: server, previousPath: nil, isRefresh: true)
     }
@@ -642,6 +853,7 @@ final class RemoteFilesModel: ObservableObject {
             directoryCache.removeAll()
             entries = []
             selectedEntryID = nil
+            resetFileSelection()
             pendingPath = nil
             isLoading = false
             isRefreshing = false
@@ -654,6 +866,7 @@ final class RemoteFilesModel: ObservableObject {
             pendingRootLocationID = nil
             transfer = nil
             upload = nil
+            deletion = nil
             selectedServerID = servers.contains(where: { $0.id == selectedServerID })
                 ? selectedServerID
                 : servers.first?.id
@@ -675,7 +888,38 @@ final class RemoteFilesModel: ObservableObject {
     }
 
     func select(_ entry: RemoteFileEntry) {
+        if isSelectingFiles {
+            toggleFileSelection(entry)
+            return
+        }
         selectedEntryID = entry.id
+    }
+
+    func beginFileSelection() {
+        guard canBeginFileSelection else { return }
+        selectedFileIDs = []
+        isSelectingFiles = true
+    }
+
+    func cancelFileSelection() {
+        guard isSelectingFiles, deletion == nil else { return }
+        selectedFileIDs = []
+        isSelectingFiles = false
+    }
+
+    func toggleFileSelection(_ entry: RemoteFileEntry) {
+        guard
+            isSelectingFiles,
+            entry.kind == .file,
+            entries.contains(entry),
+            RemotePath.parent(of: entry.path) == RemotePath.normalized(currentPath),
+            !isTransferRunning
+        else { return }
+        if selectedFileIDs.contains(entry.id) {
+            selectedFileIDs.remove(entry.id)
+        } else {
+            selectedFileIDs.insert(entry.id)
+        }
     }
 
     func activate(_ entry: RemoteFileEntry) {
@@ -695,6 +939,7 @@ final class RemoteFilesModel: ObservableObject {
         guard
             entry.isPreviewable,
             !isTransferRunning,
+            !isSelectingFiles,
             let server = activeServer
         else { return }
         select(entry)
@@ -705,6 +950,15 @@ final class RemoteFilesModel: ObservableObject {
         previewEntry = entry
         previewImage = nil
         previewMarkdown = nil
+        previewJSON = nil
+        previewVideoURL = nil
+        previewProgress = entry.isPreviewableVideo
+            ? PreviewProgressPresentation(
+                completedBytes: 0,
+                totalBytes: entry.size,
+                message: "Retrieving video…"
+            )
+            : nil
         isLoadingPreview = true
         errorMessage = nil
         screen = .preview
@@ -720,18 +974,58 @@ final class RemoteFilesModel: ObservableObject {
                 }
             }
             do {
-                let url = try await service.preparePreview(server: server, entry: entry)
+                let url: URL
+                if entry.isPreviewableVideo {
+                    url = try await service.preparePreviewWithProgress(
+                        server: server,
+                        entry: entry
+                    ) { [weak self] completedBytes in
+                        Task { @MainActor in
+                            guard
+                                let self,
+                                self.previewGeneration == generation,
+                                self.previewEntry?.id == entry.id,
+                                self.isLoadingPreview
+                            else { return }
+                            let previous = self.previewProgress?.completedBytes ?? 0
+                            self.previewProgress?.completedBytes = max(
+                                previous,
+                                min(completedBytes, entry.size ?? completedBytes)
+                            )
+                        }
+                    }
+                } else {
+                    url = try await service.preparePreview(server: server, entry: entry)
+                }
                 pendingPreviewURL = url
                 try Task.checkCancellation()
                 guard previewGeneration == generation else { return }
                 let image: NSImage?
                 let markdown: RemoteMarkdownDocument?
+                let json: RemoteJSONDocument?
+                let videoURL: URL?
                 if entry.isPreviewableImage {
                     image = try await decodeImage(at: url)
                     markdown = nil
-                } else {
+                    json = nil
+                    videoURL = nil
+                } else if entry.isPreviewableMarkdown {
                     image = nil
                     markdown = try await markdownDecoder(url)
+                    json = nil
+                    videoURL = nil
+                } else if entry.isPreviewableJSON {
+                    image = nil
+                    markdown = nil
+                    json = try await jsonDecoder(url)
+                    videoURL = nil
+                } else {
+                    image = nil
+                    markdown = nil
+                    json = nil
+                    previewProgress?.message = "Preparing video…"
+                    try await videoValidator(url)
+                    videoURL = url
                 }
                 try Task.checkCancellation()
                 guard previewGeneration == generation else { return }
@@ -739,18 +1033,33 @@ final class RemoteFilesModel: ObservableObject {
                 pendingPreviewURL = nil
                 previewImage = image
                 previewMarkdown = markdown
+                previewJSON = json
+                previewVideoURL = videoURL
+                previewProgress = nil
                 isLoadingPreview = false
             } catch is CancellationError {
                 if previewGeneration == generation {
                     isLoadingPreview = false
+                    previewProgress = nil
                 }
             } catch {
                 if previewGeneration == generation {
                     isLoadingPreview = false
+                    previewProgress = nil
                     errorMessage = error.localizedDescription
                 }
             }
         }
+    }
+
+    func cancelPreviewLoading() {
+        guard isLoadingPreview, previewEntry?.isPreviewableVideo == true else { return }
+        previewTask?.cancel()
+        previewGeneration = UUID()
+        previewTask = nil
+        isLoadingPreview = false
+        previewProgress = nil
+        errorMessage = "Video preview canceled."
     }
 
     func selectPreviewEntry(id: String?) {
@@ -800,7 +1109,7 @@ final class RemoteFilesModel: ObservableObject {
     }
 
     func download(_ entry: RemoteFileEntry) {
-        guard !isTransferRunning else { return }
+        guard !isTransferRunning, !isSelectingFiles else { return }
         guard let destination = presenter.chooseDestination(for: entry) else { return }
         startTransfer(entry: entry, destination: destination)
     }
@@ -826,7 +1135,7 @@ final class RemoteFilesModel: ObservableObject {
     func cancelUpload() {
         guard upload?.phase == .active else { return }
         upload?.phase = .cancelling
-        upload?.message = "Removing the remote staging file…"
+        upload?.message = "Removing temporary file…"
         uploadTask?.cancel()
     }
 
@@ -875,6 +1184,315 @@ final class RemoteFilesModel: ObservableObject {
         upload = nil
     }
 
+    func deleteSelectedFiles() {
+        guard canDeleteSelectedFiles else { return }
+        startBatchDeletion(selectedFiles)
+    }
+
+    func delete(_ entry: RemoteFileEntry) {
+        guard canDelete(entry), let server = activeServer else { return }
+        let directory = currentPath
+        let browserIndex = entries.firstIndex(where: { $0.id == entry.id }) ?? 0
+        let visibleImages = entries.filter(\.isPreviewableImage)
+        let imageIndex = visibleImages.firstIndex(where: { $0.id == entry.id }) ?? 0
+        let visiblePreviewables = previewableEntries
+        let previewIndex = visiblePreviewables.firstIndex(where: { $0.id == entry.id }) ?? 0
+        let deletedFromPreview = screen == .preview && previewEntry?.id == entry.id
+        let generation = UUID()
+        deletionGeneration = generation
+        deletionAnnouncement = nil
+        deletion = DeletionPresentation(
+            entry: entry,
+            phase: .pendingUndo,
+            message: "Will delete \(entry.name)"
+        )
+        deletion?.undoDeadline = Date().addingTimeInterval(deletionUndoDelay)
+
+        deletionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                try await waitForDeletionCommit(generation: generation)
+                try await service.delete(server: server, entry: entry)
+                try Task.checkCancellation()
+                let refreshedEntries: [RemoteFileEntry]
+                let isAuthoritativeRefresh: Bool
+                do {
+                    refreshedEntries = try await service.list(
+                        server: server,
+                        path: directory
+                    )
+                    isAuthoritativeRefresh = true
+                } catch {
+                    refreshedEntries = entries.filter { $0.id != entry.id }
+                    isAuthoritativeRefresh = false
+                }
+                try Task.checkCancellation()
+                guard deletionGeneration == generation else { return }
+                applyAcknowledgedDeletion(
+                    entry: entry,
+                    refreshedEntries: refreshedEntries,
+                    browserIndex: browserIndex,
+                    imageIndex: imageIndex,
+                    previewIndex: previewIndex,
+                    deletedFromPreview: deletedFromPreview,
+                    isAuthoritativeRefresh: isAuthoritativeRefresh,
+                    server: server,
+                    directory: directory
+                )
+            } catch {
+                guard deletionGeneration == generation else { return }
+                deletionTask = nil
+                if error as? RemoteFileError == .deleteOutcomeUnknown {
+                    do {
+                        let refreshed = try await service.list(
+                            server: server,
+                            path: directory
+                        )
+                        guard deletionGeneration == generation else { return }
+                        entries = refreshed
+                        if !refreshed.contains(where: { $0.id == self.selectedEntryID }) {
+                            selectedEntryID = nil
+                        }
+                        directoryCache.insert(
+                            refreshed,
+                            for: server.connectionIdentity,
+                            path: directory
+                        )
+                        let stillPresent = refreshed.contains { $0.id == entry.id }
+                        deletion?.phase = .failed
+                        deletion?.message = error.localizedDescription
+                            + (stillPresent
+                                ? " The current listing still contains this path."
+                                : " The current listing no longer contains this path.")
+                    } catch {
+                        guard deletionGeneration == generation else { return }
+                        deletion?.phase = .outcomeUnknown
+                        deletion?.message = RemoteFileError.deleteOutcomeUnknown
+                            .localizedDescription
+                            + " Refresh again before deleting another file."
+                    }
+                } else {
+                    if let refreshed = try? await service.list(
+                        server: server,
+                        path: directory
+                    ) {
+                        guard deletionGeneration == generation else { return }
+                        entries = refreshed
+                        if !refreshed.contains(where: { $0.id == self.selectedEntryID }) {
+                            selectedEntryID = nil
+                        }
+                        directoryCache.insert(
+                            refreshed,
+                            for: server.connectionIdentity,
+                            path: directory
+                        )
+                    } else {
+                        directoryCache.removeAll()
+                    }
+                    deletion?.phase = .failed
+                    deletion?.message = error.localizedDescription
+                }
+            }
+        }
+    }
+
+    func deletePreviewEntry() {
+        guard let previewEntry else { return }
+        delete(previewEntry)
+    }
+
+    func undoDeletion() {
+        guard deletion?.phase == .pendingUndo else { return }
+        deletionGeneration = UUID()
+        deletionTask?.cancel()
+        deletionTask = nil
+        deletion = nil
+        deletionAnnouncement = "Deletion undone. No files were deleted."
+    }
+
+    private func waitForDeletionCommit(generation: UUID) async throws {
+        try await Task.sleep(for: .seconds(deletionUndoDelay))
+        try Task.checkCancellation()
+        guard deletionGeneration == generation, deletion?.phase == .pendingUndo else {
+            throw CancellationError()
+        }
+        deletion?.phase = .active
+        deletion?.undoDeadline = nil
+        if let deletion {
+            self.deletion?.message = deletion.entries.count == 1
+                ? "Deleting \(deletion.entry.name)…"
+                : "Deleting file 1 of \(deletion.entries.count)…"
+        }
+    }
+
+    func dismissDeletion() {
+        guard deletion?.phase == .failed else { return }
+        deletion = nil
+    }
+
+    func refreshAfterUnknownDeletion() {
+        guard
+            deletion?.phase == .outcomeUnknown,
+            let server = activeServer
+        else { return }
+        let directory = currentPath
+        let generation = deletionGeneration
+        deletion?.phase = .active
+        deletion?.message = "Refreshing before another deletion…"
+        deletionTask = Task { [weak self] in
+            guard let self else { return }
+            do {
+                let refreshed = try await service.list(server: server, path: directory)
+                guard deletionGeneration == generation else { return }
+                entries = refreshed
+                selectedFileIDs.formIntersection(
+                    Set(refreshed.filter { $0.kind == .file }.map(\.id))
+                )
+                if !refreshed.contains(where: { $0.id == self.selectedEntryID }) {
+                    selectedEntryID = nil
+                }
+                directoryCache.insert(
+                    refreshed,
+                    for: server.connectionIdentity,
+                    path: directory
+                )
+                deletion = nil
+                deletionTask = nil
+            } catch {
+                guard deletionGeneration == generation else { return }
+                deletion?.phase = .outcomeUnknown
+                deletion?.message = RemoteFileError.deleteOutcomeUnknown.localizedDescription
+                    + " Refresh again before deleting another file."
+                deletionTask = nil
+            }
+        }
+    }
+
+    private func startBatchDeletion(_ targets: [RemoteFileEntry]) {
+        guard
+            !targets.isEmpty,
+            canDeleteSelectedFiles,
+            let server = activeServer
+        else { return }
+        let directory = currentPath
+        let firstIndex = targets.compactMap { target in
+            entries.firstIndex(where: { $0.id == target.id })
+        }.min() ?? 0
+        let generation = UUID()
+        deletionGeneration = generation
+        deletionAnnouncement = nil
+        deletion = DeletionPresentation(
+            entries: targets,
+            phase: .pendingUndo,
+            message: "Will delete \(targets.count) \(targets.count == 1 ? "file" : "files")"
+        )
+        deletion?.undoDeadline = Date().addingTimeInterval(deletionUndoDelay)
+
+        deletionTask = Task { [weak self] in
+            guard let self else { return }
+            var acknowledged: [RemoteFileEntry] = []
+            do {
+                try await waitForDeletionCommit(generation: generation)
+                for (index, target) in targets.enumerated() {
+                    try Task.checkCancellation()
+                    guard deletionGeneration == generation else { return }
+                    deletion?.currentIndex = index
+                    deletion?.completedCount = acknowledged.count
+                    deletion?.message = "Deleting file \(index + 1) of \(targets.count)…"
+                    try await service.delete(server: server, entry: target)
+                    try Task.checkCancellation()
+                    acknowledged.append(target)
+                    deletion?.completedCount = acknowledged.count
+                }
+
+                let refreshedEntries: [RemoteFileEntry]
+                let isAuthoritativeRefresh: Bool
+                do {
+                    refreshedEntries = try await service.list(
+                        server: server,
+                        path: directory
+                    )
+                    isAuthoritativeRefresh = true
+                } catch {
+                    let acknowledgedIDs = Set(acknowledged.map(\.id))
+                    refreshedEntries = entries.filter {
+                        !acknowledgedIDs.contains($0.id)
+                    }
+                    isAuthoritativeRefresh = false
+                }
+                try Task.checkCancellation()
+                guard deletionGeneration == generation else { return }
+                applyAcknowledgedBatchDeletion(
+                    targets: targets,
+                    refreshedEntries: refreshedEntries,
+                    firstDeletedIndex: firstIndex,
+                    isAuthoritativeRefresh: isAuthoritativeRefresh,
+                    server: server,
+                    directory: directory
+                )
+            } catch let deletionError {
+                guard deletionGeneration == generation else { return }
+                deletionTask = nil
+                let acknowledgedIDs = Set(acknowledged.map(\.id))
+                let currentTarget = targets[min(acknowledged.count, targets.count - 1)]
+                let prefix = acknowledged.isEmpty
+                    ? ""
+                    : "Deleted \(acknowledged.count) of \(targets.count) files. "
+
+                do {
+                    let refreshed = try await service.list(
+                        server: server,
+                        path: directory
+                    )
+                    guard deletionGeneration == generation else { return }
+                    entries = refreshed
+                    selectedFileIDs.subtract(acknowledgedIDs)
+                    selectedFileIDs.formIntersection(
+                        Set(refreshed.filter { $0.kind == .file }.map(\.id))
+                    )
+                    directoryCache.insert(
+                        refreshed,
+                        for: server.connectionIdentity,
+                        path: directory
+                    )
+                    deletion?.completedCount = acknowledged.count
+                    deletion?.currentIndex = min(acknowledged.count, targets.count - 1)
+                    deletion?.phase = .failed
+                    if deletionError as? RemoteFileError == .deleteOutcomeUnknown {
+                        let stillPresent = refreshed.contains {
+                            $0.id == currentTarget.id
+                        }
+                        deletion?.message = prefix + deletionError.localizedDescription
+                            + (stillPresent
+                                ? " The current listing still contains this path."
+                                : " The current listing no longer contains this path.")
+                    } else {
+                        deletion?.message = prefix + deletionError.localizedDescription
+                    }
+                } catch {
+                    guard deletionGeneration == generation else { return }
+                    entries.removeAll { acknowledgedIDs.contains($0.id) }
+                    selectedFileIDs.subtract(acknowledgedIDs)
+                    selectedFileIDs.formIntersection(
+                        Set(entries.filter { $0.kind == .file }.map(\.id))
+                    )
+                    directoryCache.removeAll()
+                    deletion?.completedCount = acknowledged.count
+                    deletion?.currentIndex = min(acknowledged.count, targets.count - 1)
+                    if deletionError as? RemoteFileError == .deleteOutcomeUnknown {
+                        deletion?.phase = .outcomeUnknown
+                        deletion?.message = prefix
+                            + RemoteFileError.deleteOutcomeUnknown.localizedDescription
+                            + " Refresh again before deleting another file."
+                    } else {
+                        deletion?.phase = .failed
+                        deletion?.message = prefix + deletionError.localizedDescription
+                    }
+                }
+            }
+        }
+    }
+
     func cancelTransfer() {
         guard transfer?.phase == .active else { return }
         transfer?.phase = .cancelling
@@ -917,19 +1535,22 @@ final class RemoteFilesModel: ObservableObject {
         if let completion {
             shutdownCompletions.append(completion)
         }
-        let pendingUploadTask = uploadTask
+        let pendingMutationTasks = [uploadTask, deletionTask].compactMap { $0 }
         loadTask?.cancel()
         previewTask?.cancel()
         transferTask?.cancel()
         uploadTask?.cancel()
+        deletionTask?.cancel()
         loadGeneration = UUID()
         previewGeneration = UUID()
         transferGeneration = UUID()
         uploadGeneration = UUID()
+        deletionGeneration = UUID()
         loadTask = nil
         previewTask = nil
         transferTask = nil
         uploadTask = nil
+        deletionTask = nil
         pendingPath = nil
         isLoading = false
         isRefreshing = false
@@ -938,13 +1559,18 @@ final class RemoteFilesModel: ObservableObject {
         cleanupPreview()
         transfer = nil
         upload = nil
+        deletion = nil
+        deletionAnnouncement = nil
+        resetFileSelection()
 
         if deferredShutdownTask != nil {
             return true
         }
-        if let pendingUploadTask {
+        if !pendingMutationTasks.isEmpty {
             deferredShutdownTask = Task { [weak self, service] in
-                await pendingUploadTask.value
+                for task in pendingMutationTasks {
+                    await task.value
+                }
                 service.shutdown()
                 self?.finishDeferredShutdown()
             }
@@ -1124,6 +1750,7 @@ final class RemoteFilesModel: ObservableObject {
         isFolderOpen = true
         remotePath = path
         entries = loadedEntries
+        if !isRefresh { resetFileSelection() }
         if
             let selectionAfterLoad,
             loadedEntries.contains(where: { $0.id == selectionAfterLoad })
@@ -1143,6 +1770,7 @@ final class RemoteFilesModel: ObservableObject {
         remotePath = entry.path
         entries = [entry]
         selectedEntryID = entry.id
+        resetFileSelection()
     }
 
     private func decodeImage(at url: URL) async throws -> NSImage {
@@ -1234,31 +1862,49 @@ final class RemoteFilesModel: ObservableObject {
         let directory = currentPath
         let generation = UUID()
         uploadGeneration = generation
+        let totalBytes = Int64(
+            max(
+                0,
+                (try? localFile.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            )
+        )
         upload = UploadPresentation(
             localFile: localFile,
             replaceExisting: replaceExisting,
             connectionIdentity: server.connectionIdentity,
             remoteDirectory: RemotePath.normalized(directory),
             phase: .active,
+            operationPhase: .staging,
+            completedBytes: 0,
+            totalBytes: totalBytes,
+            isStagingComplete: false,
             message: "Staging safely…"
         )
 
         uploadTask = Task { [weak self] in
             guard let self else { return }
             do {
-                try await service.upload(
+                try await service.uploadWithProgress(
                     server: server,
                     localFile: localFile,
                     remoteDirectory: directory,
                     replaceExisting: replaceExisting
-                ) { [weak self] phase in
+                ) { [weak self] update in
                     Task { @MainActor in
                         guard
                             let self,
                             self.uploadGeneration == generation,
                             self.upload?.phase == .active
                         else { return }
-                        self.upload?.message = phase.presentationText
+                        let previous = self.upload?.completedBytes ?? 0
+                        self.upload?.operationPhase = update.phase
+                        self.upload?.completedBytes = max(
+                            previous,
+                            min(update.completedBytes, update.totalBytes)
+                        )
+                        self.upload?.totalBytes = update.totalBytes
+                        self.upload?.isStagingComplete = update.isStagingComplete
+                        self.upload?.message = update.phase.presentationText
                     }
                 }
                 guard uploadGeneration == generation else { return }
@@ -1285,11 +1931,93 @@ final class RemoteFilesModel: ObservableObject {
         }
     }
 
+    private func applyAcknowledgedDeletion(
+        entry: RemoteFileEntry,
+        refreshedEntries: [RemoteFileEntry],
+        browserIndex: Int,
+        imageIndex: Int,
+        previewIndex: Int,
+        deletedFromPreview: Bool,
+        isAuthoritativeRefresh: Bool,
+        server: RemoteServer,
+        directory: String
+    ) {
+        let refreshedEntries = isAuthoritativeRefresh
+            ? refreshedEntries
+            : refreshedEntries.filter { $0.id != entry.id }
+        entries = refreshedEntries
+        directoryCache.insert(
+            refreshedEntries,
+            for: server.connectionIdentity,
+            path: directory
+        )
+        deletion = nil
+        deletionTask = nil
+
+        if deletedFromPreview {
+            let candidates = entry.isPreviewableImage
+                ? refreshedEntries.filter(\.isPreviewableImage)
+                : refreshedEntries.filter(\.isPreviewable)
+            let preferredIndex = entry.isPreviewableImage ? imageIndex : previewIndex
+            if !candidates.isEmpty {
+                let target = candidates[min(preferredIndex, candidates.count - 1)]
+                selectedEntryID = target.id
+                deletionAnnouncement = "Deleted \(entry.name). Showing \(target.name)."
+                preview(target)
+            } else {
+                deletionAnnouncement = entry.isPreviewableImage
+                    ? "Deleted \(entry.name). No images remain."
+                    : "Deleted \(entry.name). No previewable files remain."
+                retirePreviewForLocationChange()
+                screen = .browser
+                selectedEntryID = refreshedEntries.isEmpty
+                    ? nil
+                    : refreshedEntries[min(browserIndex, refreshedEntries.count - 1)].id
+            }
+        } else {
+            deletionAnnouncement = "Deleted \(entry.name)."
+            selectedEntryID = refreshedEntries.isEmpty
+                ? nil
+                : refreshedEntries[min(browserIndex, refreshedEntries.count - 1)].id
+        }
+    }
+
+    private func applyAcknowledgedBatchDeletion(
+        targets: [RemoteFileEntry],
+        refreshedEntries: [RemoteFileEntry],
+        firstDeletedIndex: Int,
+        isAuthoritativeRefresh: Bool,
+        server: RemoteServer,
+        directory: String
+    ) {
+        let targetIDs = Set(targets.map(\.id))
+        let currentEntries = isAuthoritativeRefresh
+            ? refreshedEntries
+            : refreshedEntries.filter { !targetIDs.contains($0.id) }
+        entries = currentEntries
+        directoryCache.insert(
+            currentEntries,
+            for: server.connectionIdentity,
+            path: directory
+        )
+        deletion = nil
+        deletionTask = nil
+        deletionAnnouncement = targets.count == 1
+            ? "Deleted \(targets[0].name)."
+            : "Deleted \(targets.count) files."
+        selectedEntryID = currentEntries.isEmpty
+            ? nil
+            : currentEntries[min(firstDeletedIndex, currentEntries.count - 1)].id
+        resetFileSelection()
+    }
+
     private func cleanupPreview() {
         if let previewURL {
             try? FileManager.default.removeItem(at: previewURL.deletingLastPathComponent())
         }
         previewURL = nil
+        previewVideoURL = nil
+        previewProgress = nil
     }
 
     private func retirePreviewForLocationChange() {
@@ -1300,6 +2028,9 @@ final class RemoteFilesModel: ObservableObject {
         previewEntry = nil
         previewImage = nil
         previewMarkdown = nil
+        previewJSON = nil
+        previewVideoURL = nil
+        previewProgress = nil
         isLoadingPreview = false
     }
 
@@ -1307,6 +2038,13 @@ final class RemoteFilesModel: ObservableObject {
         guard !isTransferRunning else { return }
         upload = nil
         transfer = nil
+        deletion = nil
+        resetFileSelection()
+    }
+
+    private func resetFileSelection() {
+        selectedFileIDs = []
+        isSelectingFiles = false
     }
 
     private func finishDeferredShutdown() {
@@ -1336,8 +2074,13 @@ final class RemoteFilesModel: ObservableObject {
         }
     }
 
+    var isDeletionInProgress: Bool {
+        deletion?.phase == .pendingUndo || deletion?.phase == .active
+    }
+
     private var isTransferRunning: Bool {
         transfer?.phase == .active || transfer?.phase == .cancelling
             || upload?.phase == .active || upload?.phase == .cancelling
+            || isDeletionInProgress
     }
 }

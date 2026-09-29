@@ -50,16 +50,19 @@ host paths one click away, with exact-path access and safe single-file upload.
 - Optionally groups saved profiles into lightweight menu-bar sections
 - Starts and stops each profile with one click
 - Opens an unambiguous local TCP forward in the default browser with one click
-- Retries unexpected disconnects up to 10 times with exponential backoff
+- Retries unexpected disconnects with exponential backoff and a saved 0–100 retry limit in Settings (default 10; 0 disables retries)
 - Shows startup failures directly beside the tunnel
 - Stores tunnel definitions in local `UserDefaults`
 - Stops child SSH processes when RelayBar quits
 - Checks for signed updates on demand or, when enabled, once a week
 - Reopens successful remote folders from a bounded local recent-location sidebar, or opens an exact path through a recent connection, saved host, forwarding profile, or concrete `~/.ssh/config` alias
-- Uploads one local file into the open remote folder through failure-safe hidden staging, with explicit replacement consent
+- Uploads one local file into the open remote folder through failure-safe hidden staging, with byte and percentage progress plus explicit replacement consent
 - Downloads remote files or folders with progress, cancellation, and Finder reveal
 - Previews supported remote images without adding editing or gallery features
 - Renders remote Markdown in a safe, read-only view with GFM, callouts, inert tags, syntax highlighting, footnotes, and native math
+- Renders bounded UTF-8 JSON in a native, selectable, read-only syntax view
+- Previews bounded remote MP4 video through native, paused-by-default playback controls
+- Enters a reusable Select mode for file-only browser actions and offers a five-second Undo window before permanent single or bulk deletion; direct preview deletion advances after server acknowledgement
 
 For example, Quick Add accepts `ssh -N -D 9999 -p 1234 user@server`, and one profile can combine local, SOCKS, and remote rules. A SOCKS client that should resolve names from the SSH server side must send hostnames through SOCKS, for example:
 
@@ -83,7 +86,7 @@ RelayBar handles the few steps between a remote server and your Mac. Use Claude 
    - ~~Save forward definitions locally.~~
    - ~~Start and stop each forward from the menu bar.~~
    - ~~Start a stopped forward and open its URL in the default browser.~~
-   - ~~Retry an unexpected disconnect up to 10 times.~~
+   - ~~Retry unexpected disconnects with exponential backoff and a configurable limit, including 0 to disable retries.~~
    - ~~Show connection errors beside the affected forward.~~
    - ~~Stop managed SSH processes when RelayBar quits.~~
    - ~~Combine repeated local, SOCKS, remote, and Unix-socket rules in one profile.~~
@@ -98,10 +101,16 @@ RelayBar handles the few steps between a remote server and your Mac. Use Claude 
    6. ~~**Render Markdown:** render GFM and common Obsidian reading syntax in a bounded, read-only native view. Remote images and embeds are not fetched, raw HTML is inert, and Mermaid remains source-only.~~
    7. ~~**Revisit common folders:** keep a bounded local list of successful host-and-folder pairs in one persistent split workspace.~~
    8. ~~**Upload one file safely:** stage one chosen local regular file and publish it only with the server's advertised hard-link or POSIX-rename guarantee.~~
+   9. ~~**Preview JSON and show upload percentage:** render bounded JSON natively and measure exact staging bytes without weakening safe publication.~~
+   10. ~~**Delete files directly:** offer five seconds to Undo before removing a revalidated browser selection sequentially or the current previewed file; keep image preview moving after acknowledged deletion.~~
+   11. ~~**Select and act on files:** enter an explicit file-only selection mode whose first bulk action is permanent sequential deletion.~~
+   12. ~~**Fix JSON reading and preview MP4:** soft-wrap and vertically scroll JSON, and play bounded MP4 files through native controls without autoplay.~~
 
-Remote file operations stop at opening, previewing, downloading, and explicit
-single-file upload. RelayBar does not search, mount, synchronize, or edit remote
-content.
+Remote file operations stop at opening, previewing, downloading, explicit
+single-file upload, and direct permanent deletion of selected regular files.
+RelayBar does not search, mount, synchronize, or edit remote content, and it
+does not provide remote Trash or recovery after deletion is submitted. Undo
+is available during the five-second wait before submission.
 
 Markdown rendering uses exactly pinned open-source packages. Required license text is bundled from [`THIRD_PARTY_NOTICES.txt`](Sources/RelayBar/Resources/THIRD_PARTY_NOTICES.txt).
 

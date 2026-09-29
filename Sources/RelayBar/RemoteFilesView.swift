@@ -1,3 +1,4 @@
+import AVKit
 import SwiftUI
 
 /// One reused formatter. `ByteCountFormatter.string(fromByteCount:countStyle:)`
@@ -102,6 +103,11 @@ struct RemoteFilesView: View {
                 focusedSidebarItem = initialFocusedSidebarItem
             }
         }
+        .onChange(of: model.deletionAnnouncement) { announcement in
+            if let announcement {
+                SystemAccessibilityAnnouncer().announce(announcement)
+            }
+        }
         .sheet(isPresented: $isAddingPath) {
             AddRemotePathView(model: model)
         }
@@ -189,6 +195,7 @@ struct RemoteFilesView: View {
                     }
 
                     if !model.recentLocations.isEmpty {
+                        let showsRecentHost = Set(model.recentLocations.map { $0.server.connectionIdentity }).count > 1
                         sidebarSection("RECENT FOLDERS") {
                             ForEach(globallyVisibleRecentLocations) { location in
                                 RemoteLocationRow(
@@ -198,6 +205,7 @@ struct RemoteFilesView: View {
                                     isWorkspaceRoot: model.activeLocationID == location.id,
                                     isKeyboardFocused: effectiveFocusedSidebarItem
                                         == .location(location.id),
+                                    showsHost: showsRecentHost,
                                     onActivate: { model.activate(location) },
                                     onRemove: { model.removeRecentLocation(id: location.id) }
                                 )
@@ -333,10 +341,17 @@ struct RemoteFilesView: View {
                 Image(systemName: "server.rack")
                     .foregroundStyle(.secondary)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(server.displayName)
+                    Text(verbatim: server.name.isEmpty ? server.sshHost : server.name)
                         .font(.callout.weight(.medium))
                         .lineLimit(1)
                         .truncationMode(.middle)
+                    if !server.name.isEmpty && server.name != server.sshHost {
+                        Text(verbatim: server.sshHost)
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                    }
                     Text("\(model.recentLocationCount(for: server)) recent "
                         + (model.recentLocationCount(for: server) == 1 ? "path" : "paths"))
                         .font(.caption2)
@@ -351,6 +366,7 @@ struct RemoteFilesView: View {
         .buttonStyle(.plain)
         .disabled(!model.canActivateLocation)
         .focused($focusedSidebarItem, equals: .host(server.id))
+        .help(server.displayName)
         .contextMenu {
             Button("Add Path…") {
                 model.selectedServerID = server.id
@@ -595,6 +611,11 @@ struct RemoteFilesView: View {
             RemotePreviewKeyboardMonitor(
                 onMovePrevious: { model.movePreviewSelection(by: -1) },
                 onMoveNext: { model.movePreviewSelection(by: 1) },
+                onDelete: {
+                    guard model.canDeletePreviewEntry else { return false }
+                    model.deletePreviewEntry()
+                    return true
+                },
                 isEnabled: model.screen == .preview,
                 isSidebarFocused: isPreviewSidebarVisible
                     && focusedSidebarItem != nil
@@ -634,6 +655,11 @@ struct RemoteFilesView: View {
 
             if let upload = model.upload {
                 UploadStrip(model: model, upload: upload)
+                Divider()
+            }
+
+            if let deletion = model.deletion {
+                DeletionStrip(model: model, deletion: deletion)
                 Divider()
             }
 
@@ -678,6 +704,7 @@ struct RemoteFilesView: View {
         .background(
             RemoteFilesKeyboardMonitor(
                 onPreview: {
+                    guard !model.isSelectingFiles else { return false }
                     if let entry = model.selectedEntry, entry.isPreviewable {
                         model.preview(entry)
                         return true
@@ -685,8 +712,22 @@ struct RemoteFilesView: View {
                     return false
                 },
                 onActivate: {
+                    guard !model.isSelectingFiles else { return false }
                     guard let entry = model.selectedEntry else { return false }
                     model.activate(entry)
+                    return true
+                },
+                onDelete: {
+                    if model.isSelectingFiles {
+                        guard model.canDeleteSelectedFiles else { return false }
+                        model.deleteSelectedFiles()
+                        return true
+                    }
+                    guard
+                        let entry = model.selectedEntry,
+                        model.canDelete(entry)
+                    else { return false }
+                    model.delete(entry)
                     return true
                 },
                 isEnabled: model.screen == .browser,
@@ -696,83 +737,154 @@ struct RemoteFilesView: View {
             .frame(width: 0, height: 0)
         )
         .onExitCommand {
-            if model.canGoBack {
+            if model.isSelectingFiles {
+                model.cancelFileSelection()
+            } else if model.canGoBack {
                 model.goBack()
             }
         }
     }
 
     private var browserToolbar: some View {
-        HStack(spacing: 12) {
+        GeometryReader { geometry in
+            browserToolbarContent(compact: geometry.size.width < 650)
+                .frame(height: geometry.size.height)
+        }
+        .frame(height: 48)
+    }
+
+    private func browserToolbarContent(compact: Bool) -> some View {
+        HStack(spacing: compact ? 8 : 12) {
             sidebarToggle
 
             Button {
                 model.goBack()
             } label: {
-                Label("Back", systemImage: "chevron.left")
+                toolbarLabel("Back", systemImage: "chevron.left", compact: compact)
             }
+            .fixedSize()
             .keyboardShortcut("[", modifiers: .command)
             .disabled(!model.canGoBack)
             .help(model.backHelp)
 
-            Spacer()
-
             Text(model.presentedPath)
                 .font(.system(.callout, design: .monospaced))
                 .lineLimit(1)
-                .truncationMode(.middle)
+                .truncationMode(.head)
+                .frame(minWidth: 60, maxWidth: .infinity, alignment: .leading)
                 .help(model.presentedPath)
                 .accessibilityLabel("Current path \(model.presentedPath)")
 
-            Spacer()
-
-            Button {
-                model.refresh()
-            } label: {
-                if model.isRefreshing {
-                    HStack(spacing: 6) {
-                        ProgressView()
-                            .controlSize(.small)
-                        Text("Refresh")
-                    }
-                } else {
-                    Label("Refresh", systemImage: "arrow.clockwise")
+            if model.isSelectingFiles {
+                Button("Cancel") {
+                    model.cancelFileSelection()
                 }
-            }
-            .keyboardShortcut("r", modifiers: .command)
-            .disabled(!model.canActivateLocation)
+                .fixedSize()
+                .disabled(model.isDeletionInProgress)
 
-            Button {
-                model.beginUpload()
-            } label: {
-                Label("Upload…", systemImage: "arrow.up.circle")
+                Text("\(model.selectedFileIDs.count) Selected")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .monospacedDigit()
+                    .fixedSize()
+                    .accessibilityLabel(
+                        "\(model.selectedFileIDs.count) "
+                            + (model.selectedFileIDs.count == 1 ? "file selected" : "files selected")
+                    )
+
+                Button(role: .destructive) {
+                    model.deleteSelectedFiles()
+                } label: {
+                    Label(
+                        model.selectedFileIDs.isEmpty
+                            ? "Delete"
+                            : "Delete \(model.selectedFileIDs.count)",
+                        systemImage: "trash"
+                    )
+                }
+                .fixedSize()
+                .tint(.red)
+                .foregroundStyle(model.canDeleteSelectedFiles ? Color.red : Color.secondary)
+                .disabled(!model.canDeleteSelectedFiles)
+                .help("Delete the selected files after a 5-second Undo window")
+            } else {
+                Button {
+                    model.refresh()
+                } label: {
+                    if model.isRefreshing {
+                        HStack(spacing: 6) {
+                            ProgressView()
+                                .controlSize(.small)
+                            if !compact { Text("Refresh") }
+                        }
+                    } else {
+                        toolbarLabel("Refresh", systemImage: "arrow.clockwise", compact: compact)
+                    }
+                }
+                .fixedSize()
+                .help("Refresh folder")
+                .accessibilityLabel("Refresh folder")
+                .keyboardShortcut("r", modifiers: .command)
+                .disabled(!model.canActivateLocation)
+
+                Button {
+                    model.beginFileSelection()
+                } label: {
+                    toolbarLabel("Select", systemImage: "checklist", compact: compact)
+                }
+                .fixedSize()
+                .disabled(!model.canBeginFileSelection)
+                .help("Select files for an action")
+
+                Button {
+                    model.beginUpload()
+                } label: {
+                    toolbarLabel("Upload…", systemImage: "arrow.up.circle", compact: compact)
+                }
+                .fixedSize()
+                .help("Upload a file")
+                .buttonStyle(.borderedProminent)
+                .disabled(!model.canUpload)
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(!model.canUpload)
         }
         .padding(.horizontal, 14)
         .frame(minHeight: 48)
     }
 
+    @ViewBuilder
+    private func toolbarLabel(_ title: String, systemImage: String, compact: Bool) -> some View {
+        if compact {
+            Label(title, systemImage: systemImage).labelStyle(.iconOnly)
+        } else {
+            Label(title, systemImage: systemImage)
+        }
+    }
+
     private var fileList: some View {
-        List(selection: $model.selectedEntryID) {
+        List {
             ForEach(model.entries) { entry in
                 RemoteFileRow(
                     entry: entry,
                     isSelected: model.selectedEntryID == entry.id,
+                    isSelectionMode: model.isSelectingFiles,
+                    isFileSelected: model.selectedFileIDs.contains(entry.id),
+                    showsActions: !model.isSelectingFiles
+                        && model.selectedEntryID == entry.id,
                     onSelect: { model.select(entry) },
+                    onToggleSelection: { model.toggleFileSelection(entry) },
                     onActivate: { model.activate(entry) },
                     onPreview: { model.preview(entry) },
-                    onDownload: { model.download(entry) }
+                    onDownload: { model.download(entry) },
+                    onDelete: { model.delete(entry) },
+                    canDelete: model.canDelete(entry)
                 )
-                .tag(entry.id)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.visible)
                 .listRowSeparatorTint(Color.primary.opacity(0.08))
             }
         }
         .listStyle(.plain)
-        .disabled(!model.canActivateEntry)
+        .disabled(!model.canInteractWithFileList)
     }
 
     private var previewToolbar: some View {
@@ -820,7 +932,19 @@ struct RemoteFilesView: View {
             .disabled(
                 model.transfer?.phase == .active
                     || model.transfer?.phase == .cancelling
+                    || model.isDeletionInProgress
+                    || model.isLoadingPreview
             )
+
+            Button(role: .destructive) {
+                model.deletePreviewEntry()
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            .buttonStyle(.bordered)
+            .tint(.red)
+            .disabled(!model.canDeletePreviewEntry)
+            .help("Delete this file after a 5-second Undo window")
         }
         .padding(.horizontal, 14)
         .frame(minHeight: 52)
@@ -833,16 +957,38 @@ struct RemoteFilesView: View {
                 Divider()
             }
 
+
+            if let deletion = model.deletion {
+                DeletionStrip(model: model, deletion: deletion)
+                Divider()
+            }
+
             if model.isLoadingPreview {
                 VStack(spacing: 10) {
-                    ProgressView()
-                    Text("Loading preview…")
+                    if let progress = model.previewProgress,
+                       let fraction = progress.fraction
+                    {
+                        ProgressView(value: fraction)
+                            .frame(width: 240)
+                    } else {
+                        ProgressView()
+                    }
+                    Text(model.previewProgress?.message ?? "Loading preview…")
                         .font(.callout)
                         .foregroundStyle(.secondary)
+                    if let progress = model.previewProgress {
+                        Text(previewProgressDescription(progress))
+                            .font(.caption.monospacedDigit())
+                            .foregroundStyle(.tertiary)
+                        Button("Cancel", action: model.cancelPreviewLoading)
+                            .buttonStyle(.bordered)
+                    }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage = model.errorMessage {
                 errorState(message: errorMessage, retry: model.retryPreview)
+            } else if let videoURL = model.previewVideoURL {
+                RemoteVideoPlayerView(url: videoURL)
             } else if let image = model.previewImage {
                 GeometryReader { geometry in
                     let maximumWidth = max(0, geometry.size.width - 64)
@@ -868,15 +1014,30 @@ struct RemoteFilesView: View {
                 }
             } else if let markdown = model.previewMarkdown {
                 SafeRemoteMarkdownView(document: markdown)
+            } else if let json = model.previewJSON {
+                SafeRemoteJSONView(document: json)
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
     }
 
     private func previewDescription(for entry: RemoteFileEntry) -> String {
-        let kind = entry.isPreviewableImage ? "Image" : "Markdown"
+        let kind = entry.isPreviewableImage
+            ? "Image"
+            : (entry.isPreviewableJSON
+                ? "JSON"
+                : (entry.isPreviewableVideo ? "Video" : "Markdown"))
         guard let size = entry.size else { return kind }
         return "\(kind) · \(RemoteByteCount.string(size))"
+    }
+
+    private func previewProgressDescription(
+        _ progress: RemoteFilesModel.PreviewProgressPresentation
+    ) -> String {
+        let completed = RemoteByteCount.string(progress.completedBytes)
+        guard let total = progress.totalBytes else { return completed }
+        let percentage = progress.percentage.map { "\($0)% · " } ?? ""
+        return "\(percentage)\(completed) of \(RemoteByteCount.string(total))"
     }
 
     private func errorState(message: String, retry: @escaping () -> Void) -> some View {
@@ -1022,6 +1183,7 @@ private struct RemoteLocationRow: View {
     let isWorkspaceRoot: Bool
     let isKeyboardFocused: Bool
     var isNested = false
+    var showsHost = true
     let onActivate: () -> Void
     let onRemove: () -> Void
 
@@ -1036,13 +1198,20 @@ private struct RemoteLocationRow: View {
                     Text(isNested ? location.path : location.displayName)
                         .font(.callout.weight(.medium))
                         .lineLimit(1)
-                        .truncationMode(.middle)
+                        .truncationMode(.head)
                     if !isNested {
-                        Text("\(location.server.displayName) · \(location.path)")
+                        Text(verbatim: location.path)
                             .font(.caption2)
                             .foregroundStyle(isActiveRoot ? Color.white.opacity(0.78) : .secondary)
                             .lineLimit(1)
-                            .truncationMode(.middle)
+                            .truncationMode(.head)
+                        if showsHost {
+                            Text(verbatim: location.server.sshHost)
+                                .font(.caption2)
+                                .foregroundStyle(isActiveRoot ? Color.white.opacity(0.78) : .secondary)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                        }
                     }
                 }
                 Spacer(minLength: 4)
@@ -1081,7 +1250,223 @@ private struct RemoteLocationRow: View {
                 + (isWorkspaceRoot ? ", workspace root" : "")
         )
         .accessibilityHint("Open this remote folder")
+        .help("\(location.server.displayName)\n\(location.path)")
         .accessibilityAddTraits(isActiveRoot ? .isSelected : [])
+    }
+}
+
+enum RemoteJSONSyntaxHighlighter {
+    static func attributedString(for text: String) -> NSAttributedString {
+        let source = text as NSString
+        let result = NSMutableAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.monospacedSystemFont(ofSize: 13, weight: .regular),
+                .foregroundColor: NSColor.labelColor
+            ]
+        )
+        let punctuation = CharacterSet(charactersIn: "{}[],:" )
+        let numberCharacters = CharacterSet(charactersIn: "-+0123456789.eE")
+        var index = 0
+
+        while index < source.length {
+            let scalar = UnicodeScalar(source.character(at: index))
+            if scalar == "\"" {
+                let start = index
+                index += 1
+                while index < source.length {
+                    let character = source.character(at: index)
+                    if character == 0x5C {
+                        index = min(index + 2, source.length)
+                    } else if character == 0x22 {
+                        index += 1
+                        break
+                    } else {
+                        index += 1
+                    }
+                }
+                var next = index
+                while next < source.length,
+                      CharacterSet.whitespacesAndNewlines.contains(
+                        UnicodeScalar(source.character(at: next))!
+                      )
+                {
+                    next += 1
+                }
+                let isKey = next < source.length && source.character(at: next) == 0x3A
+                result.addAttribute(
+                    .foregroundColor,
+                    value: isKey ? NSColor.systemPurple : NSColor.systemRed,
+                    range: NSRange(location: start, length: index - start)
+                )
+                continue
+            }
+
+            if let scalar, numberCharacters.contains(scalar),
+               scalar == "-" || CharacterSet.decimalDigits.contains(scalar)
+            {
+                let start = index
+                index += 1
+                while index < source.length,
+                      let current = UnicodeScalar(source.character(at: index)),
+                      numberCharacters.contains(current)
+                {
+                    index += 1
+                }
+                result.addAttribute(
+                    .foregroundColor,
+                    value: NSColor.systemBlue,
+                    range: NSRange(location: start, length: index - start)
+                )
+                continue
+            }
+
+            let remaining = NSRange(location: index, length: source.length - index)
+            if source.range(of: "true", options: [], range: remaining).location == index
+                || source.range(of: "false", options: [], range: remaining).location == index
+                || source.range(of: "null", options: [], range: remaining).location == index
+            {
+                let length = source.character(at: index) == 0x66 ? 5 : 4
+                result.addAttribute(
+                    .foregroundColor,
+                    value: NSColor.systemOrange,
+                    range: NSRange(location: index, length: length)
+                )
+                index += length
+                continue
+            }
+
+            if let scalar, punctuation.contains(scalar) {
+                result.addAttribute(
+                    .foregroundColor,
+                    value: NSColor.secondaryLabelColor,
+                    range: NSRange(location: index, length: 1)
+                )
+            }
+            index += 1
+        }
+        return result
+    }
+}
+
+@MainActor
+enum RemoteJSONTextViewFactory {
+    static func make(document: RemoteJSONDocument) -> NSScrollView {
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.borderType = .noBorder
+        scrollView.drawsBackground = true
+        scrollView.backgroundColor = .textBackgroundColor
+
+        let textView = NSTextView(
+            frame: NSRect(origin: .zero, size: scrollView.contentSize)
+        )
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isRichText = true
+        textView.usesFindBar = true
+        textView.drawsBackground = true
+        textView.backgroundColor = .textBackgroundColor
+        textView.textContainerInset = NSSize(width: 18, height: 16)
+        textView.minSize = NSSize(width: 0, height: scrollView.contentSize.height)
+        textView.maxSize = NSSize(
+            width: CGFloat.greatestFiniteMagnitude,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.isVerticallyResizable = true
+        textView.isHorizontallyResizable = false
+        textView.autoresizingMask = [.width]
+        textView.textContainer?.widthTracksTextView = true
+        textView.textContainer?.heightTracksTextView = false
+        textView.textContainer?.containerSize = NSSize(
+            width: scrollView.contentSize.width,
+            height: CGFloat.greatestFiniteMagnitude
+        )
+        textView.setAccessibilityLabel("Read-only JSON preview")
+        scrollView.documentView = textView
+        update(scrollView, document: document)
+        scrollView.needsLayout = true
+        return scrollView
+    }
+
+    static func update(_ scrollView: NSScrollView, document: RemoteJSONDocument) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        let attributed = RemoteJSONSyntaxHighlighter.attributedString(
+            for: document.formattedText
+        )
+        guard textView.attributedString() != attributed else { return }
+        textView.textStorage?.setAttributedString(attributed)
+        if let textContainer = textView.textContainer {
+            textView.layoutManager?.ensureLayout(for: textContainer)
+        }
+        scrollView.needsLayout = true
+        scrollView.layoutSubtreeIfNeeded()
+    }
+}
+
+private struct SafeRemoteJSONView: NSViewRepresentable {
+    let document: RemoteJSONDocument
+
+    func makeNSView(context: Context) -> NSScrollView {
+        RemoteJSONTextViewFactory.make(document: document)
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        RemoteJSONTextViewFactory.update(scrollView, document: document)
+    }
+}
+
+@MainActor
+final class RemoteVideoPlayerController {
+    let player = AVPlayer()
+    private(set) var url: URL?
+
+    func show(_ url: URL) {
+        guard self.url != url else { return }
+        player.pause()
+        player.replaceCurrentItem(with: AVPlayerItem(url: url))
+        self.url = url
+    }
+
+    func stop() {
+        player.pause()
+        player.replaceCurrentItem(with: nil)
+        url = nil
+    }
+}
+
+@MainActor
+struct RemoteVideoPlayerView: NSViewRepresentable {
+    let url: URL
+
+    final class Coordinator {
+        let controller = RemoteVideoPlayerController()
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeNSView(context: Context) -> AVPlayerView {
+        let playerView = AVPlayerView()
+        playerView.controlsStyle = .inline
+        playerView.showsFullScreenToggleButton = true
+        playerView.player = context.coordinator.controller.player
+        playerView.setAccessibilityLabel("Video preview")
+        context.coordinator.controller.show(url)
+        return playerView
+    }
+
+    func updateNSView(_ playerView: AVPlayerView, context: Context) {
+        playerView.player = context.coordinator.controller.player
+        context.coordinator.controller.show(url)
+    }
+
+    static func dismantleNSView(_ playerView: AVPlayerView, coordinator: Coordinator) {
+        coordinator.controller.stop()
+        playerView.player = nil
     }
 }
 
@@ -1091,7 +1476,13 @@ private struct PreviewSidebarRow: View {
 
     var body: some View {
         HStack(spacing: 9) {
-            Image(systemName: entry.isPreviewableImage ? "photo" : "doc.richtext")
+            Image(
+                systemName: entry.isPreviewableImage
+                    ? "photo"
+                    : (entry.isPreviewableJSON
+                        ? "curlybraces"
+                        : (entry.isPreviewableVideo ? "film" : "doc.richtext"))
+            )
                 .font(.system(size: 13))
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
@@ -1137,7 +1528,11 @@ private struct PreviewSidebarRow: View {
     }
 
     private var accessibilityLabel: String {
-        let kind = entry.isPreviewableImage ? "image" : "Markdown document"
+        let kind = entry.isPreviewableImage
+            ? "image"
+            : (entry.isPreviewableJSON
+                ? "JSON document"
+                : (entry.isPreviewableVideo ? "video" : "Markdown document"))
         return "\(entry.name), \(kind), \(metadata)"
     }
 }
@@ -1213,13 +1608,35 @@ private struct AddRemoteServerView: View {
 private struct RemoteFileRow: View {
     let entry: RemoteFileEntry
     let isSelected: Bool
+    let isSelectionMode: Bool
+    let isFileSelected: Bool
+    let showsActions: Bool
     let onSelect: () -> Void
+    let onToggleSelection: () -> Void
     let onActivate: () -> Void
     let onPreview: () -> Void
     let onDownload: () -> Void
+    let onDelete: () -> Void
+    let canDelete: Bool
 
     var body: some View {
         HStack(spacing: 10) {
+            if isSelectionMode {
+                if entry.kind == .file {
+                    Image(
+                        systemName: isFileSelected
+                            ? "checkmark.circle.fill"
+                            : "circle"
+                    )
+                    .font(.system(size: 16))
+                    .foregroundStyle(isFileSelected ? Color.accentColor : Color.secondary)
+                    .frame(width: 22)
+                    .accessibilityHidden(true)
+                } else {
+                    Color.clear.frame(width: 22, height: 1)
+                }
+            }
+
             Image(systemName: iconName)
                 .font(.system(size: 16))
                 .foregroundStyle(iconColor)
@@ -1242,7 +1659,7 @@ private struct RemoteFileRow: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 72, alignment: .trailing)
 
-            if isSelected {
+            if showsActions {
                 Button {
                     onDownload()
                 } label: {
@@ -1258,32 +1675,70 @@ private struct RemoteFileRow: View {
         }
         .padding(.horizontal, 14)
         .frame(minHeight: 43)
-        .background(isSelected ? Color.accentColor.opacity(0.12) : Color.clear)
+        .background(
+            (isSelectionMode ? isFileSelected : isSelected)
+                ? Color.accentColor.opacity(0.12)
+                : Color.clear
+        )
+        .opacity(isSelectionMode && entry.kind != .file ? 0.58 : 1)
         .contentShape(Rectangle())
-        .onTapGesture(count: 2, perform: onActivate)
-        .onTapGesture(perform: onSelect)
+        .remoteFileRowGestures(
+            isSelectionMode: isSelectionMode,
+            isSelectableFile: entry.kind == .file,
+            onSelect: onSelect,
+            onActivate: onActivate,
+            onToggleSelection: onToggleSelection
+        )
         .contextMenu {
-            if entry.isDirectory {
-                Button("Open", action: onActivate)
-            } else if entry.isPreviewable {
-                Button("Preview", action: onPreview)
+            if !isSelectionMode {
+                if entry.isDirectory {
+                    Button("Open", action: onActivate)
+                } else if entry.isPreviewable {
+                    Button("Preview", action: onPreview)
+                }
+                Button(entry.isDirectory ? "Download Folder…" : "Download…", action: onDownload)
+                if entry.kind == .file {
+                    Divider()
+                    Button("Delete", role: .destructive, action: onDelete)
+                        .disabled(!canDelete)
+                }
             }
-            Button(entry.isDirectory ? "Download Folder…" : "Download…", action: onDownload)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-        .accessibilityAction(
-            named: Text(entry.isDirectory ? "Open" : (entry.isPreviewable ? "Preview" : "Download")),
-            onActivate
+        .accessibilityLabel(
+            accessibilityLabel
+                + (isSelectionMode && entry.kind == .file
+                    ? (isFileSelected ? ", selected for actions" : ", not selected for actions")
+                    : "")
         )
-        .accessibilityAction(named: Text(entry.isDirectory ? "Download Folder" : "Download"), onDownload)
+        .accessibilityHint(
+            isSelectionMode
+                ? (entry.kind == .file
+                    ? "Toggle this file's selection"
+                    : "Folders cannot be selected in file-selection mode")
+                : ""
+        )
+        .accessibilityAddTraits(
+            (isSelectionMode ? isFileSelected : isSelected) ? .isSelected : []
+        )
+        .remoteFileRowAccessibilityActions(
+            entry: entry,
+            isSelectionMode: isSelectionMode,
+            isFileSelected: isFileSelected,
+            canDelete: canDelete,
+            onActivate: onActivate,
+            onDownload: onDownload,
+            onDelete: onDelete,
+            onToggleSelection: onToggleSelection
+        )
     }
 
     private var iconName: String {
         if entry.isDirectory { return "folder.fill" }
         if entry.isPreviewableImage { return "photo" }
         if entry.isPreviewableMarkdown { return "doc.richtext" }
+        if entry.isPreviewableJSON { return "curlybraces" }
+        if entry.isPreviewableVideo { return "film" }
         if entry.kind == .symbolicLink { return "link" }
         return "doc"
     }
@@ -1306,12 +1761,87 @@ private struct RemoteFileRow: View {
                 type = "image"
             } else if entry.isPreviewableMarkdown {
                 type = "Markdown document"
+            } else if entry.isPreviewableJSON {
+                type = "JSON document"
+            } else if entry.isPreviewableVideo {
+                type = "video"
             } else {
                 type = "file"
             }
         case .symbolicLink: type = "symbolic link"
         }
         return "\(entry.name), \(type), modified \(entry.modificationText), \(sizeText)"
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func remoteFileRowGestures(
+        isSelectionMode: Bool,
+        isSelectableFile: Bool,
+        onSelect: @escaping () -> Void,
+        onActivate: @escaping () -> Void,
+        onToggleSelection: @escaping () -> Void
+    ) -> some View {
+        if isSelectionMode {
+            if isSelectableFile {
+                onTapGesture(perform: onToggleSelection)
+            } else {
+                self
+            }
+        } else {
+            onTapGesture(count: 2, perform: onActivate)
+                .onTapGesture(perform: onSelect)
+        }
+    }
+
+    @ViewBuilder
+    func remoteFileRowAccessibilityActions(
+        entry: RemoteFileEntry,
+        isSelectionMode: Bool,
+        isFileSelected: Bool,
+        canDelete: Bool,
+        onActivate: @escaping () -> Void,
+        onDownload: @escaping () -> Void,
+        onDelete: @escaping () -> Void,
+        onToggleSelection: @escaping () -> Void
+    ) -> some View {
+        if isSelectionMode {
+            if entry.kind == .file {
+                accessibilityAction(
+                    named: Text(isFileSelected ? "Deselect" : "Select"),
+                    onToggleSelection
+                )
+            } else {
+                self
+            }
+        } else {
+            accessibilityAction(
+                named: Text(
+                    entry.isDirectory
+                        ? "Open"
+                        : (entry.isPreviewable ? "Preview" : "Download")
+                ),
+                onActivate
+            )
+            .accessibilityAction(
+                named: Text(entry.isDirectory ? "Download Folder" : "Download"),
+                onDownload
+            )
+            .remoteDeleteAccessibilityAction(enabled: canDelete, action: onDelete)
+        }
+    }
+
+    @ViewBuilder
+    func remoteDeleteAccessibilityAction(
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        if enabled {
+            accessibilityAction(named: Text("Delete"), action)
+        } else {
+            self
+        }
     }
 }
 
@@ -1458,10 +1988,19 @@ private struct UploadStrip: View {
                     .font(.callout.weight(.medium))
                     .lineLimit(1)
                 if upload.phase == .active || upload.phase == .cancelling {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityLabel(title)
-                        .accessibilityValue(upload.message ?? "In progress")
+                    if upload.phase == .active,
+                       upload.operationPhase == .staging,
+                       let fraction = upload.fraction
+                    {
+                        ProgressView(value: fraction)
+                            .accessibilityLabel(title)
+                            .accessibilityValue(progressText)
+                    } else {
+                        ProgressView()
+                            .controlSize(.small)
+                            .accessibilityLabel(title)
+                            .accessibilityValue(upload.message ?? "In progress")
+                    }
                 } else if let message = upload.message {
                     Text(message)
                         .font(.caption)
@@ -1473,7 +2012,11 @@ private struct UploadStrip: View {
             Spacer()
 
             if upload.phase == .active {
-                Text(upload.message ?? "Staging safely…")
+                Text(
+                    upload.operationPhase == .staging
+                        ? progressText
+                        : (upload.message ?? upload.operationPhase.presentationText)
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Button("Cancel") { model.cancelUpload() }
@@ -1531,6 +2074,69 @@ private struct UploadStrip: View {
         case .failed: return "Upload failed"
         case .cancelled: return "Upload canceled"
         }
+    }
+
+    private var progressText: String {
+        if let percentage = upload.percentage {
+            return "\(percentage)% · \(RemoteByteCount.string(upload.completedBytes)) of "
+                + RemoteByteCount.string(upload.totalBytes)
+        }
+        return upload.message ?? upload.operationPhase.presentationText
+    }
+}
+
+private struct DeletionStrip: View {
+    @ObservedObject var model: RemoteFilesModel
+    let deletion: RemoteFilesModel.DeletionPresentation
+
+    var body: some View {
+        HStack(spacing: 10) {
+            if deletion.phase == .active {
+                ProgressView()
+                    .controlSize(.small)
+                    .accessibilityLabel("Deletion in progress")
+            } else if deletion.phase == .pendingUndo {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel("Deletion pending")
+            } else {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .foregroundStyle(.orange)
+                    .accessibilityLabel("Deletion warning")
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(deletion.message ?? "Deleting \(deletion.entry.name)…")
+                    .font(.caption)
+                    .lineLimit(2)
+                if let deadline = deletion.undoDeadline {
+                    TimelineView(.periodic(from: .now, by: 1)) { context in
+                        Text("Undo available for \(max(0, Int(ceil(deadline.timeIntervalSince(context.date)))))s")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            Spacer(minLength: 12)
+
+            switch deletion.phase {
+            case .pendingUndo:
+                Button("Undo") { model.undoDeletion() }
+                    .keyboardShortcut("z", modifiers: .command)
+            case .active:
+                Text("Deleting…")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            case .failed:
+                Button("Dismiss") { model.dismissDeletion() }
+            case .outcomeUnknown:
+                Button("Refresh") { model.refreshAfterUnknownDeletion() }
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 9)
+        .background(Color.orange.opacity(0.07))
     }
 }
 
@@ -1664,6 +2270,7 @@ private struct RemoteSidebarKeyboardMonitor: NSViewRepresentable {
 private struct RemoteFilesKeyboardMonitor: NSViewRepresentable {
     let onPreview: () -> Bool
     let onActivate: () -> Bool
+    let onDelete: () -> Bool
     let isEnabled: Bool
     let isSidebarFocused: Bool
 
@@ -1671,6 +2278,7 @@ private struct RemoteFilesKeyboardMonitor: NSViewRepresentable {
         Coordinator(
             onPreview: onPreview,
             onActivate: onActivate,
+            onDelete: onDelete,
             isEnabled: isEnabled,
             isSidebarFocused: isSidebarFocused
         )
@@ -1687,6 +2295,7 @@ private struct RemoteFilesKeyboardMonitor: NSViewRepresentable {
         context.coordinator.view = nsView
         context.coordinator.onPreview = onPreview
         context.coordinator.onActivate = onActivate
+        context.coordinator.onDelete = onDelete
         context.coordinator.isEnabled = isEnabled
         context.coordinator.isSidebarFocused = isSidebarFocused
     }
@@ -1700,6 +2309,7 @@ private struct RemoteFilesKeyboardMonitor: NSViewRepresentable {
         weak var view: NSView?
         var onPreview: () -> Bool
         var onActivate: () -> Bool
+        var onDelete: () -> Bool
         var isEnabled: Bool
         var isSidebarFocused: Bool
         private var monitor: Any?
@@ -1707,11 +2317,13 @@ private struct RemoteFilesKeyboardMonitor: NSViewRepresentable {
         init(
             onPreview: @escaping () -> Bool,
             onActivate: @escaping () -> Bool,
+            onDelete: @escaping () -> Bool,
             isEnabled: Bool,
             isSidebarFocused: Bool
         ) {
             self.onPreview = onPreview
             self.onActivate = onActivate
+            self.onDelete = onDelete
             self.isEnabled = isEnabled
             self.isSidebarFocused = isSidebarFocused
         }
@@ -1733,6 +2345,16 @@ private struct RemoteFilesKeyboardMonitor: NSViewRepresentable {
         }
 
         private func handle(_ event: NSEvent) -> NSEvent? {
+            if
+                isEnabled,
+                !isSidebarFocused,
+                event.window === view?.window,
+                isFileListResponder(event.window?.firstResponder),
+                event.keyCode == 51 || event.keyCode == 117,
+                RemoteFilesKeyboardShortcut.isCommandDown(event.modifierFlags)
+            {
+                return onDelete() ? nil : event
+            }
             guard
                 isEnabled,
                 !isSidebarFocused,
@@ -1786,6 +2408,7 @@ private struct RemoteFilesKeyboardMonitor: NSViewRepresentable {
 private struct RemotePreviewKeyboardMonitor: NSViewRepresentable {
     let onMovePrevious: () -> Bool
     let onMoveNext: () -> Bool
+    let onDelete: () -> Bool
     let isEnabled: Bool
     let isSidebarFocused: Bool
 
@@ -1793,6 +2416,7 @@ private struct RemotePreviewKeyboardMonitor: NSViewRepresentable {
         Coordinator(
             onMovePrevious: onMovePrevious,
             onMoveNext: onMoveNext,
+            onDelete: onDelete,
             isEnabled: isEnabled,
             isSidebarFocused: isSidebarFocused
         )
@@ -1809,6 +2433,7 @@ private struct RemotePreviewKeyboardMonitor: NSViewRepresentable {
         context.coordinator.view = nsView
         context.coordinator.onMovePrevious = onMovePrevious
         context.coordinator.onMoveNext = onMoveNext
+        context.coordinator.onDelete = onDelete
         context.coordinator.isEnabled = isEnabled
         context.coordinator.isSidebarFocused = isSidebarFocused
     }
@@ -1822,6 +2447,7 @@ private struct RemotePreviewKeyboardMonitor: NSViewRepresentable {
         weak var view: NSView?
         var onMovePrevious: () -> Bool
         var onMoveNext: () -> Bool
+        var onDelete: () -> Bool
         var isEnabled: Bool
         var isSidebarFocused: Bool
         private var monitor: Any?
@@ -1829,11 +2455,13 @@ private struct RemotePreviewKeyboardMonitor: NSViewRepresentable {
         init(
             onMovePrevious: @escaping () -> Bool,
             onMoveNext: @escaping () -> Bool,
+            onDelete: @escaping () -> Bool,
             isEnabled: Bool,
             isSidebarFocused: Bool
         ) {
             self.onMovePrevious = onMovePrevious
             self.onMoveNext = onMoveNext
+            self.onDelete = onDelete
             self.isEnabled = isEnabled
             self.isSidebarFocused = isSidebarFocused
         }
@@ -1854,6 +2482,15 @@ private struct RemotePreviewKeyboardMonitor: NSViewRepresentable {
         private func handle(_ event: NSEvent) -> NSEvent? {
             guard let window = view?.window else {
                 return event
+            }
+            if
+                isEnabled,
+                !isSidebarFocused,
+                event.window === window || NSApplication.shared.keyWindow === window,
+                event.keyCode == 51 || event.keyCode == 117,
+                RemoteFilesKeyboardShortcut.isCommandDown(event.modifierFlags)
+            {
+                return onDelete() ? nil : event
             }
             guard
                 isEnabled,

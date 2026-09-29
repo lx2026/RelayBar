@@ -8,6 +8,13 @@
 - Sparkle's EdDSA private key in the login Keychain under account
   `com.lx2026.RelayBar`
 
+On the maintainer's current Mac, the saved notarization profile is `AC_NOTARY`.
+Use `NOTARY_PROFILE=AC_NOTARY ./scripts/notarize-release.sh`. Confirm access
+with `xcrun notarytool history --keychain-profile AC_NOTARY`; this profile's
+history includes the accepted RelayBar 1.5.1 submission. The profile name is
+configuration, while its credentials remain in Keychain. Sparkle's
+`com.lx2026.RelayBar` account is a separate update-signing key.
+
 ## Commands
 
 - `swift test` runs the package tests.

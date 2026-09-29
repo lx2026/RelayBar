@@ -16,6 +16,15 @@ without adding search, indexing, mounting, or editing.
   host-and-normalized-path pairs before **Show All**. **Recent Hosts** retains
   at most eight connections and can disclose up to three additional,
   nonduplicated paths before its own overflow action.
+- Recent folder rows show the final folder name above a separate path line,
+  truncating paths from the start. Single-host recents omit repeated host text;
+  multiple-host recents show SSH identity on a separate line. Host rows separate
+  their custom name from SSH identity, and full values remain in help and
+  accessibility.
+- Below 650 points of browser-detail width, Back, Refresh, Select, and Upload
+  use icon-only labels with help/accessibility names. Actions retain their
+  intrinsic size, while the path truncates from the start to retain the final
+  folder name. Bulk Delete retains its visible count and red styling.
 - **Add Path…** opens a focused sheet containing the complete host picker, one
   validated absolute path, and **Add Host…**. A failed open leaves the entered
   host and path available for retry. A forwarding profile is not required.
@@ -32,15 +41,16 @@ without adding search, indexing, mounting, or editing.
   unrelated hosts.
 - OpenSSH config discovery reads at most 1 MiB from `~/.ssh/config`, exposes at most 256 concrete `Host` aliases, and ignores wildcard, character-pattern, and negated aliases. Config aliases remain read-only and are not copied into RelayBar storage.
 - Missing-path output from SFTP is normalized to a short user-facing error while preserving the entered path and server for retry.
-- When an entered path identifies a supported image or Markdown file, RelayBar
+- When an entered path identifies a supported image, Markdown, JSON, or MP4 file, RelayBar
   opens the existing bounded preview with that exact file selected. Back returns
   through a single-file browser context to the welcome workspace. Another regular file
   is shown selected in that context without starting a download automatically.
 
 ## Folder browser
 
-- The top bar contains **Back**, the exact current path, **Refresh**, and
-  **Upload…**.
+- The top bar contains **Back**, the exact current path, **Refresh**, **Select**,
+  and **Upload…**. **Select** appears only when the folder contains a regular
+  file and no operation is active.
 - The list shows supported folders, regular files, and symbolic links with modified text and size.
 - Folders sort before other items; each group uses localized name ordering.
 - Activating a folder presents its target path immediately. An uncached folder shows a content-local **Opening folder…** state; rows and Refresh are disabled, while Back remains available to cancel the open and restore the exact prior folder and selection.
@@ -50,15 +60,19 @@ without adding search, indexing, mounting, or editing.
 - Back follows navigation history, reselects the folder that was left, and
   returns to the quiet welcome detail from the initial folder. That transition
   clears the active root, snapshots, preview content, and SSH session.
-- Supported images and Markdown documents open a split preview workspace. Other files begin destination selection for download.
-- Search, filters, indexing, workspace discovery, rename, move, delete, folder
+- Supported images, Markdown documents, JSON documents, and MP4 videos open a split preview workspace. Other files begin destination selection for download.
+- Search, filters, indexing, workspace discovery, rename, move, folder
   or multi-file upload, synchronization, and remote editing are absent.
 
 ## Uploads
 
 - **Upload…** accepts one local regular non-symbolic-link file only while a
-  folder is open and no upload or download is active. Progress is deliberately
-  indeterminate and names the staging, publishing, or cleanup phase.
+  folder is open and no other file operation is active. During staging, the
+  app measures the exact hidden remote staging path no more than twice per
+  second through one bounded SFTP operation at a time. The UI presents
+  monotonic byte counts and an integer percentage, reaches 100% only after the
+  put succeeds, then names publishing and temporary-file cleanup as distinct
+  indeterminate phases.
 - RelayBar revalidates the target name. An observed directory or symbolic link
   is refused. An observed regular file requires a confirmation that identifies
   the bounded race with another remote client.
@@ -78,6 +92,54 @@ without adding search, indexing, mounting, or editing.
   attempt and SSH-master shutdown finish, and application termination waits for
   that retirement.
 - A successful upload refreshes the current rows without first blanking them.
+
+## Deletion
+
+- **Select** enters an explicit file-only selection mode. Ordinary row clicks
+  toggle checkmarks without opening or downloading; folders remain visible but
+  inert. The top bar becomes **Cancel**, a selected count, and the currently
+  available actions. Task 042 supplies **Delete** and leaves the mode structured
+  for future file-only actions. Escape and **Cancel** exit without mutation.
+- Bulk Delete is enabled only for at least one selected regular file and uses
+  red destructive styling. After the Undo window, it processes the stable browser order one
+  file at a time, and stops at the first failure. Full success exits selection
+  mode and selects the surviving row at the first deleted index. Partial
+  success keeps the failed and unattempted files selected for review; already
+  acknowledged files never reappear merely because a later deletion failed.
+
+- A selected regular file exposes a final destructive context-menu command,
+  a preview-toolbar command, Command-Delete while the
+  browser or preview owns focus, and a named accessibility action. Every path
+  first presents a five-second pending-deletion strip with **Undo** and a
+  countdown. No server deletion or preflight is submitted until the delay
+  expires. Undo (also Command-Z while the strip is present) cancels the timer
+  and preserves the current rows, selection, and preview. Window close or app
+  shutdown during the delay also cancels it. The row's only inline action is
+  Download, keeping destructive actions away from it.
+- There is no confirmation, server trash, quarantine, drag target, recovery
+  after submission, or automatic retry. The strip says **Will delete** before
+  submission; only an acknowledged server result is called deleted.
+- Directories and symbolic links are not deletable. One deletion runs at a
+  time and excludes listing, preview, upload, download, refresh, navigation,
+  and another deletion, including during the Undo window. Once the window
+  expires, the deleting strip offers no Undo or Cancel action.
+- Before removal, RelayBar lists the exact path through the same required owned
+  SSH master and requires its regular-file kind, path, size, and presented
+  modification value to match the displayed fingerprint. It then submits one
+  quoted, shell-free SFTP `rm` for that path.
+- Only successful SFTP completion is called deleted. A stale target is not
+  submitted, a server failure is rejected, and transport loss after submission
+  is outcome unknown. Unknown outcomes are never retried and require a fresh
+  folder listing before another deletion can be chosen.
+- Acknowledged browser deletion selects the row at the removed row's index—or
+  the preceding final row.
+  Acknowledged image-preview deletion stays in preview
+  and opens the next image at that image index, falling back to the nearest
+  earlier image; it returns to the browser only when no image remains.
+- Refresh results are authoritative: a same-name entry recreated by another
+  client is shown as current. Rejected, stale, and unknown outcomes keep the
+  current preview or selection and never advance it. Successful advancement is
+  announced through macOS accessibility.
 
 ## Downloads
 
@@ -99,7 +161,7 @@ without adding search, indexing, mounting, or editing.
 
 - Preview reuses the workspace's one draggable leading sidebar. **In This
   Folder** appears above Recent Folders and Recent Hosts and contains only
-  previewable image and Markdown siblings from the current in-memory folder
+  previewable image, Markdown, JSON, and MP4 siblings from the current in-memory folder
   snapshot; opening preview performs no additional listing, recursive
   discovery, search, or eager sibling download.
 - The active file stays selected. Clicking a sibling or pressing Left or Right starts that preview through the active server and SSH master. Superseded retrieval and decoding work is cancelled, generation-guarded, and cleaned before stale content can publish.
@@ -109,7 +171,7 @@ without adding search, indexing, mounting, or editing.
   siblings only from the detail or while the sidebar is hidden. The active
   sibling owns selection and the workspace root retains a separate marker and
   accessibility description.
-- **All Files**, Escape, and Command-Left-Bracket return to the complete browser with the active preview row selected. Download remains the only trailing toolbar action.
+- **All Files**, Escape, and Command-Left-Bracket return to the complete browser with the active preview row selected. Download and direct Delete are the trailing toolbar actions.
 - Loading, error, retry, and transfer feedback stays in the detail pane so the sibling list remains stable.
 
 ## Image preview
@@ -130,9 +192,37 @@ Empty folders show a single focused empty state with an explicit accessibility d
 - The reader is selectable and read-only; it does not fetch document images, resolve remote embeds, execute HTML or Mermaid, or write remote content.
 - Detailed behavior and limits live in [Markdown preview](markdown-preview.md).
 
+## JSON preview
+
+- Regular `.json` files, matched case-insensitively, use the split preview
+  workspace and sibling navigation. Retrieval and decoding are each limited to
+  2 MiB.
+- The decoder accepts UTF-8 with an optional BOM, rejects NULs, invalid UTF-8,
+  and malformed JSON, and formats objects, arrays, and scalar top-level values
+  away from the main actor.
+- A native read-only selectable monospaced text view provides adaptive syntax
+  color. Its native text container soft-wraps at the visible width, reflows on
+  resize, exposes no horizontal scroller, and expands to a vertically scrollable
+  document height. The preview does not execute content, use a web view, fetch
+  references, edit, or persist the document.
+- Detailed behavior and limits live in [JSON preview](json-preview.md).
+
+## Video preview
+
+- Regular `.mp4` files, matched case-insensitively, use the split preview
+  workspace and sibling navigation. Retrieval is private and cancellable, is
+  capped at 512 MiB, and shows measured bytes plus a percentage when size is
+  known.
+- AVFoundation validates playability and a video track before AVKit receives
+  the local URL. The native player has inline playback, scrub, volume, time,
+  and full-screen controls and never starts playback automatically.
+- Sibling switch, Delete, Back, connection or path change, close, and quit stop
+  playback and remove temporary media. Unsupported codecs remain downloadable.
+- Detailed behavior and limits live in [Video preview](video-preview.md).
+
 ## Transport and lifecycle
 
-- RelayBar starts one foreground `/usr/bin/ssh` multiplexing master for the active Remote Files connection, then invokes `/usr/bin/sftp` directly for each listing, preview, download, upload, publication, and cleanup operation. It never invokes a shell.
+- RelayBar starts one foreground `/usr/bin/ssh` multiplexing master for the active Remote Files connection, then invokes `/usr/bin/sftp` directly for each listing, preview, download, upload, publication, cleanup, deletion preflight, and deletion operation. It never invokes a shell.
 - The master uses `-N`, `-T`, `-M`, `ControlPersist=no`, `ClearAllForwardings=yes`, `BatchMode=yes`, a 10-second connect timeout, forward-failure exit, and server keepalives. Its input and output are discarded and its last 16 KiB of standard error is retained for a normalized failure.
 - A one-character control socket lives below a short app-owned directory that `mkdtemp(3)` creates atomically with `0700` permissions under the user's private macOS temporary directory. Its UTF-8 path budget reserves the terminating NUL and OpenSSH's 17-byte temporary mux-listener suffix instead of checking only the final socket name. SFTP children receive that exact `ControlPath` with `ControlMaster=no`; RelayBar neither discovers nor attaches to a user-managed socket or a forwarding profile's master.
 - Concurrent first operations serialize behind one master startup. Readiness is detected at 50-millisecond intervals with a bounded 120-second ceiling for high-latency and jump-host handshakes. Cancelling a startup waiter resumes it immediately without stopping the master, and cancelling an SFTP child leaves the healthy master running. An unexpected master exit cleans its socket and does not reconnect in the background; the next explicit operation creates a new master.
@@ -154,6 +244,9 @@ Empty folders show a single focused empty state with an explicit accessibility d
 - The master receives validated SSH-native connection arguments. SFTP children receive the same validated connection behavior with SFTP-specific translation, including SSH `-p` to SFTP `-P` and SSH `-l` to `User=`.
 - The user's normal OpenSSH config, identities, agent, jump host, and host-key behavior remain in effect.
 - Browsing is independent of the local-forward process state.
-- Closing the Remote Files window or quitting RelayBar cancels listing, preview, and transfer work, stops the owned master, clears the cache, and removes owned temporary state.
+- Closing the Remote Files window or quitting RelayBar cancels visible listing,
+  preview, and transfer work. In-flight upload or deletion owners are retained
+  until their children are reaped before the owned master stops. The cache and
+  owned temporary state are cleared.
 
 See [Security boundaries](../shared/security-boundaries.md).

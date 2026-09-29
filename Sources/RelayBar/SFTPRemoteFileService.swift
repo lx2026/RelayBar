@@ -11,6 +11,11 @@ protocol RemoteFileServing: AnyObject, Sendable {
         progress: @escaping @Sendable (Int64) -> Void
     ) async throws
     func preparePreview(server: RemoteServer, entry: RemoteFileEntry) async throws -> URL
+    func preparePreviewWithProgress(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws -> URL
     func upload(
         server: RemoteServer,
         localFile: URL,
@@ -18,6 +23,14 @@ protocol RemoteFileServing: AnyObject, Sendable {
         replaceExisting: Bool,
         phase: @escaping @Sendable (RemoteUploadPhase) -> Void
     ) async throws
+    func uploadWithProgress(
+        server: RemoteServer,
+        localFile: URL,
+        remoteDirectory: String,
+        replaceExisting: Bool,
+        update: @escaping @Sendable (RemoteUploadUpdate) -> Void
+    ) async throws
+    func delete(server: RemoteServer, entry: RemoteFileEntry) async throws
     func shutdown()
 }
 
@@ -28,6 +41,19 @@ extension RemoteFileServing {
 
     func shutdown() {}
 
+    func preparePreviewWithProgress(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws -> URL {
+        let url = try await preparePreview(server: server, entry: entry)
+        let byteCount = Int64(
+            (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        )
+        progress(byteCount)
+        return url
+    }
+
     func upload(
         server: RemoteServer,
         localFile: URL,
@@ -36,6 +62,37 @@ extension RemoteFileServing {
         phase: @escaping @Sendable (RemoteUploadPhase) -> Void
     ) async throws {
         throw RemoteFileError.uploadCapabilityUnavailable("remote publication")
+    }
+
+    func uploadWithProgress(
+        server: RemoteServer,
+        localFile: URL,
+        remoteDirectory: String,
+        replaceExisting: Bool,
+        update: @escaping @Sendable (RemoteUploadUpdate) -> Void
+    ) async throws {
+        let total = Int64(
+            (try? localFile.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        )
+        try await upload(
+            server: server,
+            localFile: localFile,
+            remoteDirectory: remoteDirectory,
+            replaceExisting: replaceExisting
+        ) { phase in
+            update(
+                RemoteUploadUpdate(
+                    phase: phase,
+                    completedBytes: phase == .staging ? 0 : total,
+                    totalBytes: total,
+                    isStagingComplete: phase != .staging
+                )
+            )
+        }
+    }
+
+    func delete(server: RemoteServer, entry: RemoteFileEntry) async throws {
+        throw RemoteFileError.deleteNotSubmitted("Deletion is unavailable for this server.")
     }
 
     func upload(
@@ -48,14 +105,56 @@ extension RemoteFileServing {
             server: server,
             localFile: localFile,
             remoteDirectory: remoteDirectory,
-            replaceExisting: replaceExisting
-        ) { _ in }
+            replaceExisting: replaceExisting,
+            phase: { _ in }
+        )
     }
 }
 
 /// Configuration is immutable after initialization. Each command owns separate
 /// process state, and the small boxes shared with callbacks synchronize access.
 final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
+    private final class UploadPhaseBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private var lastPhase: RemoteUploadPhase?
+
+        func emit(
+            _ phase: RemoteUploadPhase,
+            to callback: @escaping @Sendable (RemoteUploadPhase) -> Void
+        ) {
+            lock.lock()
+            let changed = lastPhase != phase
+            if changed { lastPhase = phase }
+            lock.unlock()
+            if changed { callback(phase) }
+        }
+    }
+
+    private final class UploadProgressBox: @unchecked Sendable {
+        private let lock = NSLock()
+        private let totalBytes: Int64
+        private var storedCompletedBytes: Int64 = 0
+
+        init(totalBytes: Int64) {
+            self.totalBytes = max(0, totalBytes)
+        }
+
+        var completedBytes: Int64 {
+            lock.withLock { storedCompletedBytes }
+        }
+
+        func advance(to proposedBytes: Int64) -> (bytes: Int64, changed: Bool) {
+            lock.withLock {
+                let next = min(max(proposedBytes, storedCompletedBytes), totalBytes)
+                guard next > storedCompletedBytes else {
+                    return (storedCompletedBytes, false)
+                }
+                storedCompletedBytes = next
+                return (next, true)
+            }
+        }
+    }
+
     private struct CommandResult {
         let status: Int32
         let output: String
@@ -283,6 +382,8 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
     private let fileManager: FileManager
     private let previewSizeLimit: Int64
     private let markdownPreviewSizeLimit: Int64
+    private let jsonPreviewSizeLimit: Int64
+    private let videoPreviewSizeLimit: Int64
     private let standardOutputLimit: Int64
     private let standardErrorLimit: Int64
     private let forceStopDelay: TimeInterval
@@ -295,6 +396,8 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         fileManager: FileManager = .default,
         previewSizeLimit: Int64 = 100 * 1_024 * 1_024,
         markdownPreviewSizeLimit: Int64 = Int64(RemoteMarkdownDecoder.maximumByteCount),
+        jsonPreviewSizeLimit: Int64 = Int64(RemoteJSONDecoder.maximumByteCount),
+        videoPreviewSizeLimit: Int64 = RemoteVideoPreview.maximumByteCount,
         standardOutputLimit: Int64 = 32 * 1_024 * 1_024,
         standardErrorLimit: Int64 = 1 * 1_024 * 1_024,
         forceStopDelay: TimeInterval = 2,
@@ -310,6 +413,8 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         self.fileManager = fileManager
         self.previewSizeLimit = previewSizeLimit
         self.markdownPreviewSizeLimit = markdownPreviewSizeLimit
+        self.jsonPreviewSizeLimit = jsonPreviewSizeLimit
+        self.videoPreviewSizeLimit = videoPreviewSizeLimit
         self.standardOutputLimit = standardOutputLimit
         self.standardErrorLimit = standardErrorLimit
         self.forceStopDelay = forceStopDelay
@@ -442,12 +547,41 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
     }
 
     func preparePreview(server: RemoteServer, entry: RemoteFileEntry) async throws -> URL {
-        let maximumBytes = entry.isPreviewableMarkdown
-            ? markdownPreviewSizeLimit
-            : previewSizeLimit
-        let limitError: RemoteFileError = entry.isPreviewableMarkdown
-            ? .markdownTooLarge
-            : .previewTooLarge
+        try await preparePreview(
+            server: server,
+            entry: entry,
+            progress: { _ in }
+        )
+    }
+
+    func preparePreviewWithProgress(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws -> URL {
+        try await preparePreview(server: server, entry: entry, progress: progress)
+    }
+
+    private func preparePreview(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws -> URL {
+        let maximumBytes: Int64
+        let limitError: RemoteFileError
+        if entry.isPreviewableMarkdown {
+            maximumBytes = markdownPreviewSizeLimit
+            limitError = .markdownTooLarge
+        } else if entry.isPreviewableJSON {
+            maximumBytes = jsonPreviewSizeLimit
+            limitError = .jsonTooLarge
+        } else if entry.isPreviewableVideo {
+            maximumBytes = videoPreviewSizeLimit
+            limitError = .videoTooLarge
+        } else {
+            maximumBytes = previewSizeLimit
+            limitError = .previewTooLarge
+        }
         if let size = entry.size, size > maximumBytes {
             throw limitError
         }
@@ -468,7 +602,9 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                 to: destination,
                 maximumBytes: maximumBytes,
                 limitError: limitError
-            ) { _ in }
+            ) { completedBytes in
+                progress(completedBytes)
+            }
             return destination
         } catch {
             try? fileManager.removeItem(at: directory)
@@ -482,6 +618,24 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         remoteDirectory: String,
         replaceExisting: Bool,
         phase: @escaping @Sendable (RemoteUploadPhase) -> Void
+    ) async throws {
+        let phaseBox = UploadPhaseBox()
+        try await uploadWithProgress(
+            server: server,
+            localFile: localFile,
+            remoteDirectory: remoteDirectory,
+            replaceExisting: replaceExisting
+        ) { update in
+            phaseBox.emit(update.phase, to: phase)
+        }
+    }
+
+    func uploadWithProgress(
+        server: RemoteServer,
+        localFile: URL,
+        remoteDirectory: String,
+        replaceExisting: Bool,
+        update: @escaping @Sendable (RemoteUploadUpdate) -> Void
     ) async throws {
         let values = try localFile.resourceValues(
             forKeys: [.isRegularFileKey, .isSymbolicLinkKey, .isAliasFileKey, .fileSizeKey]
@@ -534,27 +688,97 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         guard RemotePath.validationMessage(for: staging) == nil else {
             throw RemoteFileError.invalidPath
         }
+        let progress = UploadProgressBox(totalBytes: Int64(fileSize))
 
         var ownsStaging = false
+        var didStage = false
         var didPublish = false
         do {
             // `put` may create the staging entry before its child is cancelled
             // or reports failure. Claim the exact name before launching it so
             // every post-launch exit attempts bounded cleanup.
             ownsStaging = true
-            phase(.staging)
-            let uploadResult = try await run(
-                server: server,
-                batchInput: SFTPCommandBuilder.uploadCommand(
-                    localPath: localFile.path,
-                    remotePath: staging
-                ),
-                requiredSessionToken: capabilityContext.sessionToken
+            update(
+                RemoteUploadUpdate(
+                    phase: .staging,
+                    completedBytes: 0,
+                    totalBytes: Int64(fileSize)
+                )
             )
+            let uploadResult = try await withThrowingTaskGroup(
+                of: CommandResult?.self
+            ) { group in
+                group.addTask { [self] in
+                    try await run(
+                        server: server,
+                        batchInput: SFTPCommandBuilder.uploadCommand(
+                            localPath: localFile.path,
+                            remotePath: staging
+                        ),
+                        requiredSessionToken: capabilityContext.sessionToken
+                    )
+                }
+                group.addTask { [self] in
+                    while !Task.isCancelled {
+                        try await Task.sleep(for: .milliseconds(500))
+                        do {
+                            let measured = try await listingOutput(
+                                server: server,
+                                path: staging,
+                                requiredSessionToken: capabilityContext.sessionToken
+                            )
+                            let result = try SFTPListingParser.parsePath(
+                                measured.output,
+                                path: measured.normalizedPath
+                            )
+                            guard case .file(let stagingEntry) = result,
+                                  let size = stagingEntry.size
+                            else { continue }
+                            let advanced = progress.advance(to: size)
+                            guard advanced.changed else { continue }
+                            update(
+                                RemoteUploadUpdate(
+                                    phase: .staging,
+                                    completedBytes: advanced.bytes,
+                                    totalBytes: Int64(fileSize)
+                                )
+                            )
+                        } catch is CancellationError {
+                            throw CancellationError()
+                        } catch {
+                            // Measurement is advisory. Keep the last known value and
+                            // let the upload command determine success or failure.
+                        }
+                    }
+                    throw CancellationError()
+                }
+                defer { group.cancelAll() }
+                while let result = try await group.next() {
+                    if let result { return result }
+                }
+                throw CancellationError()
+            }
             try validate(uploadResult)
+            didStage = true
+            _ = progress.advance(to: Int64(fileSize))
+            update(
+                RemoteUploadUpdate(
+                    phase: .staging,
+                    completedBytes: Int64(fileSize),
+                    totalBytes: Int64(fileSize),
+                    isStagingComplete: true
+                )
+            )
             try Task.checkCancellation()
 
-            phase(.publishing)
+            update(
+                RemoteUploadUpdate(
+                    phase: .publishing,
+                    completedBytes: Int64(fileSize),
+                    totalBytes: Int64(fileSize),
+                    isStagingComplete: true
+                )
+            )
             let finalEntries = try SFTPListingParser.parse(
                 try await listingOutput(
                     server: server,
@@ -609,7 +833,14 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             if replaceExisting {
                 ownsStaging = false
             } else {
-                phase(.cleaningUp)
+                update(
+                    RemoteUploadUpdate(
+                        phase: .cleaningUp,
+                        completedBytes: Int64(fileSize),
+                        totalBytes: Int64(fileSize),
+                        isStagingComplete: true
+                    )
+                )
                 let cleanupResult = try await run(
                     server: server,
                     batchInput: SFTPCommandBuilder.removeCommand(path: staging)
@@ -619,7 +850,14 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             }
         } catch {
             if ownsStaging {
-                phase(.cleaningUp)
+                update(
+                    RemoteUploadUpdate(
+                        phase: .cleaningUp,
+                        completedBytes: progress.completedBytes,
+                        totalBytes: Int64(fileSize),
+                        isStagingComplete: didStage
+                    )
+                )
                 let cleaned = await cleanupUploadStaging(server: server, path: staging)
                 if !cleaned {
                     let context = didPublish
@@ -633,6 +871,99 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             }
             throw error
         }
+    }
+
+    func delete(server: RemoteServer, entry: RemoteFileEntry) async throws {
+        guard
+            entry.kind == .file,
+            RemotePath.validationMessage(for: entry.path) == nil,
+            RemotePath.joining(RemotePath.parent(of: entry.path), entry.name)
+                == RemotePath.normalized(entry.path)
+        else {
+            throw RemoteFileError.deleteNotSubmitted(
+                "Only one listed regular file can be deleted."
+            )
+        }
+        let removeCommand: String
+        do {
+            removeCommand = try SFTPCommandBuilder.removeCommand(path: entry.path)
+        } catch {
+            throw RemoteFileError.deleteNotSubmitted(error.localizedDescription)
+        }
+
+        let sessionToken: String?
+        do {
+            if let connectionSession {
+                sessionToken = try await connectionSession.controlSocket(for: server).path
+            } else {
+                sessionToken = nil
+            }
+            let preflight = try await listingOutput(
+                server: server,
+                path: entry.path,
+                requiredSessionToken: sessionToken
+            )
+            guard case .file(let current) = try SFTPListingParser.parsePath(
+                preflight.output,
+                path: preflight.normalizedPath
+            ) else {
+                throw RemoteFileError.deleteTargetChanged
+            }
+            guard
+                current.path == entry.path,
+                current.kind == .file,
+                current.size == entry.size,
+                current.modificationText == entry.modificationText
+            else {
+                throw RemoteFileError.deleteTargetChanged
+            }
+        } catch let error as RemoteFileError where error == .deleteTargetChanged {
+            throw error
+        } catch {
+            throw RemoteFileError.deleteNotSubmitted(error.localizedDescription)
+        }
+
+        let result: CommandResult
+        do {
+            result = try await run(
+                server: server,
+                batchInput: removeCommand,
+                requiredSessionToken: sessionToken
+            )
+        } catch let error as RemoteFileError
+            where error == .connectionSessionUnavailable
+                || error == .invalidConnection
+                || error == .invalidPath
+        {
+            throw RemoteFileError.deleteNotSubmitted(error.localizedDescription)
+        } catch {
+            throw RemoteFileError.deleteOutcomeUnknown
+        }
+        if result.exceededOutputLimit {
+            throw RemoteFileError.deleteOutcomeUnknown
+        }
+        guard result.status == 0 else {
+            guard Self.isExplicitDeleteRejection(result.error) else {
+                throw RemoteFileError.deleteOutcomeUnknown
+            }
+            throw RemoteFileError.deleteRejected(
+                Self.friendlyMessage(from: result.error)
+            )
+        }
+    }
+
+    private static func isExplicitDeleteRejection(_ diagnostics: String) -> Bool {
+        let normalized = diagnostics.lowercased()
+        return [
+            "permission denied",
+            "no such file",
+            "not found",
+            "is a directory",
+            "failure",
+            "cannot remove",
+            "can't remove",
+            "couldn't remove"
+        ].contains { normalized.contains($0) }
     }
 
     private func uploadCapabilities(

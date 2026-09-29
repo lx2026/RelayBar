@@ -2,6 +2,34 @@
 
 Notable RelayBar changes are recorded here.
 
+## [1.6.0] - 2026-09-29
+
+### Added
+
+- SSH retries use a saved limit from 0 to 100 in Settings (default 10); set
+  it to 0 to disable automatic retries. Delays grow from 5 seconds to a
+  5-minute cap, and brief reconnects no longer reset the retry budget.
+- Remote Files previews bounded UTF-8 JSON with selectable syntax highlighting,
+  wrapping, and horizontal scrolling, plus MP4 video with native playback
+  controls that start paused.
+- Single and bulk remote-file deletion share a five-second Undo window before
+  any removal reaches the server. Selection mode supports file-only bulk actions.
+- Uploads show byte and percentage progress during transfer.
+
+### Fixed
+
+- Delete controls use destructive styling, and the browser's trash action no
+  longer sits beside Download.
+- Compact tunnel endpoints, separate host labels, and paths that preserve the
+  final folder name make narrow rows easier to distinguish. Narrow Remote Files
+  toolbars switch to icons before squeezing the path.
+- Profile forms explain the first invalid field beside the disabled save
+  button. Forwarding-rule controls fit the popover, and SSH placeholders render
+  as plain text.
+
+Deletion is permanent once the Undo window expires and the server accepts it.
+Directories and symbolic links are excluded from deletion.
+
 ## [1.5.1] - 2026-08-27
 
 ### Added
@@ -207,6 +235,7 @@ or quit RelayBar manually for the first later upgrade.
 - Remote Markdown remains inert: raw HTML is not activated, remote embeds are not fetched, and unsafe links are blocked.
 - Release builds retain the hardened runtime, Developer ID signing, notarization, and Gatekeeper verification workflow.
 
+[1.6.0]: https://github.com/lx2026/RelayBar/releases/tag/v1.6.0
 [1.5.1]: https://github.com/lx2026/RelayBar/releases/tag/v1.5.1
 [1.5.0]: https://github.com/lx2026/RelayBar/releases/tag/v1.5.0
 [1.4.0]: https://github.com/lx2026/RelayBar/releases/tag/v1.4.0

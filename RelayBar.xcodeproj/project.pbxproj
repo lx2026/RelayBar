@@ -35,6 +35,7 @@
 		40000000000000000000001C /* ApplicationAbout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000001A /* ApplicationAbout.swift */; };
 		40000000000000000000001D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000004 /* Sparkle */; };
 		40000000000000000000001E /* Updates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000001B /* Updates.swift */; };
+		40000000000000000000001F /* RemoteVideoPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000001C /* RemoteVideoPreview.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -65,6 +66,7 @@
 		300000000000000000000019 /* PopoverScrollContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverScrollContainer.swift; sourceTree = "<group>"; };
 		30000000000000000000001A /* ApplicationAbout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationAbout.swift; sourceTree = "<group>"; };
 		30000000000000000000001B /* Updates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updates.swift; sourceTree = "<group>"; };
+		30000000000000000000001C /* RemoteVideoPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoPreview.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -117,6 +119,7 @@
 				300000000000000000000006 /* TunnelEditorView.swift */,
 				300000000000000000000007 /* TunnelStore.swift */,
 				30000000000000000000000B /* RemoteFile.swift */,
+				30000000000000000000001C /* RemoteVideoPreview.swift */,
 				300000000000000000000018 /* RemoteFileSSHSession.swift */,
 				30000000000000000000000C /* SFTPRemoteFileService.swift */,
 				30000000000000000000000D /* RemoteFilesModel.swift */,
@@ -272,6 +275,7 @@
 				400000000000000000000006 /* TunnelEditorView.swift in Sources */,
 				400000000000000000000007 /* TunnelStore.swift in Sources */,
 				40000000000000000000000B /* RemoteFile.swift in Sources */,
+				40000000000000000000001F /* RemoteVideoPreview.swift in Sources */,
 				40000000000000000000001A /* RemoteFileSSHSession.swift in Sources */,
 				40000000000000000000000C /* SFTPRemoteFileService.swift in Sources */,
 				40000000000000000000000D /* RemoteFilesModel.swift in Sources */,
@@ -391,7 +395,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -400,7 +404,7 @@
 				INFOPLIST_FILE = Packaging/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -416,7 +420,7 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 10;
+				CURRENT_PROJECT_VERSION = 11;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -424,7 +428,7 @@
 				INFOPLIST_FILE = Packaging/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.5.1;
+				MARKETING_VERSION = 1.6.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

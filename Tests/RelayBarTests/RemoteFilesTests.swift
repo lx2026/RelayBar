@@ -1,8 +1,63 @@
 import AppKit
+import AVFoundation
 import Darwin
 import SwiftUI
 import XCTest
 @testable import RelayBar
+
+func writePlayableTestMP4(to url: URL) async throws {
+    let writer = try AVAssetWriter(outputURL: url, fileType: .mp4)
+    let input = AVAssetWriterInput(
+        mediaType: .video,
+        outputSettings: [
+            AVVideoCodecKey: AVVideoCodecType.h264,
+            AVVideoWidthKey: 64,
+            AVVideoHeightKey: 64
+        ]
+    )
+    let adaptor = AVAssetWriterInputPixelBufferAdaptor(
+        assetWriterInput: input,
+        sourcePixelBufferAttributes: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32ARGB,
+            kCVPixelBufferWidthKey as String: 64,
+            kCVPixelBufferHeightKey as String: 64
+        ]
+    )
+    guard writer.canAdd(input) else { throw RemoteFileError.unsupportedVideo }
+    writer.add(input)
+    guard writer.startWriting() else {
+        throw writer.error ?? RemoteFileError.unsupportedVideo
+    }
+    writer.startSession(atSourceTime: .zero)
+    while !input.isReadyForMoreMediaData {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    guard let pool = adaptor.pixelBufferPool else {
+        throw RemoteFileError.unsupportedVideo
+    }
+    var pixelBuffer: CVPixelBuffer?
+    guard
+        CVPixelBufferPoolCreatePixelBuffer(nil, pool, &pixelBuffer) == kCVReturnSuccess,
+        let pixelBuffer,
+        adaptor.append(pixelBuffer, withPresentationTime: .zero)
+    else {
+        throw writer.error ?? RemoteFileError.unsupportedVideo
+    }
+    while !input.isReadyForMoreMediaData {
+        try await Task.sleep(for: .milliseconds(10))
+    }
+    guard adaptor.append(
+        pixelBuffer,
+        withPresentationTime: CMTime(value: 1, timescale: 1)
+    ) else {
+        throw writer.error ?? RemoteFileError.unsupportedVideo
+    }
+    input.markAsFinished()
+    await writer.finishWriting()
+    guard writer.status == .completed else {
+        throw writer.error ?? RemoteFileError.unsupportedVideo
+    }
+}
 
 final class RemotePathTests: XCTestCase {
     func testRequiresAbsoluteSingleLinePath() {
@@ -468,6 +523,263 @@ final class RemoteImageDecoderTests: XCTestCase {
         XCTAssertThrowsError(try RemoteImageDecoder.decode(contentsOf: imageURL)) { error in
             XCTAssertEqual(error as? RemoteFileError, .unsupportedImage)
         }
+    }
+}
+
+final class RemoteJSONPreviewTests: XCTestCase {
+    func testRecognizesCaseInsensitiveJSONRegularFilesOnly() {
+        for name in ["data.json", "EXPORT.JSON", "mixed.JsOn"] {
+            let entry = RemoteFileEntry(
+                name: name,
+                path: "/srv/app/\(name)",
+                kind: .file,
+                size: 8,
+                modificationText: "Aug 30 12:00"
+            )
+            XCTAssertTrue(entry.isPreviewableJSON)
+            XCTAssertTrue(entry.isPreviewable)
+        }
+        let directory = RemoteFileEntry(
+            name: "data.json",
+            path: "/srv/app/data.json",
+            kind: .directory,
+            size: nil,
+            modificationText: "Aug 30 12:00"
+        )
+        XCTAssertFalse(directory.isPreviewableJSON)
+    }
+
+    func testLoadsBOMPrefixedObjectsArraysAndScalarsAsFormattedUTF8() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        for (name, bytes) in [
+            ("object.json", Data([0xEF, 0xBB, 0xBF]) + Data(#"{"b":2,"a":true}"#.utf8)),
+            ("array.json", Data(#"[1,null,"value"]"#.utf8)),
+            ("scalar.json", Data(#""value""#.utf8))
+        ] {
+            let url = directory.appendingPathComponent(name)
+            try bytes.write(to: url)
+            let document = try await RemoteJSONDecoder.load(contentsOf: url)
+            XCTAssertFalse(document.formattedText.isEmpty)
+        }
+
+        let object = try await RemoteJSONDecoder.load(
+            contentsOf: directory.appendingPathComponent("object.json")
+        )
+        XCTAssertTrue(object.formattedText.contains("\n"))
+        XCTAssertLessThan(
+            object.formattedText.range(of: #""a""#)!.lowerBound,
+            object.formattedText.range(of: #""b""#)!.lowerBound
+        )
+    }
+
+    func testRejectsInvalidEncodingNULMalformedAndOversizedInput() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let cases: [(String, Data, RemoteFileError)] = [
+            ("utf8.json", Data([0xC3, 0x28]), .invalidJSONEncoding),
+            ("nul.json", Data([0x7B, 0x00, 0x7D]), .invalidJSONEncoding),
+            ("broken.json", Data(#"{"missing":}"#.utf8), .malformedJSON),
+            (
+                "large.json",
+                Data(repeating: 0x20, count: RemoteJSONDecoder.maximumByteCount + 1),
+                .jsonTooLarge
+            )
+        ]
+        for (name, data, expected) in cases {
+            let url = directory.appendingPathComponent(name)
+            try data.write(to: url)
+            do {
+                _ = try await RemoteJSONDecoder.load(contentsOf: url)
+                XCTFail("Expected \(expected) for \(name)")
+            } catch {
+                XCTAssertEqual(error as? RemoteFileError, expected)
+            }
+        }
+    }
+
+    @MainActor
+    func testSyntaxHighlighterDistinguishesKeysValuesAndNumbers() {
+        let text = #"{"key":"value","count":2,"enabled":true}"#
+        let highlighted = RemoteJSONSyntaxHighlighter.attributedString(for: text)
+        let source = text as NSString
+        let keyColor = highlighted.attribute(
+            .foregroundColor,
+            at: source.range(of: #""key""#).location,
+            effectiveRange: nil
+        ) as? NSColor
+        let valueColor = highlighted.attribute(
+            .foregroundColor,
+            at: source.range(of: #""value""#).location,
+            effectiveRange: nil
+        ) as? NSColor
+        let numberColor = highlighted.attribute(
+            .foregroundColor,
+            at: source.range(of: "2").location,
+            effectiveRange: nil
+        ) as? NSColor
+
+        XCTAssertEqual(keyColor, .systemPurple)
+        XCTAssertEqual(valueColor, .systemRed)
+        XCTAssertEqual(numberColor, .systemBlue)
+    }
+
+    @MainActor
+    func testNativeTextViewWrapsLongTokensAndProvidesVerticalScrolling() throws {
+        let longValue = String(repeating: "unbroken-value-", count: 80)
+        let text = (0..<24).map { #""row-\#($0)": "\#(longValue)""# }
+            .joined(separator: ",\n")
+        let document = RemoteJSONDocument(formattedText: "{\n\(text)\n}")
+        let scrollView = RemoteJSONTextViewFactory.make(document: document)
+        scrollView.frame = NSRect(x: 0, y: 0, width: 300, height: 170)
+        scrollView.layoutSubtreeIfNeeded()
+
+        let textView = try XCTUnwrap(scrollView.documentView as? NSTextView)
+        let textContainer = try XCTUnwrap(textView.textContainer)
+        let layoutManager = try XCTUnwrap(textView.layoutManager)
+        layoutManager.ensureLayout(for: textContainer)
+
+        XCTAssertTrue(scrollView.hasVerticalScroller)
+        XCTAssertFalse(scrollView.hasHorizontalScroller)
+        XCTAssertFalse(textView.isEditable)
+        XCTAssertTrue(textView.isSelectable)
+        XCTAssertTrue(textView.isVerticallyResizable)
+        XCTAssertFalse(textView.isHorizontallyResizable)
+        XCTAssertTrue(textContainer.widthTracksTextView)
+        XCTAssertFalse(textContainer.heightTracksTextView)
+        XCTAssertEqual(textView.string, document.formattedText)
+        XCTAssertGreaterThan(textView.frame.height, scrollView.contentSize.height)
+        XCTAssertLessThanOrEqual(
+            layoutManager.usedRect(for: textContainer).maxX,
+            textContainer.containerSize.width + 0.5
+        )
+
+        let maximumOffset = max(
+            textView.frame.height - scrollView.contentSize.height,
+            0
+        )
+        scrollView.contentView.scroll(to: NSPoint(x: 0, y: maximumOffset))
+        scrollView.reflectScrolledClipView(scrollView.contentView)
+        XCTAssertGreaterThan(scrollView.contentView.bounds.origin.y, 0)
+
+        scrollView.frame.size.width = 520
+        scrollView.layoutSubtreeIfNeeded()
+        XCTAssertEqual(textView.frame.width, scrollView.contentSize.width, accuracy: 0.5)
+        XCTAssertEqual(
+            textContainer.containerSize.width,
+            textView.bounds.width - (textView.textContainerInset.width * 2),
+            accuracy: 0.5
+        )
+    }
+}
+
+final class RemoteVideoPreviewTests: XCTestCase {
+    func testRecognizesCaseInsensitiveMP4RegularFilesOnly() {
+        for name in ["clip.mp4", "MOVIE.MP4", "mixed.Mp4"] {
+            let entry = RemoteFileEntry(
+                name: name,
+                path: "/srv/app/\(name)",
+                kind: .file,
+                size: 128,
+                modificationText: "Aug 30 12:00"
+            )
+            XCTAssertTrue(entry.isPreviewableVideo)
+            XCTAssertTrue(entry.isPreviewable)
+        }
+        let directory = RemoteFileEntry(
+            name: "clip.mp4",
+            path: "/srv/app/clip.mp4",
+            kind: .directory,
+            size: nil,
+            modificationText: "Aug 30 12:00"
+        )
+        XCTAssertFalse(directory.isPreviewableVideo)
+    }
+
+    func testRejectsUnreadableOrUnsupportedMP4Data() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("broken.mp4")
+        try Data("not media".utf8).write(to: url)
+
+        do {
+            try await RemoteVideoPreview.validate(contentsOf: url)
+            XCTFail("Expected invalid media to be rejected.")
+        } catch let error as RemoteFileError {
+            XCTAssertEqual(error, .unsupportedVideo)
+        }
+    }
+
+    func testAcceptsAPlayableMP4WithAVideoTrack() async throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("playable.mp4")
+        try await writePlayableTestMP4(to: url)
+
+        try await RemoteVideoPreview.validate(contentsOf: url)
+    }
+
+    @MainActor
+    func testNativePlayerControllerInstallsMediaWithoutAutoplayAndStopsCleanly() {
+        let controller = RemoteVideoPlayerController()
+        let url = URL(fileURLWithPath: "/tmp/RelayBar-paused-preview.mp4")
+
+        controller.show(url)
+
+        XCTAssertEqual(controller.url, url)
+        XCTAssertNotNil(controller.player.currentItem)
+        XCTAssertEqual(controller.player.rate, 0)
+        controller.stop()
+        XCTAssertNil(controller.player.currentItem)
+        XCTAssertNil(controller.url)
+    }
+}
+
+@MainActor
+final class RemoteUploadPresentationTests: XCTestCase {
+    func testStagingPercentageRequiresAcknowledgedPutSuccessForOneHundred() {
+        var presentation = RemoteFilesModel.UploadPresentation(
+            localFile: URL(fileURLWithPath: "/tmp/payload"),
+            replaceExisting: false,
+            connectionIdentity: RemoteServer.ConnectionIdentity(
+                sshHost: "devbox",
+                additionalArguments: []
+            ),
+            remoteDirectory: "/srv/app",
+            phase: .active,
+            operationPhase: .staging,
+            completedBytes: 7,
+            totalBytes: 7,
+            isStagingComplete: false,
+            message: nil
+        )
+        XCTAssertEqual(presentation.percentage, 99)
+
+        presentation.isStagingComplete = true
+        XCTAssertEqual(presentation.percentage, 100)
+        presentation.operationPhase = .publishing
+        XCTAssertNil(presentation.percentage)
+    }
+
+    func testZeroByteUploadBecomesCompleteOnlyAfterPutSuccess() {
+        var presentation = RemoteFilesModel.UploadPresentation(
+            localFile: URL(fileURLWithPath: "/tmp/empty"),
+            replaceExisting: false,
+            connectionIdentity: RemoteServer.ConnectionIdentity(
+                sshHost: "devbox",
+                additionalArguments: []
+            ),
+            remoteDirectory: "/srv/app",
+            phase: .active,
+            operationPhase: .staging,
+            completedBytes: 0,
+            totalBytes: 0,
+            isStagingComplete: false,
+            message: nil
+        )
+        XCTAssertEqual(presentation.percentage, 0)
+        presentation.isStagingComplete = true
+        XCTAssertEqual(presentation.percentage, 100)
     }
 }
 
@@ -2409,6 +2721,121 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
         )
     }
 
+    func testDeleteRevalidatesFingerprintThenSubmitsOneExactQuotedRemove() async throws {
+        let host = "RelayBarDeleteSuccess-\(UUID().uuidString)"
+        let logURL = URL(fileURLWithPath: "/tmp/\(host).log")
+        defer { try? FileManager.default.removeItem(at: logURL) }
+        let service = makeFixtureService()
+        let entry = makeDeleteEntry()
+
+        try await service.delete(server: makeFixtureServer(host: host), entry: entry)
+
+        let commands = try String(contentsOf: logURL, encoding: .utf8)
+            .split(whereSeparator: \.isNewline)
+            .map(String.init)
+        XCTAssertEqual(commands.count, 2)
+        XCTAssertEqual(
+            commands[0],
+            try SFTPCommandBuilder.listCommand(path: entry.path)
+                .trimmingCharacters(in: .newlines)
+        )
+        XCTAssertEqual(
+            commands[1],
+            try SFTPCommandBuilder.removeCommand(path: entry.path)
+                .trimmingCharacters(in: .newlines)
+        )
+    }
+
+    func testDeleteDoesNotSubmitRemoveWhenFingerprintChanged() async throws {
+        let host = "RelayBarDeleteChanged-\(UUID().uuidString)"
+        let logURL = URL(fileURLWithPath: "/tmp/\(host).log")
+        defer { try? FileManager.default.removeItem(at: logURL) }
+        let service = makeFixtureService()
+
+        do {
+            try await service.delete(
+                server: makeFixtureServer(host: host),
+                entry: makeDeleteEntry()
+            )
+            XCTFail("Expected the changed fingerprint to fail closed")
+        } catch {
+            XCTAssertEqual(error as? RemoteFileError, .deleteTargetChanged)
+        }
+
+        let commands = try String(contentsOf: logURL, encoding: .utf8)
+            .split(whereSeparator: \.isNewline)
+        XCTAssertEqual(commands.count, 1)
+        XCTAssertTrue(commands[0].hasPrefix("ls "))
+    }
+
+    func testDeleteDistinguishesServerRejectionFromUnknownOutcome() async throws {
+        let rejectedHost = "RelayBarDeleteRejected-\(UUID().uuidString)"
+        let rejectedLog = URL(fileURLWithPath: "/tmp/\(rejectedHost).log")
+        defer { try? FileManager.default.removeItem(at: rejectedLog) }
+        let service = makeFixtureService()
+        do {
+            try await service.delete(
+                server: makeFixtureServer(host: rejectedHost),
+                entry: makeDeleteEntry()
+            )
+            XCTFail("Expected server rejection")
+        } catch let error as RemoteFileError {
+            guard case .deleteRejected = error else {
+                return XCTFail("Unexpected error: \(error)")
+            }
+        }
+
+        let unknownHost = "RelayBarDeleteUnknown-\(UUID().uuidString)"
+        let unknownLog = URL(fileURLWithPath: "/tmp/\(unknownHost).log")
+        defer { try? FileManager.default.removeItem(at: unknownLog) }
+        let unknownServer = makeFixtureServer(host: unknownHost)
+        let unknownEntry = makeDeleteEntry()
+        let task = Task {
+            try await service.delete(
+                server: unknownServer,
+                entry: unknownEntry
+            )
+        }
+        try await waitUntil(timeout: 1) {
+            ((try? String(contentsOf: unknownLog, encoding: .utf8)) ?? "")
+                .split(whereSeparator: \.isNewline).count == 2
+        }
+        task.cancel()
+        do {
+            try await task.value
+            XCTFail("Expected unknown deletion outcome")
+        } catch {
+            XCTAssertEqual(error as? RemoteFileError, .deleteOutcomeUnknown)
+        }
+    }
+
+    func testDeleteRejectsDirectoriesAndSymlinksBeforeLaunchingSFTP() async throws {
+        let service = makeFixtureService()
+        for kind in [RemoteFileEntry.Kind.directory, .symbolicLink] {
+            var entry = makeDeleteEntry(kind: kind)
+            if kind == .directory {
+                entry = RemoteFileEntry(
+                    name: entry.name,
+                    path: entry.path,
+                    kind: kind,
+                    size: nil,
+                    modificationText: entry.modificationText
+                )
+            }
+            do {
+                try await service.delete(
+                    server: makeFixtureServer(host: "unused"),
+                    entry: entry
+                )
+                XCTFail("Expected \(kind) to be rejected")
+            } catch let error as RemoteFileError {
+                guard case .deleteNotSubmitted = error else {
+                    return XCTFail("Unexpected error: \(error)")
+                }
+            }
+        }
+    }
+
     func testUploadPublishesANewNameWithHardLinkThenRemovesStaging() async throws {
         let fixture = makeUploadFixture(kind: "New")
         defer { removeUploadFixture(fixture) }
@@ -2431,6 +2858,103 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
         XCTAssertTrue(commands[4].hasSuffix(" \"/srv/releases/release.zip\""))
         XCTAssertFalse(FileManager.default.fileExists(atPath: fixture.stateURL.path))
         XCTAssertEqual(phases.values, [.staging, .publishing, .cleaningUp])
+    }
+
+    func testUploadMeasuresExactStagingPathAndCompletesAtOneHundredAfterPut()
+        async throws
+    {
+        let fixture = makeUploadFixture(kind: "Progress")
+        defer { removeUploadFixture(fixture) }
+        let localFile = try makeUploadFile(named: "release.zip")
+        defer { try? FileManager.default.removeItem(at: localFile.deletingLastPathComponent()) }
+        let service = makeFixtureService()
+        let updates = LockedUploadUpdates()
+
+        try await service.uploadWithProgress(
+            server: fixture.server,
+            localFile: localFile,
+            remoteDirectory: "/srv/releases",
+            replaceExisting: false,
+            update: { updates.record($0) }
+        )
+
+        let staging = updates.values.filter { $0.phase == .staging }
+        XCTAssertEqual(staging.first?.completedBytes, 0)
+        XCTAssertTrue(staging.contains { $0.completedBytes == 3 && !$0.isStagingComplete })
+        XCTAssertEqual(staging.last?.completedBytes, 7)
+        XCTAssertEqual(staging.last?.isStagingComplete, true)
+        XCTAssertTrue(updates.values.contains { $0.phase == .publishing })
+
+        let commands = try uploadCommands(for: fixture)
+        let stagingMeasurements = commands.filter {
+            $0.hasPrefix("ls ") && $0.contains(".relaybar-upload-")
+        }
+        XCTAssertFalse(stagingMeasurements.isEmpty)
+        XCTAssertLessThanOrEqual(stagingMeasurements.count, 3)
+    }
+
+    func testUploadMeasurementFailureKeepsLastBytesAndDoesNotFailUpload() async throws {
+        let fixture = makeUploadFixture(kind: "MeasureFail")
+        defer { removeUploadFixture(fixture) }
+        let localFile = try makeUploadFile(named: "release.zip")
+        defer { try? FileManager.default.removeItem(at: localFile.deletingLastPathComponent()) }
+        let service = makeFixtureService()
+        let updates = LockedUploadUpdates()
+
+        try await service.uploadWithProgress(
+            server: fixture.server,
+            localFile: localFile,
+            remoteDirectory: "/srv/releases",
+            replaceExisting: false,
+            update: { updates.record($0) }
+        )
+
+        let staging = updates.values.filter { $0.phase == .staging }
+        XCTAssertEqual(staging.map(\.completedBytes), [0, 7])
+        XCTAssertEqual(staging.last?.isStagingComplete, true)
+        XCTAssertTrue(
+            try uploadCommands(for: fixture).contains {
+                $0.hasPrefix("ls ") && $0.contains(".relaybar-upload-")
+            }
+        )
+    }
+
+    func testUploadCancellationCarriesOnlyLastMeasuredBytesIntoCleanup() async throws {
+        let fixture = makeUploadFixture(kind: "Progress")
+        defer { removeUploadFixture(fixture) }
+        let localFile = try makeUploadFile(named: "release.zip")
+        defer { try? FileManager.default.removeItem(at: localFile.deletingLastPathComponent()) }
+        let service = makeFixtureService()
+        let updates = LockedUploadUpdates()
+
+        let task = Task {
+            try await service.uploadWithProgress(
+                server: fixture.server,
+                localFile: localFile,
+                remoteDirectory: "/srv/releases",
+                replaceExisting: false,
+                update: { updates.record($0) }
+            )
+        }
+        try await waitUntil(timeout: 2) {
+            updates.values.contains {
+                $0.phase == .staging && $0.completedBytes == 3
+            }
+        }
+        task.cancel()
+        do {
+            try await task.value
+            XCTFail("Expected cancellation")
+        } catch is CancellationError {
+            // Expected after exact staging cleanup finishes.
+        }
+
+        let cleanup = try XCTUnwrap(
+            updates.values.last(where: { $0.phase == .cleaningUp })
+        )
+        XCTAssertEqual(cleanup.completedBytes, 3)
+        XCTAssertEqual(cleanup.totalBytes, 7)
+        XCTAssertFalse(cleanup.isStagingComplete)
     }
 
     func testUploadReplacesAnApprovedRegularFileWithPOSIXRename() async throws {
@@ -3384,6 +3908,40 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
         }
     }
 
+    func testRejectsAnOversizedVideoBeforeStartingSFTP() async {
+        let service = SFTPRemoteFileService(
+            executableURL: URL(fileURLWithPath: "/path/that/does/not/exist"),
+            videoPreviewSizeLimit: 1,
+            connectionSharing: false
+        )
+        let entry = RemoteFileEntry(
+            name: "large.MP4",
+            path: "/srv/app/large.MP4",
+            kind: .file,
+            size: 2,
+            modificationText: "Aug 30 12:00"
+        )
+        let server = RemoteServer(
+            id: UUID(),
+            name: "Preview",
+            sshHost: "example.com",
+            additionalArguments: []
+        )
+
+        do {
+            _ = try await service.preparePreviewWithProgress(
+                server: server,
+                entry: entry,
+                progress: { _ in }
+            )
+            XCTFail("Expected the video preview size limit to fail.")
+        } catch let error as RemoteFileError {
+            XCTAssertEqual(error, .videoTooLarge)
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testRejectsOversizedMarkdownWithItsSpecificLimit() async {
         let service = SFTPRemoteFileService(
             executableURL: URL(fileURLWithPath: "/path/that/does/not/exist"),
@@ -3684,6 +4242,18 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
             kind: .file,
             size: 10,
             modificationText: "Jul 23 21:04"
+        )
+    }
+
+    private func makeDeleteEntry(
+        kind: RemoteFileEntry.Kind = .file
+    ) -> RemoteFileEntry {
+        RemoteFileEntry(
+            name: "report[1].json",
+            path: "/srv/app/report[1].json",
+            kind: kind,
+            size: 7,
+            modificationText: "Aug 30 12:00"
         )
     }
 
@@ -4184,6 +4754,61 @@ final class RemoteFilesModelTests: XCTestCase {
         model.goBack()
         XCTAssertEqual(model.screen, .welcome)
         XCTAssertEqual(model.remotePath, entry.path)
+    }
+
+    func testDirectJSONPathOpensTheBoundedPreview() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let entry = makeFileEntry(name: "status.JSON", parentPath: "/srv/app")
+        service.pathResults[entry.path] = .file(entry)
+        let previewDirectory = try makeTemporaryDirectory()
+        let previewURL = previewDirectory.appendingPathComponent(entry.name)
+        try Data(#"{"message":"direct","unicode":"你好"}"#.utf8).write(to: previewURL)
+        service.previewURL = previewURL
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service)
+        model.remotePath = entry.path
+
+        model.openRemotePath()
+        try await waitUntil {
+            model.screen == .preview
+                && model.previewJSON?.formattedText.contains("你好") == true
+        }
+
+        XCTAssertEqual(model.currentPath, "/srv/app")
+        XCTAssertEqual(model.entries, [entry])
+        XCTAssertEqual(model.previewEntry, entry)
+        model.goBack()
+        XCTAssertEqual(model.screen, .browser)
+    }
+
+    func testDirectMP4PathOpensTheBoundedNativePreview() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let entry = makeFileEntry(name: "release-demo.MP4", parentPath: "/srv/app")
+        service.pathResults[entry.path] = .file(entry)
+        let previewDirectory = try makeTemporaryDirectory()
+        let previewURL = previewDirectory.appendingPathComponent(entry.name)
+        try Data(repeating: 0, count: 128).write(to: previewURL)
+        service.previewURL = previewURL
+        let model = RemoteFilesModel(
+            tunnels: [tunnel],
+            service: service,
+            videoValidator: { _ in }
+        )
+        model.remotePath = entry.path
+
+        model.openRemotePath()
+        try await waitUntil {
+            model.screen == .preview && model.previewVideoURL == previewURL
+        }
+
+        XCTAssertEqual(model.currentPath, "/srv/app")
+        XCTAssertEqual(model.entries, [entry])
+        XCTAssertEqual(model.previewEntry, entry)
+        XCTAssertEqual(service.previewRequests, [entry.id])
+        model.goBack()
+        XCTAssertEqual(model.screen, .browser)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewDirectory.path))
     }
 
     func testDirectNonPreviewableFileIsSelectedWithoutStartingDownload() async throws {
@@ -4922,6 +5547,609 @@ final class RemoteFilesModelTests: XCTestCase {
         XCTAssertFalse(model.isLoadingPreview)
     }
 
+    func testJSONPreviewUsesTheExistingPreviewLifecycle() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let json = makeFileEntry(name: "status.JSON")
+        service.listings["/srv/app"] = [json]
+        let previewDirectory = try makeTemporaryDirectory()
+        let previewURL = previewDirectory.appendingPathComponent(json.name)
+        try Data(#"{"ready":true,"count":2}"#.utf8).write(to: previewURL)
+        service.previewURL = previewURL
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+
+        model.preview(json)
+        try await waitUntil { model.previewJSON != nil && !model.isLoadingPreview }
+
+        XCTAssertTrue(model.previewJSON?.formattedText.contains(#""ready""#) == true)
+        XCTAssertNil(model.previewImage)
+        XCTAssertNil(model.previewMarkdown)
+        model.closePreview()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewDirectory.path))
+    }
+
+    func testVideoPreviewReportsProgressPublishesURLAndCleansUpOnBack() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let video = makeFileEntry(name: "demo.MP4")
+        service.listings["/srv/app"] = [video]
+        service.previewProgressUpdates = [32, 128]
+        let previewDirectory = try makeTemporaryDirectory()
+        let previewURL = previewDirectory.appendingPathComponent(video.name)
+        try Data(repeating: 0x01, count: 128).write(to: previewURL)
+        service.previewURL = previewURL
+        var validatedURL: URL?
+        let model = RemoteFilesModel(
+            tunnels: [tunnel],
+            service: service,
+            videoValidator: { url in validatedURL = url }
+        )
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+
+        model.preview(video)
+        try await waitUntil { model.previewVideoURL != nil && !model.isLoadingPreview }
+
+        XCTAssertEqual(model.previewVideoURL, previewURL)
+        XCTAssertEqual(validatedURL, previewURL)
+        XCTAssertNil(model.previewImage)
+        XCTAssertNil(model.previewMarkdown)
+        XCTAssertNil(model.previewJSON)
+        XCTAssertNil(model.previewProgress)
+        model.closePreview()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: previewDirectory.path))
+    }
+
+    func testVideoRetrievalCanBeCancelledAfterMeasuredProgress() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let video = makeFileEntry(name: "demo.mp4")
+        service.listings["/srv/app"] = [video]
+        service.previewProgressUpdates = [64]
+        service.waitsForPreviewCancellation = true
+        let previewDirectory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: previewDirectory) }
+        let previewURL = previewDirectory.appendingPathComponent(video.name)
+        try Data(repeating: 0x01, count: 128).write(to: previewURL)
+        service.previewURL = previewURL
+        let model = RemoteFilesModel(
+            tunnels: [tunnel],
+            service: service,
+            videoValidator: { _ in }
+        )
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+
+        model.preview(video)
+        try await waitUntil { model.previewProgress?.completedBytes == 64 }
+        XCTAssertEqual(model.previewProgress?.percentage, 50)
+        model.cancelPreviewLoading()
+
+        XCTAssertFalse(model.isLoadingPreview)
+        XCTAssertNil(model.previewProgress)
+        XCTAssertNil(model.previewVideoURL)
+        XCTAssertEqual(model.errorMessage, "Video preview canceled.")
+    }
+
+    func testUnsupportedVideoCannotPublishAndRemovesTemporaryContent() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let video = makeFileEntry(name: "broken.mp4")
+        service.listings["/srv/app"] = [video]
+        let previewDirectory = try makeTemporaryDirectory()
+        let previewURL = previewDirectory.appendingPathComponent(video.name)
+        try Data("broken".utf8).write(to: previewURL)
+        service.previewURL = previewURL
+        let model = RemoteFilesModel(
+            tunnels: [tunnel],
+            service: service,
+            videoValidator: { _ in throw RemoteFileError.unsupportedVideo }
+        )
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+
+        model.preview(video)
+        try await waitUntil { model.errorMessage != nil && !model.isLoadingPreview }
+
+        XCTAssertNil(model.previewVideoURL)
+        XCTAssertEqual(
+            model.errorMessage,
+            RemoteFileError.unsupportedVideo.localizedDescription
+        )
+        try await waitUntil {
+            !FileManager.default.fileExists(atPath: previewDirectory.path)
+        }
+    }
+
+    func testDeletingPreviewedVideoStopsItAndAdvancesToNextPreviewableFile()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let video = makeFileEntry(name: "demo.mp4")
+        let json = makeFileEntry(name: "status.json")
+        service.listings["/srv/app"] = [video, json]
+        let videoDirectory = try makeTemporaryDirectory()
+        let jsonDirectory = try makeTemporaryDirectory()
+        let videoURL = videoDirectory.appendingPathComponent(video.name)
+        let jsonURL = jsonDirectory.appendingPathComponent(json.name)
+        try Data(repeating: 0, count: 128).write(to: videoURL)
+        try Data(#"{"next":true}"#.utf8).write(to: jsonURL)
+        service.previewURLs = [video.id: videoURL, json.id: jsonURL]
+        let model = RemoteFilesModel(
+            tunnels: [tunnel],
+            service: service,
+            videoValidator: { _ in },
+            deletionUndoDelay: 0
+        )
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.preview(video)
+        try await waitUntil { model.previewVideoURL == videoURL }
+
+        model.deletePreviewEntry()
+        try await waitUntil {
+            model.previewEntry == json
+                && model.previewJSON != nil
+                && model.deletion == nil
+        }
+
+        XCTAssertNil(model.previewVideoURL)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: videoDirectory.path))
+        XCTAssertEqual(service.deleteRequests.map(\.entry), [video])
+        XCTAssertTrue(
+            model.deletionAnnouncement?.contains("Showing status.json") == true
+        )
+        model.closePreview()
+        XCTAssertFalse(FileManager.default.fileExists(atPath: jsonDirectory.path))
+    }
+
+    func testDefaultDeletionOffersFiveSecondsToUndo() async throws {
+        let service = StubRemoteFileService()
+        let entry = makeFileEntry(name: "keep.txt")
+        service.listings["/srv/app"] = [entry]
+        let model = RemoteFilesModel(
+            tunnels: [makeTunnel(name: "Devbox", host: "devbox.local")], service: service
+        )
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.delete(entry)
+        XCTAssertEqual(model.deletion?.phase, .pendingUndo)
+        let remaining = try XCTUnwrap(model.deletion?.undoDeadline).timeIntervalSinceNow
+        XCTAssertGreaterThan(remaining, 4)
+        XCTAssertLessThanOrEqual(remaining, 5)
+        XCTAssertTrue(service.deleteRequests.isEmpty)
+        model.undoDeletion()
+        model.cancelAll()
+    }
+
+    func testUndoPreventsSingleAndBulkDeletionPastTheOriginalDeadline() async throws {
+        for bulk in [false, true] {
+            let service = StubRemoteFileService()
+            let first = makeFileEntry(name: "a.txt")
+            let second = makeFileEntry(name: "b.txt")
+            service.listings["/srv/app"] = [first, second]
+            let model = RemoteFilesModel(
+                tunnels: [makeTunnel(name: "Devbox", host: "devbox.local")],
+                service: service, deletionUndoDelay: 0.15
+            )
+            defer { model.cancelAll() }
+            model.remotePath = "/srv/app"
+            model.openRemotePath()
+            try await waitUntil { model.screen == .browser && !model.isLoading }
+            model.select(first)
+            if bulk {
+                model.beginFileSelection()
+                model.toggleFileSelection(first)
+                model.toggleFileSelection(second)
+                model.deleteSelectedFiles()
+            } else {
+                model.delete(first)
+            }
+            XCTAssertEqual(model.deletion?.phase, .pendingUndo)
+            XCTAssertTrue(service.deleteRequests.isEmpty)
+            XCTAssertFalse(model.canActivateLocation)
+            model.undoDeletion()
+            try await Task.sleep(for: .milliseconds(250))
+            XCTAssertTrue(service.deleteRequests.isEmpty)
+            XCTAssertEqual(model.entries, [first, second])
+            XCTAssertEqual(model.selectedEntryID, first.id)
+            XCTAssertEqual(model.isSelectingFiles, bulk)
+            if bulk { XCTAssertEqual(model.selectedFileIDs, [first.id, second.id]) }
+            XCTAssertNil(model.deletion)
+        }
+    }
+
+    func testSingleAndBulkDeletionSubmitOnlyAfterTheUndoDelay() async throws {
+        for bulk in [false, true] {
+            let service = StubRemoteFileService()
+            let first = makeFileEntry(name: "a.txt")
+            let second = makeFileEntry(name: "b.txt")
+            service.listings["/srv/app"] = [first, second]
+            let model = RemoteFilesModel(
+                tunnels: [makeTunnel(name: "Devbox", host: "devbox.local")],
+                service: service, deletionUndoDelay: 0.15
+            )
+            defer { model.cancelAll() }
+            model.remotePath = "/srv/app"
+            model.openRemotePath()
+            try await waitUntil { model.screen == .browser && !model.isLoading }
+            if bulk {
+                model.beginFileSelection()
+                model.toggleFileSelection(first)
+                model.toggleFileSelection(second)
+                model.deleteSelectedFiles()
+            } else { model.delete(first) }
+            try await Task.sleep(for: .milliseconds(40))
+            XCTAssertTrue(service.deleteRequests.isEmpty)
+            try await waitUntil { model.deletion == nil }
+            XCTAssertEqual(service.deleteRequests.map(\.entry), bulk ? [first, second] : [first])
+            model.undoDeletion()
+            XCTAssertEqual(model.entries, bulk ? [] : [second])
+        }
+    }
+
+    func testClosingDuringUndoWindowNeverSubmitsDeletion() async throws {
+        let service = StubRemoteFileService()
+        let entry = makeFileEntry(name: "keep.txt")
+        service.listings["/srv/app"] = [entry]
+        let model = RemoteFilesModel(
+            tunnels: [makeTunnel(name: "Devbox", host: "devbox.local")],
+            service: service, deletionUndoDelay: 0.15
+        )
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.delete(entry)
+        var completed = false
+        model.cancelAll { completed = true }
+        try await waitUntil { completed }
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertTrue(service.deleteRequests.isEmpty)
+        XCTAssertNil(model.deletion)
+    }
+
+    func testAcknowledgedBrowserDeletionSelectsTheNextRowWithoutConfirmation()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let first = makeFileEntry(name: "a.txt")
+        let deleted = makeFileEntry(name: "b.txt")
+        let next = makeFileEntry(name: "c.txt")
+        service.listings["/srv/app"] = [first, deleted, next]
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.select(deleted)
+
+        model.delete(deleted)
+        try await waitUntil { model.deletion == nil && model.entries.count == 2 }
+
+        XCTAssertEqual(service.deleteRequests.map(\.entry), [deleted])
+        XCTAssertEqual(model.entries, [first, next])
+        XCTAssertEqual(model.selectedEntryID, next.id)
+        XCTAssertEqual(model.deletionAnnouncement, "Deleted b.txt.")
+    }
+
+    func testAcknowledgedDeletionShowsASameNameRecreatedByAnotherClient() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let original = makeFileEntry(name: "report.txt")
+        let replacement = RemoteFileEntry(
+            name: original.name,
+            path: original.path,
+            kind: .file,
+            size: 999,
+            modificationText: "Aug 30 13:00"
+        )
+        service.listings["/srv/app"] = [original]
+        service.deleteReplacement = replacement
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+
+        model.delete(original)
+        try await waitUntil { model.deletion == nil }
+
+        XCTAssertEqual(model.entries, [replacement])
+        XCTAssertEqual(model.selectedEntry, replacement)
+    }
+
+    func testAcknowledgedPreviewDeletionStaysInPreviewAndMovesToNextImage()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let first = makeFileEntry(name: "a.png")
+        let deleted = makeFileEntry(name: "b.png")
+        let next = makeFileEntry(name: "c.png")
+        service.listings["/srv/app"] = [first, deleted, next]
+        var temporaryDirectories: [URL] = []
+        for entry in [first, deleted, next] {
+            let directory = try makeTemporaryDirectory()
+            temporaryDirectories.append(directory)
+            let url = directory.appendingPathComponent(entry.name)
+            try validPNGData.write(to: url)
+            service.previewURLs[entry.id] = url
+        }
+        defer {
+            for directory in temporaryDirectories {
+                try? FileManager.default.removeItem(at: directory)
+            }
+        }
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.preview(deleted)
+        try await waitUntil { model.previewEntry == deleted && model.previewImage != nil }
+
+        model.deletePreviewEntry()
+        try await waitUntil {
+            model.deletion == nil
+                && model.previewEntry == next
+                && model.previewImage != nil
+                && !model.isLoadingPreview
+        }
+
+        XCTAssertEqual(model.screen, .preview)
+        XCTAssertEqual(model.selectedEntryID, next.id)
+        XCTAssertEqual(
+            model.deletionAnnouncement,
+            "Deleted b.png. Showing c.png."
+        )
+        XCTAssertEqual(service.deleteRequests.count, 1)
+    }
+
+    func testPreviewDeletionFallsBackToEarlierImageAndThenBrowserWhenNoneRemain()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let earlier = makeFileEntry(name: "a.png")
+        let deleted = makeFileEntry(name: "b.png")
+        service.listings["/srv/app"] = [earlier, deleted]
+        let earlierDirectory = try makeTemporaryDirectory()
+        let deletedDirectory = try makeTemporaryDirectory()
+        defer {
+            try? FileManager.default.removeItem(at: earlierDirectory)
+            try? FileManager.default.removeItem(at: deletedDirectory)
+        }
+        let earlierURL = earlierDirectory.appendingPathComponent(earlier.name)
+        let deletedURL = deletedDirectory.appendingPathComponent(deleted.name)
+        try validPNGData.write(to: earlierURL)
+        try validPNGData.write(to: deletedURL)
+        service.previewURLs[earlier.id] = earlierURL
+        service.previewURLs[deleted.id] = deletedURL
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.preview(deleted)
+        try await waitUntil { model.previewEntry == deleted && model.previewImage != nil }
+
+        model.deletePreviewEntry()
+        try await waitUntil {
+            model.previewEntry == earlier && model.previewImage != nil
+                && !model.isLoadingPreview
+        }
+        XCTAssertEqual(model.screen, .preview)
+
+        model.deletePreviewEntry()
+        try await waitUntil { model.screen == .browser && model.entries.isEmpty }
+        XCTAssertNil(model.selectedEntryID)
+        XCTAssertEqual(
+            model.deletionAnnouncement,
+            "Deleted a.png. No images remain."
+        )
+    }
+
+    func testRejectedDeletionKeepsTheCurrentPreviewAndDoesNotNavigate() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let image = makeFileEntry(name: "only.png")
+        service.listings["/srv/app"] = [image]
+        service.deleteError = RemoteFileError.deleteRejected("Permission denied.")
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent(image.name)
+        try validPNGData.write(to: url)
+        service.previewURL = url
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.preview(image)
+        try await waitUntil { model.previewImage != nil }
+
+        model.deletePreviewEntry()
+        try await waitUntil { model.deletion?.phase == .failed }
+
+        XCTAssertEqual(model.screen, .preview)
+        XCTAssertEqual(model.previewEntry, image)
+        XCTAssertEqual(model.entries, [image])
+        XCTAssertFalse(model.canDeletePreviewEntry)
+    }
+
+    func testUnknownDeletionRefreshesWithoutRetryOrSelectionAdvance() async throws {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let first = makeFileEntry(name: "a.txt")
+        let selected = makeFileEntry(name: "b.txt")
+        service.listings["/srv/app"] = [first, selected]
+        service.deleteError = RemoteFileError.deleteOutcomeUnknown
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.select(selected)
+
+        model.delete(selected)
+        try await waitUntil { model.deletion?.phase == .failed }
+
+        XCTAssertEqual(service.deleteRequests.count, 1)
+        XCTAssertEqual(model.entries, [first, selected])
+        XCTAssertEqual(model.selectedEntryID, selected.id)
+        XCTAssertTrue(model.deletion?.message?.contains("still contains") == true)
+        model.dismissDeletion()
+        XCTAssertTrue(model.canDelete(selected))
+        XCTAssertEqual(service.deleteRequests.count, 1)
+    }
+
+    func testFileSelectionModeSelectsOnlyFilesAndCancelsWithoutMutation()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let folder = makeDirectoryEntry(name: "assets")
+        let first = makeFileEntry(name: "a.txt")
+        let second = makeFileEntry(name: "b.txt")
+        service.listings["/srv/app"] = [folder, first, second]
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.select(first)
+
+        XCTAssertTrue(model.canBeginFileSelection)
+        model.beginFileSelection()
+        XCTAssertTrue(model.isSelectingFiles)
+        XCTAssertTrue(model.selectedFileIDs.isEmpty)
+        XCTAssertEqual(model.selectedEntryID, first.id)
+        XCTAssertFalse(model.canGoBack)
+        XCTAssertFalse(model.canActivateLocation)
+
+        model.toggleFileSelection(folder)
+        XCTAssertTrue(model.selectedFileIDs.isEmpty)
+        model.toggleFileSelection(second)
+        XCTAssertEqual(model.selectedFileIDs, [second.id])
+
+        model.cancelFileSelection()
+        XCTAssertFalse(model.isSelectingFiles)
+        XCTAssertTrue(model.selectedFileIDs.isEmpty)
+        XCTAssertEqual(model.selectedEntryID, first.id)
+        XCTAssertTrue(service.deleteRequests.isEmpty)
+    }
+
+    func testBulkDeletionRemovesSelectedFilesSequentiallyAndRepairsSelection()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let folder = makeDirectoryEntry(name: "assets")
+        let first = makeFileEntry(name: "a.txt")
+        let second = makeFileEntry(name: "b.txt")
+        let next = makeFileEntry(name: "c.txt")
+        let last = makeFileEntry(name: "d.txt")
+        service.listings["/srv/app"] = [folder, first, second, next, last]
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.beginFileSelection()
+        model.toggleFileSelection(second)
+        model.toggleFileSelection(last)
+
+        XCTAssertTrue(model.canDeleteSelectedFiles)
+        model.deleteSelectedFiles()
+        try await waitUntil { model.deletion == nil && model.entries.count == 3 }
+
+        XCTAssertEqual(service.deleteRequests.map(\.entry), [second, last])
+        XCTAssertEqual(model.entries, [folder, first, next])
+        XCTAssertFalse(model.isSelectingFiles)
+        XCTAssertTrue(model.selectedFileIDs.isEmpty)
+        XCTAssertEqual(model.selectedEntryID, next.id)
+        XCTAssertEqual(model.deletionAnnouncement, "Deleted 2 files.")
+    }
+
+    func testBulkDeletionStopsAtFirstFailureAndPreservesRemainingSelection()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        let first = makeFileEntry(name: "a.txt")
+        let rejected = makeFileEntry(name: "b.txt")
+        let unattempted = makeFileEntry(name: "c.txt")
+        service.listings["/srv/app"] = [first, rejected, unattempted]
+        service.deleteErrors[rejected.id] = RemoteFileError.deleteRejected(
+            "Permission denied."
+        )
+        let model = RemoteFilesModel(tunnels: [tunnel], service: service, deletionUndoDelay: 0)
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+        model.beginFileSelection()
+        model.toggleFileSelection(first)
+        model.toggleFileSelection(rejected)
+        model.toggleFileSelection(unattempted)
+
+        model.deleteSelectedFiles()
+        try await waitUntil { model.deletion?.phase == .failed }
+
+        XCTAssertEqual(service.deleteRequests.map(\.entry), [first, rejected])
+        XCTAssertEqual(model.entries, [rejected, unattempted])
+        XCTAssertTrue(model.isSelectingFiles)
+        XCTAssertEqual(model.selectedFileIDs, [rejected.id, unattempted.id])
+        XCTAssertTrue(
+            model.deletion?.message?.contains("Deleted 1 of 3 files.") == true
+        )
+        XCTAssertTrue(
+            model.deletion?.message?.contains("server rejected") == true
+        )
+        model.dismissDeletion()
+        XCTAssertTrue(model.canDeleteSelectedFiles)
+    }
+
+    func testUploadPresentsMeasuredStagingBytesAndNeverRoundsEarlyToOneHundred()
+        async throws
+    {
+        let tunnel = makeTunnel(name: "Devbox", host: "devbox.local")
+        let service = StubRemoteFileService()
+        service.listings["/srv/app"] = []
+        service.waitsForUploadCancellation = true
+        service.uploadProgressUpdates = [
+            RemoteUploadUpdate(
+                phase: .staging,
+                completedBytes: 6,
+                totalBytes: 7,
+                isStagingComplete: false
+            )
+        ]
+        let presenter = StubRemoteFilePresenter()
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let localFile = directory.appendingPathComponent("seven.bin")
+        try Data("payload".utf8).write(to: localFile)
+        presenter.uploadFile = localFile
+        let model = RemoteFilesModel(
+            tunnels: [tunnel],
+            service: service,
+            presenter: presenter
+        )
+        model.remotePath = "/srv/app"
+        model.openRemotePath()
+        try await waitUntil { model.screen == .browser && !model.isLoading }
+
+        model.beginUpload()
+        try await waitUntil { model.upload?.completedBytes == 6 }
+
+        XCTAssertEqual(model.upload?.totalBytes, 7)
+        XCTAssertEqual(model.upload?.percentage, 85)
+        model.cancelUpload()
+        try await waitUntil { model.upload?.phase == .cancelled }
+    }
+
     private func makeTunnel(name: String, host: String) -> Tunnel {
         Tunnel(
             name: name,
@@ -4997,6 +6225,11 @@ private final class StubRemoteFileService: RemoteFileServing, @unchecked Sendabl
         let replaceExisting: Bool
     }
 
+    struct DeleteRequest {
+        let server: RemoteServer
+        let entry: RemoteFileEntry
+    }
+
     private struct State {
         var listings: [String: [RemoteFileEntry]] = [:]
         var pathResults: [String: RemotePathLoadResult] = [:]
@@ -5011,9 +6244,17 @@ private final class StubRemoteFileService: RemoteFileServing, @unchecked Sendabl
         var previewURL: URL?
         var previewURLs: [String: URL] = [:]
         var previewRequests: [String] = []
+        var previewProgressUpdates: [Int64]?
+        var waitsForPreviewCancellation = false
+        var previewError: Error?
         var uploadRequests: [UploadRequest] = []
         var uploadError: Error?
         var waitsForUploadCancellation = false
+        var uploadProgressUpdates: [RemoteUploadUpdate]?
+        var deleteRequests: [DeleteRequest] = []
+        var deleteError: Error?
+        var deleteErrors: [String: Error] = [:]
+        var deleteReplacement: RemoteFileEntry?
     }
 
     private let lock = NSLock()
@@ -5081,6 +6322,21 @@ private final class StubRemoteFileService: RemoteFileServing, @unchecked Sendabl
         withLock { state.previewRequests }
     }
 
+    var previewProgressUpdates: [Int64]? {
+        get { withLock { state.previewProgressUpdates } }
+        set { withLock { state.previewProgressUpdates = newValue } }
+    }
+
+    var waitsForPreviewCancellation: Bool {
+        get { withLock { state.waitsForPreviewCancellation } }
+        set { withLock { state.waitsForPreviewCancellation = newValue } }
+    }
+
+    var previewError: Error? {
+        get { withLock { state.previewError } }
+        set { withLock { state.previewError = newValue } }
+    }
+
     var uploadRequests: [UploadRequest] {
         withLock { state.uploadRequests }
     }
@@ -5093,6 +6349,30 @@ private final class StubRemoteFileService: RemoteFileServing, @unchecked Sendabl
     var waitsForUploadCancellation: Bool {
         get { withLock { state.waitsForUploadCancellation } }
         set { withLock { state.waitsForUploadCancellation = newValue } }
+    }
+
+    var uploadProgressUpdates: [RemoteUploadUpdate]? {
+        get { withLock { state.uploadProgressUpdates } }
+        set { withLock { state.uploadProgressUpdates = newValue } }
+    }
+
+    var deleteRequests: [DeleteRequest] {
+        withLock { state.deleteRequests }
+    }
+
+    var deleteError: Error? {
+        get { withLock { state.deleteError } }
+        set { withLock { state.deleteError = newValue } }
+    }
+
+    var deleteErrors: [String: Error] {
+        get { withLock { state.deleteErrors } }
+        set { withLock { state.deleteErrors = newValue } }
+    }
+
+    var deleteReplacement: RemoteFileEntry? {
+        get { withLock { state.deleteReplacement } }
+        set { withLock { state.deleteReplacement = newValue } }
     }
 
     func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
@@ -5158,12 +6438,51 @@ private final class StubRemoteFileService: RemoteFileServing, @unchecked Sendabl
     }
 
     func preparePreview(server: RemoteServer, entry: RemoteFileEntry) async throws -> URL {
-        let previewURL = withLock {
+        let result = withLock {
             state.previewRequests.append(entry.id)
-            return state.previewURLs[entry.id] ?? state.previewURL
+            return (
+                url: state.previewURLs[entry.id] ?? state.previewURL,
+                waitsForCancellation: state.waitsForPreviewCancellation,
+                error: state.previewError
+            )
         }
-        guard let previewURL else {
+        if result.waitsForCancellation {
+            while true { try await Task.sleep(for: .seconds(10)) }
+        }
+        if let error = result.error { throw error }
+        guard let previewURL = result.url else {
             throw RemoteFileError.commandFailed("Preview was not expected.")
+        }
+        return previewURL
+    }
+
+    func preparePreviewWithProgress(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws -> URL {
+        let result = withLock {
+            state.previewRequests.append(entry.id)
+            return (
+                url: state.previewURLs[entry.id] ?? state.previewURL,
+                updates: state.previewProgressUpdates ?? [],
+                waitsForCancellation: state.waitsForPreviewCancellation,
+                error: state.previewError
+            )
+        }
+        for update in result.updates { progress(update) }
+        if result.waitsForCancellation {
+            while true { try await Task.sleep(for: .seconds(10)) }
+        }
+        if let error = result.error { throw error }
+        guard let previewURL = result.url else {
+            throw RemoteFileError.commandFailed("Preview was not expected.")
+        }
+        if result.updates.isEmpty {
+            let size = Int64(
+                (try? previewURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            )
+            progress(size)
         }
         return previewURL
     }
@@ -5199,6 +6518,72 @@ private final class StubRemoteFileService: RemoteFileServing, @unchecked Sendabl
             throw error
         }
         phase(.publishing)
+    }
+
+    func uploadWithProgress(
+        server: RemoteServer,
+        localFile: URL,
+        remoteDirectory: String,
+        replaceExisting: Bool,
+        update: @escaping @Sendable (RemoteUploadUpdate) -> Void
+    ) async throws {
+        if let updates = withLock({ state.uploadProgressUpdates }) {
+            let result = withLock {
+                state.uploadRequests.append(
+                    UploadRequest(
+                        server: server,
+                        localFile: localFile,
+                        remoteDirectory: remoteDirectory,
+                        replaceExisting: replaceExisting
+                    )
+                )
+                return (
+                    waitsForCancellation: state.waitsForUploadCancellation,
+                    error: state.uploadError
+                )
+            }
+            for progressUpdate in updates {
+                update(progressUpdate)
+            }
+            if result.waitsForCancellation {
+                while true { try await Task.sleep(for: .seconds(10)) }
+            }
+            if let error = result.error { throw error }
+            return
+        }
+        let total = Int64(
+            (try? localFile.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        )
+        try await upload(
+            server: server,
+            localFile: localFile,
+            remoteDirectory: remoteDirectory,
+            replaceExisting: replaceExisting
+        ) { phase in
+            update(
+                RemoteUploadUpdate(
+                    phase: phase,
+                    completedBytes: phase == .staging ? 0 : total,
+                    totalBytes: total,
+                    isStagingComplete: phase != .staging
+                )
+            )
+        }
+    }
+
+    func delete(server: RemoteServer, entry: RemoteFileEntry) async throws {
+        let error = withLock {
+            state.deleteRequests.append(DeleteRequest(server: server, entry: entry))
+            return state.deleteErrors[entry.id] ?? state.deleteError
+        }
+        if let error { throw error }
+        withLock {
+            let parent = RemotePath.parent(of: entry.path)
+            state.listings[parent]?.removeAll { $0.id == entry.id }
+            if let replacement = state.deleteReplacement {
+                state.listings[parent]?.append(replacement)
+            }
+        }
     }
 
     private func withLock<Result>(_ body: () throws -> Result) rethrows -> Result {
@@ -5347,6 +6732,23 @@ private final class LockedUploadPhases: @unchecked Sendable {
     }
 
     var values: [RemoteUploadPhase] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+}
+
+private final class LockedUploadUpdates: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [RemoteUploadUpdate] = []
+
+    func record(_ update: RemoteUploadUpdate) {
+        lock.lock()
+        recorded.append(update)
+        lock.unlock()
+    }
+
+    var values: [RemoteUploadUpdate] {
         lock.lock()
         defer { lock.unlock() }
         return recorded

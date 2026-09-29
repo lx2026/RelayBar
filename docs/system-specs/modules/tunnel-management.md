@@ -12,7 +12,15 @@ Each saved item is a forwarding profile: one SSH connection plus an ordered, non
 - Named section menus retain Restart All above rename and ungroup, separated and enabled when the group has an active member. Targets for every group lifecycle action are resolved by canonical group identity and snapshotted when the action begins; profiles outside the group are never affected.
 - Start All starts inactive members (an unsafe member fails visibly on its own row), Stop All stops starting, retrying, and running members while stopped and failed members keep their phase and message, and Restart All replaces each member active at invocation with one fresh launch of its current saved definition without starting stopped members.
 - A rule is Local, Local SOCKS, Remote, or Remote SOCKS. Fixed Local and Remote rules independently support TCP-port and Unix-socket listeners and destinations; SOCKS listeners are TCP.
-- The editor presents those four rule kinds in one full-width segmented control without a separate visible **Type** label; the control retains a rule-specific accessibility label.
+- The editor presents those four rule kinds in a menu with a rule-specific
+  accessibility label, keeping the card inside the 380-point popover. The SSH
+  host placeholder is plain text. A fixed explanation above Add Profile or
+  Save Changes names the first invalid field or rule, even below the fold;
+  invalid profiles remain unsavable.
+- Tunnel-list summaries omit default `localhost` host text (`:8000 → db:5432`
+  or `:8000 → :5432`), preserve explicit bindings, bracket IPv6, and show
+  allocated remote ports. Full summaries remain in help and accessibility;
+  copied endpoints and SSH arguments are unchanged.
 - The editor can add, remove, duplicate, and reorder rules. It requires valid endpoints, unique rule identities, no overlapping listeners in the same namespace, and at least one rule.
 - New listeners default to explicit loopback. Each explicit non-loopback listener names its rule and whether exposure is on the Mac or SSH server.
 - Remote SOCKS requires an explicit Any, None, or host-and-port allowlist policy. Its effective policy remains visible in the profile summary and rule menu.

@@ -173,7 +173,11 @@ struct TunnelEditorView: View {
             )
 
             EditorField(label: "SSH host", hint: "user@server") {
-                TextField("user@bastion.example.com", text: $sshHost)
+                TextField(
+                    "SSH host", text: $sshHost,
+                    prompt: Text(verbatim: "user@bastion.example.com")
+                )
+                    .autocorrectionDisabled()
                     .focused($focusedField, equals: .sshHost)
             }
 
@@ -329,18 +333,53 @@ struct TunnelEditorView: View {
     }
 
     private var actionBar: some View {
-        HStack {
-            Button("Cancel", action: onCancel)
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Button(tunnel == nil ? "Add Profile" : "Save Changes", action: save)
-                .buttonStyle(.borderedProminent)
-                .controlSize(.large)
-                .disabled(!isValid)
+        VStack(alignment: .leading, spacing: 7) {
+            if let validationMessage {
+                Label(validationMessage, systemImage: "exclamationmark.circle")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel("Cannot save: \(validationMessage)")
+            }
+            HStack {
+                Button("Cancel", action: onCancel)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Button(tunnel == nil ? "Add Profile" : "Save Changes", action: save)
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(!isValid)
+            }
         }
         .padding(.horizontal, 16)
-        .frame(height: 56)
+        .padding(.vertical, 10)
+        .frame(minHeight: 56)
+    }
+
+    private var validationMessage: String? {
+        if hasPendingGroupName { return "Finish or cancel the new group name." }
+        let host = sshHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        if host.isEmpty { return "Enter an SSH host in Connection." }
+        if !SSHArgumentPolicy.isValidHostTarget(host) { return "Enter a valid SSH host, such as user@server." }
+        if rules.isEmpty { return "Add at least one forwarding rule." }
+        for (index, rule) in rules.enumerated() {
+            if let message = rule.validationMessage { return "Rule \(index + 1): \(message)" }
+        }
+        guard let mask = UInt16(streamBindMask, radix: 8), mask <= 0o777 else {
+            return "Use an octal socket bind mask from 0000 to 0777."
+        }
+        if hasReverseSOCKS {
+            if reversePolicyChoice == .unspecified { return "Choose a Remote SOCKS destination policy." }
+            if reversePolicyChoice == .restricted {
+                let destinations = reverseAllowedDestinations
+                    .split(whereSeparator: { $0.isWhitespace || $0 == "," }).map(String.init)
+                if destinations.isEmpty || !destinations.allSatisfy(SSHArgumentPolicy.isValidPermitRemoteOpenDestination) {
+                    return "Enter valid host:port destinations in the Remote SOCKS allowlist."
+                }
+            }
+        }
+        return builtTunnel == nil ? "Check for conflicting listeners or unsupported SSH options." : nil
     }
 
     private var builtTunnel: Tunnel? {
@@ -662,7 +701,9 @@ private struct ForwardingRuleEditor: View {
                 }
             }
             .labelsHidden()
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
+            .frame(maxWidth: .infinity)
+            .font(.system(size: 11.5))
             .accessibilityLabel("Rule \(position) type")
             .onChange(of: draft.kind) { newKind in
                 if newKind.isDynamic {
@@ -760,7 +801,7 @@ private struct ForwardingRuleEditor: View {
     }
 }
 
-private struct ForwardingRuleDraft: Identifiable {
+struct ForwardingRuleDraft: Identifiable {
     var id: UUID
     var kind: ForwardingRuleKind
     var listenKind: ForwardListenEndpoint.Kind
@@ -836,6 +877,43 @@ private struct ForwardingRuleDraft: Identifiable {
             destination: destination
         )
         return rule.isValid ? rule : nil
+    }
+
+    var validationMessage: String? {
+        if kind.isDynamic && listenKind != .tcp { return "SOCKS needs a TCP listener." }
+        switch listenKind {
+        case .tcp:
+            if listenPort.isEmpty { return "Enter a listening port in Forwarding Rules." }
+            let minimum = kind.listensRemotely ? 0 : 1
+            guard let port = Int(listenPort), (minimum...65_535).contains(port) else {
+                return "Use a listening port from \(minimum) to 65535."
+            }
+            let address = listenAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !SSHArgumentPolicy.isValidBindAddress(address.isEmpty ? nil : address) {
+                return "Enter a valid listening address."
+            }
+        case .unix:
+            if !SSHArgumentPolicy.isValidSocketPath(listenPath.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return "Enter an absolute listening socket path."
+            }
+        }
+        if !kind.isDynamic {
+            switch destinationKind {
+            case .tcp:
+                if destinationPort.isEmpty { return "Enter a destination port in Forwarding Rules." }
+                guard let port = Int(destinationPort), (1...65_535).contains(port) else {
+                    return "Use a destination port from 1 to 65535."
+                }
+                if !SSHArgumentPolicy.isValidDestinationHost(destinationHost.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    return "Enter a valid destination host."
+                }
+            case .unix:
+                if !SSHArgumentPolicy.isValidSocketPath(destinationPath.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    return "Enter an absolute destination socket path."
+                }
+            }
+        }
+        return forwardingRule == nil ? "Check the forwarding endpoints." : nil
     }
 
     var exposesBeyondLoopback: Bool {

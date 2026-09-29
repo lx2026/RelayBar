@@ -4,17 +4,20 @@ import SwiftUI
 /// In-popover settings screen. Shares the editor screen's navigation idiom so
 /// list → settings feels like one surface.
 struct SettingsView: View {
+    @ObservedObject var store: TunnelStore
     @ObservedObject var launchAtLogin: LaunchAtLoginModel
     @ObservedObject var updates: UpdateModel
     @StateObject private var about: ApplicationAboutModel
     let onBack: () -> Void
 
     init(
+        store: TunnelStore,
         launchAtLogin: LaunchAtLoginModel,
         updates: UpdateModel,
         about: ApplicationAboutModel = ApplicationAboutModel(),
         onBack: @escaping () -> Void
     ) {
+        self.store = store
         self.launchAtLogin = launchAtLogin
         self.updates = updates
         _about = StateObject(wrappedValue: about)
@@ -29,7 +32,7 @@ struct SettingsView: View {
             PopoverScrollContainer(fillsViewport: true) {
                 VStack(alignment: .leading, spacing: 18) {
                     generalSection
-                    Spacer(minLength: 24)
+                    Spacer(minLength: 8)
                     aboutFooter
                 }
             }
@@ -89,6 +92,9 @@ struct SettingsView: View {
                 Divider()
                     .padding(.horizontal, 12)
                 automaticUpdatesRow
+                Divider()
+                    .padding(.horizontal, 12)
+                retryLimitRow
             }
             .background(
                 RoundedRectangle(cornerRadius: 13, style: .continuous)
@@ -99,12 +105,52 @@ struct SettingsView: View {
                     .stroke(Color.primary.opacity(0.07), lineWidth: 1)
             )
 
-            Text("A login launch opens the menu bar item only — saved profiles stay stopped until you start them.")
+            Text("Retries wait 5s, 10s, 20s… up to 5 minutes. The retry count resets after 1 minute connected.")
                 .font(.system(size: 10.5))
                 .foregroundStyle(.tertiary)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.horizontal, 4)
         }
+    }
+
+    private var retryLimitRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SSH Retry Limit")
+                    .font(.system(size: 12.5, weight: .medium))
+                Text("For all profiles. 0 turns off retries.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Text("\(store.maxRetryAttempts)")
+                .font(.system(size: 12.5).monospacedDigit())
+                .frame(minWidth: 25, alignment: .trailing)
+                .accessibilityHidden(true)
+            Stepper(
+                "SSH Retry Limit",
+                value: Binding(
+                    get: { store.maxRetryAttempts },
+                    set: { store.setMaxRetryAttempts($0) }
+                ),
+                in: TunnelStore.retryLimitRange
+            )
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityValue(
+                store.maxRetryAttempts == 0 ? "Off" : "\(store.maxRetryAttempts) retries"
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
     }
 
     private var automaticUpdatesRow: some View {
@@ -151,9 +197,10 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Launch at Login")
                     .font(.system(size: 12.5, weight: .medium))
-                Text("Open RelayBar when you log in")
+                Text("Open at login; profiles stay stopped.")
                     .font(.system(size: 10.5))
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
             Spacer()

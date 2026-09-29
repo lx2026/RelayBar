@@ -9,7 +9,10 @@
   URL behavior, login-item state mapping, bundle-about behavior, update-state
   mapping through the injected no-network boundary, Remote Files connection
   reuse and cleanup, navigation, path/argument handling, listing parsing,
-  Markdown compatibility, link policy, and renderer limits. Tests never read
+  JSON validation, wrapping, and scrolling, MP4 classification, retrieval,
+  readiness, paused player ownership, upload byte progress, exact-path
+  deletion and reconciliation, Markdown compatibility, link policy, and
+  renderer limits. Tests never read
   or change the real login-item registration and never start Sparkle.
 - Build the Xcode app target with complete Swift strict-concurrency checking and warnings treated as errors.
 - Run `plutil -lint` against the application property list.
@@ -17,6 +20,22 @@
 - Tests for transient published UI state observe the required state transition
   and await a bounded expectation; they do not assume a short wall-clock sleep
   determines main-actor scheduling order.
+- Retry coverage verifies saved limits including 0, exact SSH-master launch
+  counts, exponential delay and cap, retained budgets across brief reconnects,
+  reset after 60 stable seconds, manual restart, live limit changes, and stop
+  cancellation. Fake SSH processes and an injected monotonic clock exercise
+  these cases without deliberately triggering a server's connection ban.
+  `VisualSnapshotHarness/testCaptureRetrySettingsSnapshots` captures 0, 10, and
+  100 in Aqua/Dark Aqua and asserts that the normal 380 × 440 Settings viewport
+  needs neither horizontal nor vertical scrolling.
+- Deletion tests verify that single and bulk requests cannot reach the service
+  during the five-second Undo window and that Undo/close prevent submission
+  past the original deadline. Existing acknowledged, partial, stale, and
+  unknown-outcome cases use an injected zero wait to isolate transport results.
+- Presentation coverage preserves full SSH/copy values while testing compact
+  endpoint summaries, IPv6, allocated ports, and actionable rule-validation
+  reasons. `testCaptureTasks046To048Snapshots` covers the Undo strip, red bulk
+  action, narrow suffix-preserving paths, and invalid/Remote SOCKS editor states.
 
 ## Optional live check
 
@@ -35,6 +54,15 @@ previewable Markdown file.
 
 Remote Files changes should additionally exercise that server and absolute path manually for nested navigation, cached Back and revisit, uncached-open cancellation, refresh, file download, recursive folder download, cancellation, image preview, Markdown preview, connection loss, window close, and representative failures. For transport-reuse changes, record cold initial-open and at least five warm uncached nested-folder timings against a genuinely high-latency server, and confirm the warm operations reuse one master without another key exchange or authentication.
 
+JSON, video, and deletion changes additionally exercise bounded valid and malformed
+JSON, long-token wrapping, full vertical scrolling, playable and unsupported
+MP4, progress/cancellation, and paused native playback plus a uniquely named isolated remote fixture for
+direct browser and image-preview deletion, literal metacharacter names,
+permission denial, stale replacement, transport interruption, and excluded
+directory and link cases. Confirm every delete entry point has no confirmation
+UI, acknowledged image deletion advances in preview, and non-acknowledged
+outcomes do not advance. Never use production data as a deletion fixture.
+
 Workspace or upload changes additionally exercise one-click recent-folder
 revisit, Add Path retry, individual and complete history removal, sidebar
 focus-only traversal plus Return activation, and sidebar/detail preview arrow
@@ -46,7 +74,7 @@ window-close/app-quit retirement. Use unique test names and remove only those
 exact names. Never treat a skipped or unreachable live target as passing live
 evidence.
 
-Before a live server is available, use the DEBUG-only Remote Files fixture to review light and dark appearance, minimum-window truncation, empty folders, long names, recent-folder and recent-host overflow, Add Path validation, immediate target-path and **Opening folder…** feedback, cached revalidation, rapid navigation and Back cancellation, split image and Markdown previews, sibling selection, sidebar focus and Return activation, Left/Right switching, sidebar dragging and Control-Command-S visibility, focused reading, refresh recovery, initial connection errors, and active, completed, failed, and canceled uploads and downloads. Fixture downloads must remain inside their private temporary directory and must not open Finder.
+Before a live server is available, use the DEBUG-only Remote Files fixture to review light and dark appearance, minimum-window truncation, empty folders, long names, recent-folder and recent-host overflow, Add Path validation, immediate target-path and **Opening folder…** feedback, cached revalidation, rapid navigation and Back cancellation, file-only Select mode, split image, Markdown, wrapping JSON, and MP4 previews, video progress and cancellation, sibling selection, sidebar focus and Return activation, Left/Right switching, sidebar dragging and Control-Command-S visibility, focused reading, refresh recovery, initial connection errors, upload percentage/publishing/cleanup states, and direct or selected-file deletion outcomes with no confirmation UI. Fixture downloads must remain inside their private temporary directory and must not open Finder.
 
 Start a DEBUG build with `--preview-window --flexible-forwarding-preview` to review rule-aware profile rows and the editor without reading or changing the user's saved profiles. Review add, type switching, duplicate, reorder, remove, automatic ports, Unix fields, exposure warnings, reverse-SOCKS policy, scrolling, keyboard focus, and accessibility labels in light and dark appearance.
 

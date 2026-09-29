@@ -26,6 +26,11 @@ RelayBar is a native SwiftUI `MenuBarExtra` application for macOS 13 or newer.
   Sparkle's own persisted scheduled-check preference, defaults off, checks at
   a seven-day interval when enabled, and cannot enable automatic download or
   installation. Settings and application activation do not initiate checks.
+- The General card's **SSH Retry Limit** stepper sets 0–100 retries globally
+  for forwarding profiles, defaulting to 10. Its caption explains that 0
+  disables retries; supporting text describes exponential waiting from 5
+  seconds to 5 minutes and a reset after 1 minute connected. The value is
+  persisted immediately and exposed to accessibility as a retry count or Off.
 - The system login-item status is authoritative; no second enabled flag is persisted. Approval-required and not-found states keep the toggle off, while an operation error remains visible without overriding the system-reported toggle state, so failed changes stay truthful and retryable. Approval-required links to the macOS Login Items settings, and the displayed state refreshes when the app becomes active.
 - A login launch opens the same menu-bar-only app; saved forwarding profiles stay stopped until the user starts them.
 - A quiet Settings footer reads version and build from the running bundle,

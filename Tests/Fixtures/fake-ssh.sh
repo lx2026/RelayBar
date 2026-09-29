@@ -51,6 +51,10 @@ for argument in "$@"; do
 done
 
 if [ "$is_master" -eq 1 ]; then
+    if [ "${RELAYBAR_FAKE_SSH_FAIL_MASTER:-}" = "1" ]; then
+        printf 'fake connection failure\n' >&2
+        exit 255
+    fi
     if [ -z "$control_socket" ]; then
         printf 'missing fake control socket\n' >&2
         exit 2

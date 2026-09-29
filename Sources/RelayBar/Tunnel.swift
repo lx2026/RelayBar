@@ -240,6 +240,31 @@ struct ForwardingRule: Identifiable, Codable, Equatable, Hashable, Sendable {
         return resolved.displaySummary
     }
 
+    func compactDisplaySummary(runtimePort: Int?) -> String {
+        let listener: String
+        if let tcp = listen.tcp {
+            let host = tcp.bindAddress ?? "localhost"
+            let port = kind.listensRemotely && tcp.port == 0 ? (runtimePort ?? 0) : tcp.port
+            listener = host.isEmpty || host.lowercased() == "localhost"
+                ? ":\(port)" : "\(SSHForwardingFormat.bracketIPv6(host)):\(port)"
+        } else {
+            listener = listen.displayText
+        }
+        let target: String
+        if let tcp = destination?.tcp {
+            target = tcp.host.lowercased() == "localhost"
+                ? ":\(tcp.port)" : "\(SSHForwardingFormat.bracketIPv6(tcp.host)):\(tcp.port)"
+        } else {
+            target = destination?.displayText ?? "Invalid destination"
+        }
+        switch kind {
+        case .local: return "\(listener) → \(target)"
+        case .remote: return "\(listener) ⇠ \(target)"
+        case .localDynamic: return "\(listener) → SOCKS via server"
+        case .remoteDynamic: return "\(listener) ⇠ SOCKS via Mac"
+        }
+    }
+
     func copyableListenEndpoint(runtimePort: Int?) -> String? {
         switch listen.kind {
         case .unix:
@@ -637,6 +662,15 @@ struct Tunnel: Identifiable, Codable, Equatable, Sendable {
             return singleRuleSummary(rule, runtimePort: runtimePorts[rule.id])
         }
         return "\(rules.count) forwarding rules via \(sshHost)"
+    }
+
+    func compactDisplaySummary(runtimePorts: [UUID: Int]) -> String {
+        guard rules.count == 1, let rule = rules.first else {
+            return "\(rules.count) forwarding rules"
+        }
+        let summary = rule.compactDisplaySummary(runtimePort: runtimePorts[rule.id])
+        guard rule.kind == .remoteDynamic, let reverseSOCKSPolicy else { return summary }
+        return "\(summary) · \(reverseSOCKSPolicy.displayText)"
     }
 
     private func singleRuleSummary(

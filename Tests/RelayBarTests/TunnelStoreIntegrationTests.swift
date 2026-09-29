@@ -955,6 +955,238 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         XCTAssertEqual(store.runningCount, 0)
     }
 
+    func testRetryLimitPersistsIncludingZeroAndClampsInvalidValues() {
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TunnelStore(defaults: defaults)
+        XCTAssertEqual(store.maxRetryAttempts, 10)
+
+        for (input, expected) in [(3, 3), (0, 0), (Int.min, 0), (Int.max, 100)] {
+            store.setMaxRetryAttempts(input)
+            XCTAssertEqual(store.maxRetryAttempts, expected)
+            XCTAssertEqual(TunnelStore(defaults: defaults).maxRetryAttempts, expected)
+        }
+        defaults.set(-5, forKey: "sshRetryLimit.v1")
+        XCTAssertEqual(TunnelStore(defaults: defaults).maxRetryAttempts, 0)
+        defaults.set(101, forKey: "sshRetryLimit.v1")
+        XCTAssertEqual(TunnelStore(defaults: defaults).maxRetryAttempts, 100)
+    }
+
+    func testSavedRetryLimitControlsExactMasterLaunchCount() async throws {
+        for limit in [0, 1, 3] {
+            let fixture = try makeFakeSSHFixture(
+                overrides: ["RELAYBAR_FAKE_SSH_FAIL_MASTER": "1"]
+            )
+            defer { fixture.cleanup() }
+            let (defaults, suiteName) = makeIsolatedDefaults()
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            TunnelStore(defaults: defaults).setMaxRetryAttempts(limit)
+            var scheduledAttempts: [Int] = []
+            let store = TunnelStore(
+                defaults: defaults,
+                sshExecutableURL: fakeSSHURL,
+                retryDelayProvider: { attempt in
+                    scheduledAttempts.append(attempt)
+                    return 0.01
+                },
+                processEnvironment: fixture.environment
+            )
+            let tunnel = makeLocalProfile()
+            store.start(tunnel)
+            defer { store.stop(tunnel) }
+            let exhausted = await waitUntil {
+                if case .failed = store.phase(for: tunnel) { return true }
+                return false
+            }
+            XCTAssertTrue(exhausted)
+            XCTAssertEqual(masterInvocationCount(try String(contentsOf: fixture.logURL)), limit + 1)
+            XCTAssertEqual(scheduledAttempts, limit == 0 ? [] : Array(1...limit))
+            XCTAssertEqual(store.runningCount, 0)
+            if limit == 0 {
+                guard case .failed(let message) = store.phase(for: tunnel) else {
+                    return XCTFail("Expected an explicit disabled-retry failure.")
+                }
+                XCTAssertTrue(message.contains("Automatic retries are disabled."))
+            }
+        }
+    }
+
+    func testDisablingPendingRetryCancelsTimerAndRequiresManualStart() async throws {
+        let fixture = try makeFakeSSHFixture(
+            overrides: ["RELAYBAR_FAKE_SSH_FAIL_MASTER": "1"]
+        )
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = makeFakeStore(defaults: defaults, fixture: fixture, retryDelay: 0.2)
+        let tunnel = makeLocalProfile()
+        store.start(tunnel)
+        defer { store.stop(tunnel) }
+        let waiting = await waitUntil {
+            if case .retrying = store.phase(for: tunnel) { return true }
+            return false
+        }
+        XCTAssertTrue(waiting)
+        store.setMaxRetryAttempts(0)
+        guard case .failed(let message) = store.phase(for: tunnel) else {
+            return XCTFail("Disabling retries must end a pending wait immediately.")
+        }
+        XCTAssertTrue(message.contains("Automatic retries are disabled."))
+        store.setMaxRetryAttempts(2)
+        // Wait beyond the cancelled timer to prove that it cannot launch SSH.
+        try await Task.sleep(for: .milliseconds(350))
+        XCTAssertEqual(masterInvocationCount(try String(contentsOf: fixture.logURL)), 1)
+        XCTAssertEqual(store.runningCount, 0)
+
+        store.start(tunnel)
+        let waitingAgain = await waitUntil {
+            if case .retrying(let attempt, let maxAttempts, _, _) = store.phase(for: tunnel) {
+                return attempt == 1 && maxAttempts == 2
+            }
+            return false
+        }
+        XCTAssertTrue(waitingAgain)
+        XCTAssertEqual(masterInvocationCount(try String(contentsOf: fixture.logURL)), 2)
+    }
+
+    func testChangingLimitPreservesPendingDelayAndCancelsExcessAttempts() async throws {
+        let fixture = try makeFakeSSHFixture(
+            overrides: ["RELAYBAR_FAKE_SSH_FAIL_MASTER": "1"]
+        )
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var scheduledAttempts: [Int] = []
+        let store = TunnelStore(
+            defaults: defaults,
+            sshExecutableURL: fakeSSHURL,
+            maxRetryAttempts: 3,
+            retryDelayProvider: { attempt in
+                scheduledAttempts.append(attempt)
+                return attempt == 1 ? 0.2 : 0.4
+            },
+            processEnvironment: fixture.environment
+        )
+        let tunnel = makeLocalProfile()
+        store.start(tunnel)
+        defer { store.stop(tunnel) }
+        let waiting = await waitUntil {
+            if case .retrying = store.phase(for: tunnel) { return true }
+            return false
+        }
+        XCTAssertTrue(waiting)
+        for limit in [2, 4] {
+            store.setMaxRetryAttempts(limit)
+            guard case .retrying(let attempt, let maximum, let delay, _) = store.phase(for: tunnel) else {
+                return XCTFail("An allowed pending attempt should remain scheduled.")
+            }
+            XCTAssertEqual(attempt, 1)
+            XCTAssertEqual(maximum, limit)
+            XCTAssertEqual(delay, 0.2)
+            XCTAssertEqual(scheduledAttempts, [1])
+        }
+        let secondWait = await waitUntil {
+            if case .retrying(let attempt, _, _, _) = store.phase(for: tunnel) { return attempt == 2 }
+            return false
+        }
+        XCTAssertTrue(secondWait)
+        store.setMaxRetryAttempts(1)
+        guard case .failed(let message) = store.phase(for: tunnel) else {
+            return XCTFail("Lowering below the pending attempt should cancel it.")
+        }
+        XCTAssertTrue(message.contains("stopped after 1 attempt."))
+        try await Task.sleep(for: .milliseconds(500))
+        XCTAssertEqual(masterInvocationCount(try String(contentsOf: fixture.logURL)), 2)
+    }
+
+    func testBriefReconnectsExhaustBudgetAndManualStartResetsIt() async throws {
+        let fixture = try makeFakeSSHFixture()
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var uptime: TimeInterval = 0
+        var scheduledAttempts: [Int] = []
+        let store = TunnelStore(
+            defaults: defaults,
+            sshExecutableURL: fakeSSHURL,
+            maxRetryAttempts: 2,
+            retryDelayProvider: { attempt in scheduledAttempts.append(attempt); return 0.01 },
+            monotonicNow: { uptime },
+            processEnvironment: fixture.environment
+        )
+        let tunnel = makeLocalProfile()
+        store.start(tunnel)
+        defer { store.stop(tunnel) }
+
+        for expectedLaunches in 1...3 {
+            let connected = await waitUntil {
+                store.phase(for: tunnel) == .running
+                    && self.masterInvocationCount((try? String(contentsOf: fixture.logURL)) ?? "") == expectedLaunches
+            }
+            XCTAssertTrue(connected)
+            uptime += 59
+            try terminateFakeMaster(fixture)
+        }
+        let exhausted = await waitUntil {
+            if case .failed = store.phase(for: tunnel) { return true }
+            return false
+        }
+        XCTAssertTrue(exhausted)
+        XCTAssertEqual(scheduledAttempts, [1, 2])
+        XCTAssertEqual(masterInvocationCount(try String(contentsOf: fixture.logURL)), 3)
+
+        store.start(tunnel)
+        let restarted = await waitUntil { store.phase(for: tunnel) == .running }
+        XCTAssertTrue(restarted)
+        try terminateFakeMaster(fixture)
+        let retriedAgain = await waitUntil { scheduledAttempts.count == 3 }
+        XCTAssertTrue(retriedAgain)
+        XCTAssertEqual(scheduledAttempts, [1, 2, 1])
+    }
+
+    func testStableConnectionResetsBackoffAndZeroDoesNotStopRunningMaster() async throws {
+        let fixture = try makeFakeSSHFixture()
+        defer { fixture.cleanup() }
+        let (defaults, suiteName) = makeIsolatedDefaults()
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        var uptime: TimeInterval = 0
+        var scheduledAttempts: [Int] = []
+        let store = TunnelStore(
+            defaults: defaults,
+            sshExecutableURL: fakeSSHURL,
+            maxRetryAttempts: 1,
+            retryDelayProvider: { attempt in scheduledAttempts.append(attempt); return 0.01 },
+            monotonicNow: { uptime },
+            processEnvironment: fixture.environment
+        )
+        let tunnel = makeLocalProfile()
+        store.start(tunnel)
+        defer { store.stop(tunnel) }
+        for expectedLaunches in 1...2 {
+            let connected = await waitUntil {
+                store.phase(for: tunnel) == .running
+                    && self.masterInvocationCount((try? String(contentsOf: fixture.logURL)) ?? "") == expectedLaunches
+            }
+            XCTAssertTrue(connected)
+            uptime += expectedLaunches == 1 ? 1 : 60
+            try terminateFakeMaster(fixture)
+        }
+        let recovered = await waitUntil {
+            store.phase(for: tunnel) == .running && scheduledAttempts.count == 2
+        }
+        XCTAssertTrue(recovered)
+        XCTAssertEqual(scheduledAttempts, [1, 1])
+        store.setMaxRetryAttempts(0)
+        XCTAssertEqual(store.phase(for: tunnel), .running)
+        try terminateFakeMaster(fixture)
+        let exhausted = await waitUntil {
+            if case .failed = store.phase(for: tunnel) { return true }
+            return false
+        }
+        XCTAssertTrue(exhausted)
+        XCTAssertEqual(masterInvocationCount(try String(contentsOf: fixture.logURL)), 3)
+    }
+
     func testManualStopCancelsPendingRetry() async throws {
         let (defaults, suiteName) = makeIsolatedDefaults()
         defer { defaults.removePersistentDomain(forName: suiteName) }
@@ -1032,12 +1264,9 @@ final class TunnelStoreIntegrationTests: XCTestCase {
     }
 
     func testRetryDelayUsesExponentialBackoffWithCap() {
-        XCTAssertEqual(TunnelStore.retryDelay(for: 1), 1)
-        XCTAssertEqual(TunnelStore.retryDelay(for: 2), 2)
-        XCTAssertEqual(TunnelStore.retryDelay(for: 3), 4)
-        XCTAssertEqual(TunnelStore.retryDelay(for: 6), 32)
-        XCTAssertEqual(TunnelStore.retryDelay(for: 7), 60)
-        XCTAssertEqual(TunnelStore.retryDelay(for: 10), 60)
+        XCTAssertEqual((1...10).map(TunnelStore.retryDelay(for:)), [5, 10, 20, 40, 80, 160, 300, 300, 300, 300])
+        XCTAssertEqual(TunnelStore.retryDelay(for: Int.min), 5)
+        XCTAssertEqual(TunnelStore.retryDelay(for: Int.max), 300)
     }
 
     func testBrowserOpenWaitsUntilAllRulesAreInstalled() async throws {
@@ -1140,6 +1369,7 @@ final class TunnelStoreIntegrationTests: XCTestCase {
         try Data("47000\n".utf8).write(to: counterURL)
         var environment = [
             "RELAYBAR_FAKE_SSH_LOG": logURL.path,
+            "RELAYBAR_FAKE_SSH_PID": directory.appendingPathComponent("master.pid").path,
             "RELAYBAR_FAKE_SSH_COUNTER": counterURL.path
         ]
         environment.merge(overrides) { _, replacement in replacement }
@@ -1148,6 +1378,14 @@ final class TunnelStoreIntegrationTests: XCTestCase {
             logURL: logURL,
             environment: environment
         )
+    }
+
+    private func terminateFakeMaster(_ fixture: FakeSSHFixture) throws {
+        let path = try XCTUnwrap(fixture.environment["RELAYBAR_FAKE_SSH_PID"])
+        let pid = try XCTUnwrap(Int32(String(contentsOfFile: path).trimmingCharacters(in: .whitespacesAndNewlines)))
+        XCTAssertGreaterThan(pid, 0)
+        guard pid > 0 else { return }
+        XCTAssertEqual(kill(pid, SIGTERM), 0)
     }
 
     private func waitUntil(

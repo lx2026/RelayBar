@@ -14,6 +14,13 @@
 
 ## Runtime ownership
 
+The global forwarding retry limit is stored separately from profiles as an
+integer in `UserDefaults` under `sshRetryLimit.v1`. Missing or non-integer
+values default to 10; integer values are clamped to 0–100, preserving 0 as
+disabled. Settings writes through `TunnelStore.setMaxRetryAttempts` so active
+retry waits immediately observe the policy change. Attempts, deadlines, and
+monotonic connection-start times remain runtime-only.
+
 `TunnelStore` is main-actor isolated and publishes saved tunnels plus phase by UUID. It separately tracks:
 
 - desired active profiles;
@@ -41,4 +48,11 @@ The desired-active state lets a retrying profile remain stoppable while no proce
   records; forwarding profiles and OpenSSH config remain unchanged.
 - Forwarding profiles and concrete aliases discovered from `~/.ssh/config` remain external inputs to the catalog. Config aliases are read on refresh and are not persisted as standalone RelayBar hosts.
 - Remote Files directory snapshots are session-only. They are keyed by exact connection identity and normalized path, bounded by aggregate entry units, and cleared on session end; no listing or downloaded content enters `UserDefaults`.
+- Image, Markdown, JSON, and MP4 preview content, upload and video-retrieval byte measurements, deletion
+  fingerprints, outcomes, and accessibility announcements are session-only.
+  RelayBar persists no preview body, transfer history, deletion history, remote
+  filename, or deletion telemetry.
+- The pending-deletion deadline and task exist only in memory. Undo invalidates
+  the task generation and cancels its five-second wait; it never persists a
+  queue or restores a file after server submission.
 - The combined picker order is recent, standalone saved host, forwarding profile, then OpenSSH config. The first connection at each SSH-host-and-arguments identity wins.

@@ -51,6 +51,7 @@ struct RelayBarRootView: View {
                 )
             case .settings:
                 SettingsView(
+                    store: store,
                     launchAtLogin: launchAtLogin,
                     updates: updates,
                     onBack: { screen = .list }
@@ -325,10 +326,13 @@ private struct TunnelRow: View {
                         }
                     }
 
-                    Text(tunnel.displaySummary(runtimePorts: runtimePorts))
+                    Text(tunnel.compactDisplaySummary(runtimePorts: runtimePorts))
                         .font(.system(size: 11.5, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(tunnel.displaySummary(runtimePorts: runtimePorts))
+                        .accessibilityLabel(tunnel.displaySummary(runtimePorts: runtimePorts))
 
                     Text(errorOrHost)
                         .font(.system(size: 10.5))

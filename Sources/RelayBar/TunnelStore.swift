@@ -5,6 +5,8 @@ import Foundation
 @MainActor
 final class TunnelStore: ObservableObject {
     static let shared = TunnelStore()
+    static let retryLimitRange = 0...100
+    private static let retryLimitKey = "sshRetryLimit.v1"
 
     @Published private(set) var tunnels: [Tunnel] {
         didSet { cachedGrouping = nil }
@@ -13,11 +15,12 @@ final class TunnelStore: ObservableObject {
     @Published private(set) var phases: [UUID: TunnelPhase] = [:]
     @Published private(set) var runtimePorts: [UUID: [UUID: Int]] = [:]
     @Published private(set) var terminatingSSHProcessCount = 0
+    @Published private(set) var maxRetryAttempts: Int
 
     private let defaults: UserDefaults
     private let sshExecutableURL: URL
-    private let maxRetryAttempts: Int
     private let retryDelayProvider: (Int) -> TimeInterval
+    private let monotonicNow: () -> TimeInterval
     private let browserOpener: (URL) -> Void
     private let processEnvironment: [String: String]?
     private let controlOperationTimeout: TimeInterval
@@ -35,6 +38,7 @@ final class TunnelStore: ObservableObject {
     private var errorBuffers: [UUID: Data] = [:]
     private var desiredTunnels: [UUID: Tunnel] = [:]
     private var retryAttempts: [UUID: Int] = [:]
+    private var runningSince: [UUID: TimeInterval] = [:]
     private var retryTasks: [UUID: Task<Void, Never>] = [:]
     private var startupTasks: [UUID: Task<Void, Never>] = [:]
     private var pendingBrowserURLs: [UUID: URL] = [:]
@@ -52,8 +56,9 @@ final class TunnelStore: ObservableObject {
     init(
         defaults: UserDefaults = .standard,
         sshExecutableURL: URL = URL(fileURLWithPath: "/usr/bin/ssh"),
-        maxRetryAttempts: Int = 10,
+        maxRetryAttempts: Int? = nil,
         retryDelayProvider: @escaping (Int) -> TimeInterval = TunnelStore.retryDelay(for:),
+        monotonicNow: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
         browserOpener: @escaping (URL) -> Void = { _ = NSWorkspace.shared.open($0) },
         processEnvironment: [String: String]? = nil,
         controlOperationTimeout: TimeInterval = 10,
@@ -61,8 +66,12 @@ final class TunnelStore: ObservableObject {
     ) {
         self.defaults = defaults
         self.sshExecutableURL = sshExecutableURL
-        self.maxRetryAttempts = max(0, maxRetryAttempts)
+        let retryLimit = maxRetryAttempts
+            ?? (defaults.object(forKey: Self.retryLimitKey) as? Int)
+            ?? 10
+        self.maxRetryAttempts = min(max(0, retryLimit), Self.retryLimitRange.upperBound)
         self.retryDelayProvider = retryDelayProvider
+        self.monotonicNow = monotonicNow
         self.browserOpener = browserOpener
         self.processEnvironment = processEnvironment
         self.controlOperationTimeout = max(0.1, controlOperationTimeout)
@@ -325,9 +334,30 @@ final class TunnelStore: ObservableObject {
         NSApplication.shared.terminate(nil)
     }
 
+    func setMaxRetryAttempts(_ limit: Int) {
+        maxRetryAttempts = min(max(0, limit), Self.retryLimitRange.upperBound)
+        defaults.set(maxRetryAttempts, forKey: Self.retryLimitKey)
+
+        for id in Array(retryTasks.keys) {
+            guard case .retrying(let attempt, _, let delay, let message) = phases[id] else {
+                continue
+            }
+            if attempt > maxRetryAttempts {
+                finishAutomaticRetries(for: id, message: message)
+            } else {
+                // Keep the existing deadline; changing the limit must not
+                // shorten backoff or restart the current wait.
+                phases[id] = .retrying(
+                    attempt: attempt, maxAttempts: maxRetryAttempts,
+                    delay: delay, message: message
+                )
+            }
+        }
+    }
+
     nonisolated static func retryDelay(for attempt: Int) -> TimeInterval {
-        let exponent = min(max(attempt - 1, 0), 6)
-        return min(pow(2, Double(exponent)), 60)
+        let exponent = min(max(attempt, 1), 7) - 1
+        return min(5 * pow(2, Double(exponent)), 300)
     }
 
     private func launchTunnel(id: UUID) {
@@ -555,7 +585,7 @@ final class TunnelStore: ObservableObject {
 
         startupTasks[id] = nil
         runtimePorts[id] = allocations.isEmpty ? nil : allocations
-        retryAttempts[id] = 0
+        runningSince[id] = monotonicNow()
         phases[id] = .running
         openPendingBrowserURL(for: id)
     }
@@ -853,6 +883,10 @@ final class TunnelStore: ObservableObject {
         guard processes[id] === process else { return }
         let startupMessage = startupFailureMessages.removeValue(forKey: id)
         let message = startupMessage ?? errorMessage(for: id)
+        // A brief successful reconnect must not replenish the retry budget.
+        if let started = runningSince[id], monotonicNow() - started >= 60 {
+            retryAttempts[id] = 0
+        }
         cleanupRuntime(for: id, process: process)
 
         guard desiredTunnels[id] != nil else {
@@ -893,17 +927,11 @@ final class TunnelStore: ObservableObject {
 
         let attempt = (retryAttempts[id] ?? 0) + 1
         guard attempt <= maxRetryAttempts else {
-            desiredTunnels[id] = nil
-            retryAttempts[id] = nil
-            pendingBrowserURLs[id] = nil
-            phases[id] = .failed(
-                "\(message) Automatic retry stopped after \(maxRetryAttempts) attempts."
-            )
+            finishAutomaticRetries(for: id, message: message)
             return
         }
 
         cancelRetry(for: id)
-        retryAttempts[id] = attempt
         let delay = max(0, retryDelayProvider(attempt))
         phases[id] = .retrying(
             attempt: attempt,
@@ -928,8 +956,21 @@ final class TunnelStore: ObservableObject {
             }
 
             self.retryTasks[id] = nil
+            self.retryAttempts[id] = attempt
             self.launchTunnel(id: id)
         }
+    }
+
+    private func finishAutomaticRetries(for id: UUID, message: String) {
+        let attempts = retryAttempts[id] ?? 0
+        let reason = maxRetryAttempts == 0
+            ? "Automatic retries are disabled."
+            : "Automatic retry stopped after \(attempts) \(attempts == 1 ? "attempt" : "attempts")."
+        cancelRetry(for: id)
+        desiredTunnels[id] = nil
+        retryAttempts[id] = nil
+        pendingBrowserURLs[id] = nil
+        phases[id] = .failed("\(message) \(reason)")
     }
 
     private func cancelRetry(for id: UUID) {
@@ -953,6 +994,7 @@ final class TunnelStore: ObservableObject {
         errorPipes[id] = nil
         errorBuffers[id] = nil
         processes[id] = nil
+        runningSince[id] = nil
         runtimePorts[id] = nil
         cleanupOwnedLocalSockets(for: id)
         cleanupControlDirectory(for: id)

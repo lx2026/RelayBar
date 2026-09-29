@@ -132,8 +132,19 @@ struct RemoteFileEntry: Identifiable, Hashable, Sendable {
         )
     }
 
+    var isPreviewableJSON: Bool {
+        guard kind == .file else { return false }
+        return URL(fileURLWithPath: name).pathExtension.lowercased() == "json"
+    }
+
+    var isPreviewableVideo: Bool {
+        guard kind == .file else { return false }
+        return URL(fileURLWithPath: name).pathExtension.lowercased() == "mp4"
+    }
+
     var isPreviewable: Bool {
-        isPreviewableImage || isPreviewableMarkdown
+        isPreviewableImage || isPreviewableMarkdown || isPreviewableJSON
+            || isPreviewableVideo
     }
 
     private static let previewableImageExtensions: Set<String> = [
@@ -159,8 +170,27 @@ enum RemoteUploadPhase: Equatable, Sendable {
         switch self {
         case .staging: "Staging safely…"
         case .publishing: "Publishing…"
-        case .cleaningUp: "Removing the remote staging file…"
+        case .cleaningUp: "Removing temporary file…"
         }
+    }
+}
+
+struct RemoteUploadUpdate: Equatable, Sendable {
+    let phase: RemoteUploadPhase
+    let completedBytes: Int64
+    let totalBytes: Int64
+    let isStagingComplete: Bool
+
+    init(
+        phase: RemoteUploadPhase,
+        completedBytes: Int64,
+        totalBytes: Int64,
+        isStagingComplete: Bool = false
+    ) {
+        self.phase = phase
+        self.completedBytes = max(0, min(completedBytes, totalBytes))
+        self.totalBytes = max(0, totalBytes)
+        self.isStagingComplete = isStagingComplete
     }
 }
 
@@ -242,6 +272,11 @@ enum RemoteFileError: LocalizedError, Equatable {
     case previewTooLarge
     case markdownTooLarge
     case invalidMarkdownEncoding
+    case jsonTooLarge
+    case invalidJSONEncoding
+    case malformedJSON
+    case videoTooLarge
+    case unsupportedVideo
     case imageDimensionsTooLarge
     case unsupportedImage
     case malformedListing
@@ -252,6 +287,10 @@ enum RemoteFileError: LocalizedError, Equatable {
     case unsupportedUploadTarget
     case uploadCapabilityUnavailable(String)
     case uploadCleanupUnconfirmed(String)
+    case deleteNotSubmitted(String)
+    case deleteTargetChanged
+    case deleteRejected(String)
+    case deleteOutcomeUnknown
 
     var errorDescription: String? {
         switch self {
@@ -271,6 +310,16 @@ enum RemoteFileError: LocalizedError, Equatable {
             return "This Markdown file is too large to preview safely. Download it instead."
         case .invalidMarkdownEncoding:
             return "This Markdown file is not valid UTF-8. Download it instead."
+        case .jsonTooLarge:
+            return "This JSON file is too large to preview safely. Download it instead."
+        case .invalidJSONEncoding:
+            return "This JSON file is not valid UTF-8. Download it instead."
+        case .malformedJSON:
+            return "This file does not contain valid JSON. Download it or fix the source file."
+        case .videoTooLarge:
+            return "This video is too large to preview safely. Download it instead."
+        case .unsupportedVideo:
+            return "This MP4 cannot be played on this Mac. Download it to inspect it another way."
         case .imageDimensionsTooLarge:
             return "This image’s dimensions are too large to preview safely. Download it instead."
         case .unsupportedImage:
@@ -291,6 +340,14 @@ enum RemoteFileError: LocalizedError, Equatable {
             return "This server does not advertise the safe \(capability) capability required for upload."
         case .uploadCleanupUnconfirmed(let message):
             return "\(message) RelayBar could not confirm removal of its remote staging file."
+        case .deleteNotSubmitted(let message):
+            return "The file was not deleted. \(message)"
+        case .deleteTargetChanged:
+            return "The remote file changed before deletion, so RelayBar did not delete it. Refresh and try again."
+        case .deleteRejected(let message):
+            return "The server rejected the deletion. \(message)"
+        case .deleteOutcomeUnknown:
+            return "RelayBar lost contact while deleting. The outcome is unknown; RelayBar will check the folder without retrying deletion."
         }
     }
 }

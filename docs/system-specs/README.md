@@ -1,6 +1,6 @@
 # RelayBar System Specs
 
-Concise specifications for the behavior currently implemented by RelayBar. Last reviewed: 2026-07-24.
+Concise specifications for the behavior currently implemented by RelayBar. Last reviewed: 2026-08-30.
 
 ## Modules
 
@@ -11,6 +11,8 @@ Concise specifications for the behavior currently implemented by RelayBar. Last 
 - [Browser launch](modules/browser-launch.md)
 - [Remote files](modules/remote-files.md)
 - [Markdown preview](modules/markdown-preview.md)
+- [JSON preview](modules/json-preview.md)
+- [Video preview](modules/video-preview.md)
 
 ## Shared contracts
 
