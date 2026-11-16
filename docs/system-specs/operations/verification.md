@@ -2,7 +2,7 @@
 
 ## Required checks
 
-- Run `swift test` for the complete forwarding parser matrix, migration,
+- Run `./scripts/test.sh relaybar` for the complete forwarding parser matrix, migration,
   typed-profile and group-tag validation, grouping and metadata-only mutation
   behavior, group lifecycle batching, control sequencing, rollback and
   timeout, runtime port mapping, socket refusal, retry, cancellation, browser
@@ -38,6 +38,21 @@
   action, narrow suffix-preserving paths, and invalid/Remote SOCKS editor states.
 
 ## Optional live check
+
+`python3 scripts/verify-live-loopback.py` creates a disposable OpenSSH server on
+127.0.0.1:2222, an HTTP target on port 8765, and isolated keys/configuration/known
+hosts. Ports 2222, 8765 and 9876 must be free. Run it as an ordinary macOS user;
+it does not modify system SSH settings or the user's SSH files. It removes the
+fixture and stops both servers, retaining logs under `.build/live-loopback-*`.
+Pass `--output <new-directory>` to choose the evidence directory.
+
+These opt-in tests exercise composed tunnel restart/traffic, literal SFTP names,
+Archive/Restore and batch Delete, hard-link upload publication, approved POSIX
+replacement, and real staged-upload cancellation during window withdrawal. A
+client wrapper can withhold an actual successful SSH mutation response to verify
+retirement after a remote commit without replay on reconnect. It does not change
+the fixed remote helper or synthesize a server response. This controlled loopback
+evidence supplements native-app and representative remote-host acceptance.
 
 Set `RELAYBAR_LIVE_TEST=1` and `RELAYBAR_LIVE_SSH_HOST` to test a real SSH forward and HTTP response on local port 3000.
 

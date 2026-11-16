@@ -1,0 +1,456 @@
+import AppKit
+import SwiftUI
+
+/// In-popover settings screen. Shares the editor screen's navigation idiom so
+/// list → settings feels like one surface.
+struct SettingsView: View {
+    @ObservedObject var store: TunnelStore
+    @ObservedObject var launchAtLogin: LaunchAtLoginModel
+    @ObservedObject var updates: UpdateModel
+    @StateObject private var about: ApplicationAboutModel
+    let onBack: () -> Void
+    let composition: RelayBarComposition?
+    let onRevokeFrame: () -> Void
+
+    init(
+        store: TunnelStore,
+        launchAtLogin: LaunchAtLoginModel,
+        updates: UpdateModel,
+        about: ApplicationAboutModel = ApplicationAboutModel(),
+        composition: RelayBarComposition? = nil,
+        onRevokeFrame: @escaping () -> Void = {},
+        onBack: @escaping () -> Void
+    ) {
+        self.store = store
+        self.launchAtLogin = launchAtLogin
+        self.updates = updates
+        _about = StateObject(wrappedValue: about)
+        self.onBack = onBack
+        self.composition = composition; self.onRevokeFrame = onRevokeFrame
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            Divider()
+
+            PopoverScrollContainer(fillsViewport: true) {
+                VStack(alignment: .leading, spacing: 18) {
+                    generalSection
+                    if let composition {
+                        FrameAccessRow(composition: composition, onRevoke: onRevokeFrame)
+                        RelayPreviewSettings(composition: composition).padding(.horizontal, 14)
+                    }
+                    Spacer(minLength: 8)
+                    aboutFooter
+                }
+            }
+        }
+        .onExitCommand(perform: onBack)
+        .onAppear {
+            launchAtLogin.refresh()
+            updates.refresh()
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: NSApplication.didBecomeActiveNotification
+            )
+        ) { _ in
+            launchAtLogin.refresh()
+            updates.refresh()
+        }
+        .onDisappear {
+            about.cancelTransientState()
+            updates.cancelTransientState()
+        }
+    }
+
+    private var header: some View {
+        HStack(spacing: 10) {
+            Button(action: onBack) {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(Color.primary.opacity(0.06)))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Back")
+
+            Text("Settings")
+                .font(.system(size: 15, weight: .semibold))
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 56)
+    }
+
+    private var generalSection: some View {
+        VStack(alignment: .leading, spacing: 9) {
+            sectionLabel("GENERAL")
+
+            VStack(spacing: 0) {
+                launchAtLoginRow
+                if hasLaunchAtLoginCaption {
+                    Divider()
+                        .padding(.horizontal, 12)
+                    launchAtLoginCaption
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Divider()
+                    .padding(.horizontal, 12)
+                automaticUpdatesRow
+                Divider()
+                    .padding(.horizontal, 12)
+                retryLimitRow
+                if let composition {
+                    Divider()
+                        .padding(.horizontal, 12)
+                    pluginsRow(composition)
+                }
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .fill(Color(nsColor: .controlBackgroundColor))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 13, style: .continuous)
+                    .stroke(Color.primary.opacity(0.07), lineWidth: 1)
+            )
+
+            Text("Retries wait 5s, 10s, 20s… up to 5 minutes. The retry count resets after 1 minute connected.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.tertiary)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 4)
+        }
+    }
+
+    private var retryLimitRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("SSH Retry Limit")
+                    .font(.system(size: 12.5, weight: .medium))
+                Text("For all profiles. 0 turns off retries.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+
+            Text("\(store.maxRetryAttempts)")
+                .font(.system(size: 12.5).monospacedDigit())
+                .frame(minWidth: 25, alignment: .trailing)
+                .accessibilityHidden(true)
+            Stepper(
+                "SSH Retry Limit",
+                value: Binding(
+                    get: { store.maxRetryAttempts },
+                    set: { value in
+                        if let composition {
+                            Task {
+                                do { try await composition.setRetryLimit(value) }
+                                catch { composition.errorMessage = error.localizedDescription }
+                            }
+                        } else { store.setMaxRetryAttempts(value) }
+                    }
+                ),
+                in: TunnelStore.retryLimitRange
+            )
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityValue(
+                store.maxRetryAttempts == 0 ? "Off" : "\(store.maxRetryAttempts) retries"
+            )
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+    }
+
+    private func pluginsRow(_ composition: RelayBarComposition) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "puzzlepiece.extension")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Plugins")
+                    .font(.system(size: 12.5, weight: .medium))
+                Text("Optional features and what they depend on")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Button("Open…", action: composition.showPlugins)
+                .controlSize(.mini)
+                .accessibilityLabel("Open Plugins")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+    }
+
+    private var automaticUpdatesRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Automatic Updates")
+                    .font(.system(size: 12.5, weight: .medium))
+                Text("Checks about once a week and offers new versions. Nothing installs without you.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 8)
+
+            Toggle(
+                "Automatic Updates",
+                isOn: Binding(
+                    get: { updates.automaticallyChecksForUpdates },
+                    set: { value in
+                        if let composition {
+                            Task {
+                                do { try await composition.setAutomaticUpdates(value) }
+                                catch { composition.errorMessage = error.localizedDescription }
+                            }
+                        } else { updates.setAutomaticallyChecksForUpdates(value) }
+                    }
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+            .disabled(!updates.isAvailable)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+    }
+
+    private var launchAtLoginRow: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "power")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(Color.accentColor)
+                .frame(width: 22)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Launch at Login")
+                    .font(.system(size: 12.5, weight: .medium))
+                Text("Open at login; profiles stay stopped.")
+                    .font(.system(size: 10.5))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer()
+
+            // Bound to the authoritative system status, including when the
+            // latest register or unregister operation surfaced an error.
+            Toggle(
+                "Launch at Login",
+                isOn: Binding(
+                    get: { launchAtLogin.state.isEnabled },
+                    set: { launchAtLogin.setEnabled($0) }
+                )
+            )
+            .labelsHidden()
+            .toggleStyle(.switch)
+            .controlSize(.mini)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 11)
+    }
+
+    private var aboutFooter: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 5) {
+                Text(about.metadata.displayText)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(.secondary)
+                    .accessibilityLabel(about.metadata.accessibilityLabel)
+
+                Button(action: about.copyVersion) {
+                    Image(systemName: about.didCopyVersion ? "checkmark" : "doc.on.doc")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .frame(width: 22, height: 22)
+                        .contentTransition(.identity)
+                }
+                .buttonStyle(.plain)
+                .help("Copy version and build")
+                .accessibilityLabel("Copy version and build")
+
+                Spacer()
+            }
+
+            HStack(spacing: 7) {
+                footerLink(
+                    "Check for Updates…",
+                    isEnabled: updates.canCheckForUpdates,
+                    action: updates.checkForUpdates
+                )
+                    .accessibilityHint("Checks the RelayBar update feed")
+
+                updateStatus
+            }
+
+            HStack(spacing: 5) {
+                footerLink("Website", action: about.openWebsite)
+                    .accessibilityLabel("Open RelayBar website in browser")
+                Text("·")
+                    .foregroundStyle(.tertiary)
+                    .accessibilityHidden(true)
+                footerLink("GitHub", action: about.openRepository)
+                    .accessibilityLabel("Open RelayBar on GitHub in browser")
+            }
+        }
+        .padding(.horizontal, 4)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder private var updateStatus: some View {
+        switch updates.state {
+        case .idle:
+            EmptyView()
+        case .checking:
+            HStack(spacing: 4) {
+                ProgressView()
+                    .controlSize(.mini)
+                Text("Checking…")
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Checking for updates")
+        case .upToDate:
+            Text("You're up to date.")
+                .accessibilityLabel("RelayBar is up to date")
+        case .failed:
+            Text("Couldn't check. Try again.")
+                .accessibilityLabel("Couldn't check for updates. Try again.")
+        case .waitingForTunnels(let count):
+            let noun = count == 1 ? "tunnel" : "tunnels"
+            Text("Update ready. Stop \(count) \(noun) to finish.")
+                .accessibilityLabel(
+                    "Update ready. Stop \(count) \(noun) to finish installing."
+                )
+        }
+    }
+
+    private func footerLink(
+        _ title: String,
+        isEnabled: Bool = true,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(title, action: action)
+            .font(.system(size: 10.5))
+            .foregroundStyle(isEnabled ? Color.accentColor : Color.secondary)
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
+    }
+
+    private var hasLaunchAtLoginCaption: Bool {
+        switch launchAtLogin.state {
+        case .notRegistered, .enabled: false
+        case .requiresApproval, .notFound, .error: true
+        }
+    }
+
+    @ViewBuilder private var launchAtLoginCaption: some View {
+        switch launchAtLogin.state {
+        case .notRegistered, .enabled:
+            EmptyView()
+        case .requiresApproval:
+            Button(action: launchAtLogin.openLoginItemsSettings) {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.orange)
+                    Text("Needs approval — open Login Items settings")
+                        .font(.system(size: 10.5))
+                        .foregroundStyle(Color.accentColor)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Open Login Items settings to approve launching at login")
+        case .notFound:
+            Text("macOS couldn’t find this copy of RelayBar as a login item.")
+                .font(.system(size: 10.5))
+                .foregroundStyle(.secondary)
+        case .error(status: _, message: let message):
+            Text(message)
+                .font(.system(size: 10.5))
+                .foregroundStyle(.red)
+                .lineLimit(3)
+                .help(message)
+        }
+    }
+
+    private func sectionLabel(_ title: String) -> some View {
+        Text(title)
+            .font(.system(size: 9.5, weight: .semibold))
+            .tracking(0.6)
+            .foregroundStyle(.tertiary)
+    }
+}
+
+/// Frame's access grant, shown only while Open in Frame runs and Frame has been allowed in.
+private struct FrameAccessRow: View {
+    @ObservedObject var composition: RelayBarComposition
+    @AppStorage("frameViewer.readAccess.v1") private var frameAllowed = false
+    let onRevoke: () -> Void
+
+    var body: some View {
+        if frameAllowed, composition.frameHost != nil {
+            HStack {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Frame Viewer").fontWeight(.medium)
+                    Text("Remote folder access").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button("Revoke") { onRevoke(); frameAllowed = false }
+            }.padding(.horizontal, 14)
+        }
+    }
+}
+
+private struct RelayPreviewSettings: View {
+    @ObservedObject var composition: RelayBarComposition
+    private let mib: Int64 = 1_024 * 1_024
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("PREVIEWS").font(.caption).foregroundStyle(.secondary)
+            ForEach(RemotePreviewPlugins.descriptors) { descriptor in
+                Toggle(descriptor.title, isOn: Binding(get: { composition.previewEnabled(descriptor.id) }, set: { value in
+                    Task {
+                        do { try await composition.setPreviewEnabled(descriptor.id, value) }
+                        catch { composition.errorMessage = error.localizedDescription }
+                    }
+                }))
+                Picker("Size limit", selection: Binding(get: { composition.previewLimit(descriptor.id) }, set: { bytes in
+                    Task {
+                        do { try await composition.setPreviewLimit(descriptor.id, bytes) }
+                        catch { composition.errorMessage = error.localizedDescription }
+                    }
+                })) {
+                    let sizes = Set([1, 2, 5, 10, 25, 50, 100, 200, 500].map { Int64($0) * mib }
+                        .filter { $0 <= descriptor.maximumBytes } + [descriptor.maximumBytes]).sorted()
+                    ForEach(sizes, id: \.self) { bytes in Text("\(bytes / mib) MiB").tag(bytes) }
+                }.disabled(!composition.previewEnabled(descriptor.id))
+            }
+        }.font(.system(size: 12))
+    }
+}

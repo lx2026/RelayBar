@@ -32,5 +32,6 @@ Each saved item is a forwarding profile: one SSH connection plus an ordered, non
 - Changing only a group tag, moving a profile, renaming a group, or ungrouping members is metadata-only and preserves process phase, retries, pending browser work, runtime ports, and process ownership.
 - Deleting a profile cancels its connection, control operation, retry, pending browser launch, runtime ports, and owned temporary artifacts.
 - Definitions persist immediately after add, edit, delete, move, rename, or ungroup operations.
+- With the Service Labels plugin on, a running profile's row shows what answered on its browser rule after the host: `via <host> · <name>`, `· responding` when the page has no recognisable name, or `· no response`. The name is a recognised product (ComfyUI, Jupyter, TensorBoard, Stable Diffusion WebUI, Open WebUI, Gradio) or the page title. In the row's rule menu a labelled rule's title gains ` · <name>`. Labels disappear when the profile stops running. With the plugin off the list is unchanged. The request limits are in [Security boundaries](../shared/security-boundaries.md).
 
 See [Data and state](../shared/data-and-state.md) for the stored schema.

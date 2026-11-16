@@ -1,0 +1,12 @@
+import {readFile, writeFile} from 'node:fs/promises';
+import {resolve} from 'node:path';
+const base=resolve('docs/design/assets/2026-10-22-review-workspace');
+const template=await readFile(resolve(base,'frame-workspace.template.html'),'utf8');
+const image=await readFile(resolve(base,'sample-contact-sheet.jpg'));
+const output=template.replace('__FRAME_MEDIA_DATA__',`data:image/jpeg;base64,${image.toString('base64')}`);
+if(Buffer.byteLength(output)>1_000_000) throw new Error('Mock exceeds inline size limit');
+if(output.includes('__FRAME_MEDIA_DATA__'))throw new Error('Unresolved media token');
+await writeFile(resolve(base,'frame-workspace.html'),output);
+const extraOutput=process.argv[2];
+if(extraOutput) await writeFile(resolve(extraOutput),output);
+console.log(`Built ${Buffer.byteLength(output)} bytes`);

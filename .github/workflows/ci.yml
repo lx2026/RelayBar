@@ -13,12 +13,16 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-      - name: Test Swift package
-        run: swift test -Xswiftc -warnings-as-errors
+      - name: Select Xcode with Swift 6.2 or newer
+        run: bash ./scripts/select-ci-xcode.sh
+      - name: Test both apps and shared packages
+        run: ./scripts/test.sh
+      - name: Build Frame app
+        run: swift build --package-path Apps/Frame --product Frame -Xswiftc -warnings-as-errors
       - name: Build macOS project without signing
         run: >-
           xcodebuild
-          -project RelayBar.xcodeproj
+          -project Apps/RelayBar/RelayBar.xcodeproj
           -scheme RelayBar
           -configuration Release
           -destination 'platform=macOS'

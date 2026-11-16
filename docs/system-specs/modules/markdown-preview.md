@@ -10,22 +10,24 @@ Markdown preview is a safe, read-only state inside the Remote Files window.
 - The decoder reads at most 2 MiB plus one byte, accepts UTF-8 with an optional BOM, and rejects NULs.
 - Parsing runs away from the main UI path. Preview cancellation is forwarded into the detached worker, and the compatibility pass checks cancellation throughout its line, character, and lookahead loops.
 - A generation token prevents a canceled or superseded preview from publishing stale state.
-- Published preview state keeps the parsed document and its private-reference token without additionally retaining the original and compatibility-transformed Markdown strings.
-- Leaving preview or closing the window removes its temporary directory.
+- Published preview state keeps the rendered page (its HTML, plain text and the text of each code block) and its private-reference token. The original and compatibility-transformed Markdown strings are not retained.
+- The preview's web view keeps a copy of the page so it can show it again if WebKit's content process ends, at most three times for one document; after that the preview stays blank.
+- Leaving preview or closing the window removes its temporary directory and closes the web view.
 
 ## Rendering
 
-- MarkdownUI 2.4.1 parses CommonMark plus GFM autolinks, strikethrough, tasks, and tables through swift-cmark 0.8.0's cmark-gfm products.
-- Text is selectable in a centered reading column capped at 680 points with
-  32-point side padding and additional bottom breathing room.
-- The inherited GitHub theme's fixed light and dark text-run backgrounds are
-  removed so normal prose uses the native adaptive text background without
-  horizontal bands. Purposeful callout, inline-code, and code-block surfaces
-  retain their own adaptive treatments.
-- The theme adds quiet callout/blockquote containers and code blocks with language, intrinsic-width horizontal overflow instead of line wrapping, and a local **Copy** action.
-- Wide tables scroll horizontally inside the reading column. Headings carry accessibility header traits and task markers announce completion state.
-- HighlighterSwift 3.1.0 highlights only explicit, supported languages, only when a code block is at most 64 KiB, and for at most 128 labelled code blocks per document. Overflow code remains plain and readable; Mermaid keeps its source-only safety label independently of that budget.
-- SwiftMath 1.7.3 validates and renders at most 256 inline or display formulas per document and at most 4,096 characters per formula. Display formulae keep their intrinsic reading size, are never enlarged, and shrink only when needed to fit the reading column or 180-point display-height limit. Invalid, rejected, and overflow formulas remain selectable source.
+The page is produced by the shared `MarkdownRendering` library, which Frame uses too, so a document looks the same in both apps apart from Frame's palette and its loading of images.
+
+- Away from the main thread, the library runs the Obsidian compatibility pass, parses the result with swift-cmark 0.8.0's cmark-gfm in safe mode (CommonMark plus GFM autolinks, strikethrough, tasks and tables), and then rewrites the parsed tree: it writes code blocks, typeset math and table containers itself and removes anything else that would load. The result is one static HTML page with one stylesheet and no script.
+- RelayBar shows that page in a web view; WebKit lays it out and draws only what is visible. Measured on this Mac, a dense 20 KB note is ready in about 0.04 s and a 200 KB document in about 0.3 s, where the previous native view took 0.9 s and 7 s.
+- Text is selectable across the whole document, in a centred reading column capped at 680 points with 32-point side padding and additional bottom breathing room.
+- One stylesheet serves light and dark appearance. Normal prose sits on the text background; callouts and blockquotes are quiet tinted containers; inline code and code blocks keep their own surfaces.
+- Code blocks show their language, never wrap (they scroll sideways), and have a **Copy** control that puts the block's exact text on the pasteboard and shows a tick for about a second. Unlabelled code and unsupported languages are plain and monospaced.
+- Tables keep the column alignment the document gives, wrap cell text to fit the reading column, and scroll sideways only when a cell cannot wrap.
+- Headings, lists, tables and task checkboxes are ordinary HTML elements, so assistive technology reads them through WebKit. A plain bullet in a list that also has tasks is a bullet, not an empty checkbox.
+- HighlighterSwift 3.1.0 highlights only explicit, supported languages, only when a code block is at most 64 KiB, and for at most 128 labelled code blocks per document; each block is highlighted once for each appearance. Overflow code remains plain and readable; Mermaid keeps its source-only safety label independently of that budget.
+- SwiftMath 1.7.3 typesets at most 256 inline or display formulas per document and at most 4,096 characters per formula, as images embedded in the page. An inline formula sits on the text baseline. Display formulae keep their intrinsic reading size, are never enlarged, and shrink only when needed to fit the reading column or the 180-point display-height limit.
+- A formula is typeset only if it parses, nests no deeper than 32 levels, and uses no colour command (`\color`, `\textcolor`, `\colorbox`): SwiftMath's typesetter stops the process on some lists its parser accepts, and both recurse as deeply as a formula nests. Refused, invalid and overflow formulas remain selectable source.
 - Xcode app builds keep Highlighter's formatter plus the `github` and `github-dark` themes, and SwiftMath's default Latin Modern font, metrics, and license files. Unused highlight themes, alternate math fonts, and a package-development conversion script are removed from the generated app bundle.
 
 ## Obsidian reading compatibility
@@ -47,12 +49,15 @@ Markdown preview is a safe, read-only state inside the Remote Files window.
 
 ## Active-content boundary
 
-- Raw HTML never executes. HTML-looking spans are escaped before parsing so active tags such as `script` and `style` remain selectable literal text even when a tag spans lines or appears inside a Markdown link label; valid HTTP, HTTPS, mail, and email angle autolinks keep their link behavior.
-- Normal Markdown images and Obsidian embeds never fetch network or local content. Inline and reference-style Markdown images become compact not-loaded text with their alt label instead of an empty image tile.
+- Raw HTML never executes. HTML-looking spans are escaped before parsing so active tags such as `script` and `style` remain selectable literal text even when a tag spans lines or appears inside a Markdown link label; valid HTTP, HTTPS, mail, and email angle autolinks keep their link behavior. The parser then runs in safe mode, which leaves out any raw HTML and any `javascript:`, `vbscript:`, `file:` or `data:` destination that still reached it, and the renderer empties every remaining `data:` link.
+- The web view is a second, independent barrier. It runs no page script, keeps no data, has no scheme handler, user script or message handler, and loads the page under the policy `default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'`. It allows one navigation, the load of the page RelayBar built, and cancels every other: link clicks, drops, reloads and new windows. Its context menu has no item that navigates, opens a window or downloads, and no Copy Link, which would copy a reference; Look Up, Translate, Search, Speech and Share remain and act on the selected text as they do in any macOS text view. Tests give the view markup the renderer would never write (script, event handlers, remote images, stylesheets, fonts, frames, media, a refresh) and observe that nothing runs and a loopback server receives no connection.
+- Normal Markdown images and Obsidian embeds never fetch network or local content. Inline and reference-style Markdown images become compact not-loaded text with their alt label instead of an empty image tile. An image the compatibility pass did not recognise is replaced the same way in the parsed tree, including inside table cells.
 - Mermaid and other diagrams remain selectable source and never execute.
 - Only clicked absolute HTTP, HTTPS, and email URLs without credentials or raw/percent-decoded control characters reach macOS.
 - Relative Markdown references are handled locally with a remote-vault explanation and never fetched. Absolute local paths plus file, data, JavaScript, unknown, and credential-bearing URLs are blocked.
-- Private wiki, tag, footnote, and math URLs carry a random per-preview capability token. Remote-authored private-looking URLs do not have that token, remain inert, and never bypass document enrichment limits.
+- The page carries no link address. Each link is a reference, carrying the preview's token, into the list of destinations the document wrote; a click is looked up there and judged by the link policy exactly as written, so a leading `/` or `../` and a malformed address are seen as they are. WebKit starts connecting to a clicked link's server before it asks whether the link may be followed, so a page that named servers would contact one on a click even when the policy refuses the link. A reference gives it nothing to connect to, and a test with a loopback server observes no connection. A clicked address that is not one of the page's references is refused.
+- Private wiki, tag, footnote, math and Copy URLs carry a random per-preview capability token. Remote-authored private-looking URLs do not have that token, remain inert, and never bypass document enrichment limits; a forged math link is not typeset and a forged Copy link copies nothing.
+- The Remote Files window's own keys (Left, Right, Escape, Command-Delete and Command-[) behave the same whether or not the preview has the keyboard focus. Other keys reach the page: scrolling, Command-C and Command-A.
 - Markdown editing and remote writes are absent.
 
-See [Security boundaries](../shared/security-boundaries.md) and [Task 002 verification](../../verification/002-read-only-markdown.md).
+This describes the source after Task 063, which has not replaced the installed build; the installed 1.6.0 draws Markdown natively with MarkdownUI. See [Security boundaries](../shared/security-boundaries.md), [Task 063 verification](../../verification/063-one-markdown-renderer.md) and [Task 002 verification](../../verification/002-read-only-markdown.md).

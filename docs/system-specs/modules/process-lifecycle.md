@@ -1,6 +1,6 @@
 # Process Lifecycle
 
-`TunnelStore` runs one long-lived `/usr/bin/ssh` multiplexing master per active profile and installs its visible rules through bounded control operations.
+`TunnelStore` owns saved profiles, grouping, aggregate presentation and, as the single owner, one `TunnelProfileRuntime` per instantiated profile with that profile's long-lived `/usr/bin/ssh` master, startup and retry work, control operations and retiring children. Start launches at once; Stop cancels at once. Work and reaping tasks live in separate effect scopes so cancellation cannot discard the force-kill deadline needed to finish cleanup. The store itself is owned by the app's `tunnels` feature, which closes command admission when it is withdrawn and awaits the store's shutdown. Profiles and groups are data, not features.
 
 ## Launch
 
@@ -10,6 +10,7 @@
 - Control stdout and stderr are capped at 64 KiB and each helper times out after 10 seconds.
 - Each launch carries a generation identifier, and every control operation is keyed by its own identifier and tagged with the launch that owns it. A stopped or replaced launch's operation can neither block nor complete the launch that replaced it, so a restart issued while a previous helper is still being reaped installs its rules normally.
 - A helper's pipe handlers are detached before its remaining output is read, so one reader owns each descriptor. Output delivered after an operation completes is discarded rather than carried into the next operation.
+- Master stderr callbacks also check their launch generation. Late output from a replaced master cannot contaminate its successor's error message.
 - A profile stays Starting until every rule succeeds. Any failure or timeout terminates the master and removes all forwards rather than publishing a partially running profile.
 - For each remote TCP port-`0` rule, the helper's numeric stdout is associated with that stable rule UUID. Non-numeric or ambiguous output fails startup.
 - Master standard input and output are discarded; the last 16 KiB of standard error is retained for status messages.
@@ -34,9 +35,13 @@
   or restart an exhausted or stopped profile.
 - Each retry creates a new control directory and clears prior runtime port allocations.
 - Stop, edit, delete, and quit terminate the master and every helper owned by that profile, cancel startup and pending retries, and clean owned sockets and control files.
+- Stopping, timing out or cancelling a control command uses the same bounded reaping path as the master. A child that ignores TERM receives KILL after the grace period; repeated stop requests do not postpone that deadline. Deleting and re-adding a profile keeps its retired runtime separate from the new instance until cleanup completes.
+- Terminal store shutdown closes command admission and drains every profile, including deleted profiles and superseded startup tasks. A retained store cannot launch SSH, open a browser or rewrite saved profiles after its composition feature has been withdrawn.
 - Group-only edits and group move, rename, or ungroup actions do not stop or launch SSH. They preserve stopped, starting, retrying, running, or failed phase and all process-owned runtime state.
-- Group Start All, Stop All, and Restart All snapshot the group's saved members at invocation and reuse the per-profile start and stop paths unchanged — including retry, generation, cleanup, and error behavior — so each member's outcome is independent and no second process manager or group runtime state exists.
+- Group Start All, Stop All, and Restart All snapshot saved membership and apply to those profiles in one main-actor turn. Restart stops and starts only the active members. Inactive or failed peers retain their state, and tag edits never restart a profile.
 - Exhaustion changes the profile to failed and requires another user start.
+- Reconnect on Wake (a plugin, on by default): when the Mac wakes, or the network path becomes satisfied after it was not, every profile that is waiting on a retry delay makes that attempt now. It is the same attempt, with the same number and the same remaining budget, under the same checks the waiting retry would have applied. Stopped, failed, exhausted, starting and running profiles are untouched, and nothing happens after the store's command admission has closed. Events inside a two-second window cause one retry. With the plugin off, delays run to their end as described above. Its notification observer, path monitor and pending wait belong to the plugin's feature and end when it is switched off or the app quits.
+- Browser opening uses the opener the store was created with. A store whose feature has been withdrawn opens nothing.
 
 Phases are `stopped`, `starting`, `retrying`, `running`, and `failed`.
 
@@ -51,9 +56,10 @@ Phases are `stopped`, `starting`, `retrying`, `running`, and `failed`.
   master.
 - Master exit removes its socket and temporary directory. There is no retry timer or background reconnect; a later explicit operation starts a replacement master.
 - Server change and Back-to-welcome retire the active session and snapshots.
-  Window close cancels visible work; when an upload owns a remote staging name
-  or a deletion may have been submitted, the model remains retained until its
-  bounded child is reaped and the master is shut down. App termination uses
+  Window close cancels and drains all owned directory, download, preview, upload
+  and deletion work, including superseded tasks still cleaning up. The model
+  remains retained until bounded children and every retiring master are reaped
+  and private control directories are removed. App termination uses
   AppKit's deferred reply to wait for that retirement instead of orphaning the
   master, abandoning known staging, or claiming a deletion result it did not
   receive.

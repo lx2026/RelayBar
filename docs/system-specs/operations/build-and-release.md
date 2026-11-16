@@ -3,7 +3,8 @@
 ## Requirements
 
 - macOS 13 or newer
-- Xcode command-line tools
+- Full Xcode with Swift 6.2 or newer and the macOS SDK
+- macOS 14 or newer for Frame
 - Developer ID Application certificate for packaged builds
 - Sparkle's EdDSA private key in the login Keychain under account
   `com.lx2026.RelayBar`
@@ -17,10 +18,11 @@ configuration, while its credentials remain in Keychain. Sparkle's
 
 ## Commands
 
-- `swift test` runs the package tests.
+- `./scripts/test.sh` runs shared-package and both app suites; pass `relaybar`, `frame`, or `shared` to select one.
 - `./scripts/build-app.sh` builds and signs `.build/RelayBar.app`.
-- `./scripts/package-release.sh` creates `.build/RelayBar.zip`.
-- `./scripts/notarize-release.sh` submits, waits, staples, and validates a release.
+- `./Apps/Frame/Scripts/build-app.sh release` builds and signs the universal `Apps/Frame/.build/app/Frame.app`; `debug` uses the host architecture.
+- `./scripts/package-release.sh [relaybar|frame]` creates `.build/RelayBar.zip` or `.build/Frame.zip`; omission selects RelayBar.
+- `./scripts/notarize-release.sh [relaybar|frame]` builds the selected app, submits its archive, requires an Accepted result, staples, rebuilds the ZIP and validates a clean extraction. Omission selects RelayBar. Submission JSON is retained as `.build/notarization-<app>.json`.
 - `./scripts/update-appcast.sh <final ZIP> <immutable HTTPS URL>` verifies the
   published archive byte-for-byte, preserves full-update history, signs the
   appcast, and runs the production-feed verifier.
@@ -32,6 +34,14 @@ configuration, while its credentials remain in Keychain. Sparkle's
 - `./scripts/verify-private-update-feed.sh <appcast> <ZIP> <port>` requires one
   loopback enclosure, the embedded/keychain EdDSA key match, the declared byte
   length, a positive build number, and valid feed and archive signatures.
+
+RelayBar source and its Xcode project live in `Apps/RelayBar`; Frame lives in `Apps/Frame`. Shared contracts are local Swift package dependencies under `Packages/AppComposition`. Root distribution commands and public Pages/feed paths are unchanged.
+
+Frame's app bundle is assembled by `Apps/Frame/Scripts/build-app.sh`. Since Task 063 it calls `bundle-renderer-resources.sh`, which copies the Markdown renderer's two SwiftPM resource bundles (the highlighter and SwiftMath's fonts) into `Contents/Resources`, prunes them to the `github` themes and the Latin Modern font as RelayBar's Xcode build phase does, removes the build's own seal from each so that the app's signature covers their files, adds their licence texts, and fails if a bundle or a required file is missing. The generated resource lookup finds a bundle only inside the app, so one left out would stop Frame the first time it highlights code or typesets math. The assembled Frame 0.1.0/16 passed Developer ID signing and strict signature verification and launched from Applications on 2026-11-14. First-use rendering in that installed bundle remains for the native pass. Task 064 changed Release builds to request and verify both arm64 and x86_64 before packaging; its universal signed bundle was verified separately and did not replace the installed arm64 test app.
+
+Distribution commands require explicit approval for the selected release. After that approval, set `RELAYBAR_PUBLICATION_APPROVED=yes` and `NOTARY_PROFILE=AC_NOTARY` for the notarization invocation. The existing approval-variable name applies to both apps. Unknown app names and extra arguments fail before building. The script stops on a failed submission or any status other than Accepted; it never staples a rejected submission. Final verification covers strict signatures, stapled tickets and Gatekeeper on both the original bundle and a clean extraction, then archive identity/version/build and SHA-256 through `release-plan.py`. Local workflow tests substitute Apple tools and do not submit anything.
+
+CI selects an installed full Xcode with Swift 6.2 or newer using `scripts/select-ci-xcode.sh`, tests all three packages, explicitly builds the Frame executable, and builds RelayBar's unsigned Release Xcode target. Selection is job-local through `DEVELOPER_DIR`; it does not change the machine's global Xcode selection.
 
 The Xcode target pins Sparkle 2.9.4 exactly. SwiftPM deliberately omits it so
 unit tests cannot initialize an updater or contact the network. The application
@@ -57,11 +67,22 @@ The app is distributed outside the Mac App Store, uses the hardened runtime, and
 
 ## Stable GitHub release
 
+Latest local-only installation on 2026-11-14: **RelayBar 1.6.0, build 21** and **Frame 0.1.0, build 16**, with bridge v7 and the shared Markdown renderer. Both signed apps replaced the Applications bundles and were observed running. Prior build-20/build-15 bundles are backed up; preferences and user data were retained. RelayBar is universal and Frame is arm64. These builds are **not notarized or published**, and native interaction/live-host acceptance remains open. See [Task 063 local installation](../../verification/063-one-markdown-renderer.md#local-installation).
+
+Local-only update on 2026-10-23: **1.6.0, build 17**, paired with Frame **0.1.0, build 11**, uses bridge v5 for batch deletion and arbitrary companion groups. Frame adds session-only temporary cache, native remote video playback, favorite-and-next and smoother review. Permanent Delete remains immediate, Archive/Restore separate and Frame navigation history-neutral. Both signed apps are installed in Applications; they are **not notarized or published**. Release versions and public channels are unchanged. App Group and nested Sparkle signing boundaries are retained. See [Task 055](../../task-specs/archive/055-frame-batch-delete.md); prior deliveries remain in [Task 053](../../verification/053-frame-direct-delete.md), [Task 051](../../verification/051-explicit-frame-history.md) and [Task 050](../../verification/050-frame-viewer-local-install.md).
+
 The current stable release is **1.6.0, build 11**, published as `v1.6.0` with
 one immutable `RelayBar.zip`. GitHub, the signed Sparkle feed, the website,
 and the maintainer Homebrew cask use that artifact. See
 [Task 049 verification](../../verification/049-relaybar-1.6.0-release.md) for
 the source commit, final checksum, notarization, and update/install evidence.
+
+Task 058's local refactor staging retains RelayBar 1.6.0/20 and Frame 0.1.0/15.
+Separate signed archives, a clean universal RelayBar build and an isolated
+prior-build Sparkle update have passed. The archives are not notarized for
+distribution and have not replaced the Applications bundles or any public
+artifact. Homebrew upgrade/relaunch and final native acceptance remain open;
+see [Task 058 verification](../../verification/058-composable-app-architecture.md).
 
 A stable release starts from a clean commit with consistent marketing version,
 monotonic build number, bundle identifier, and deployment target. Any
@@ -134,6 +155,12 @@ disable the feed and require a manually downloaded notarized recovery build.
 Never remove an EdDSA key from a build that already participates in the update
 chain.
 
+## Frame and paired releases
+
+Frame has no public release, updater or Homebrew cask yet. Its release plan uses a separate `frame-v<version>` tag and immutable `Frame.zip` in the same repository, with `make_latest` false so Frame does not replace RelayBar as the repository's latest release. Both apps retain their own versions and bundle identities.
+
+For the next paired rollout, finish native and live-host acceptance, choose explicitly approved release versions and monotonic builds, freeze a clean commit, and notarize each app separately. Publish and independently verify Frame's archive before publishing RelayBar's archive and advancing its Sparkle feed. The companion download must be available before a RelayBar update can expose an incompatible pairing. Follow the existing RelayBar feed, prior-build rehearsal, website and Homebrew order above. Release notes must name the compatible pair and explain that Frame updates manually; bridge v7 rejects older peers. No new version or public URL is selected by these preparation scripts.
+
 ## Homebrew cask
 
 The maintainer-owned `lx2026/homebrew-tap` repository publishes
@@ -172,3 +199,5 @@ The GitHub Pages site is a build-free static site under `docs/`. Its
 `index.html`, `styles.css`, and local image assets are sufficient to render the
 page; it does not require a generated page runtime or third-party font request.
 Release download links identify the current stable version explicitly.
+
+The Frame preview section describes implemented source under test, with an explicit notice that the stable 1.6.0 download does not contain it and Frame has no public release yet. It reuses Task 063's synthetic renderer captures. Both READMEs distinguish stable availability from current source, document bridge compatibility and plugin defaults, and separate Markdown's restrictions from online HTML previews. Advancing release claims and download URLs remains a separate publication step.

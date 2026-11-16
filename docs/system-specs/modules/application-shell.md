@@ -15,6 +15,7 @@ RelayBar is a native SwiftUI `MenuBarExtra` application for macOS 13 or newer.
 - The menu-bar icon indicates whether any tunnel is starting, retrying, or running.
 - The list header reports the active tunnel count.
 - A labeled Remote Files row below the tunnel list opens or focuses one separate window.
+- Settings has a Plugins row whose button opens or focuses the Plugins window described in [Composition](../shared/composition.md).
 - The Remote Files row opens one 920 × 600 point resizable split workspace with
   a 760 × 440 minimum. Its hideable leading sidebar uses a 210 point minimum,
   250 point ideal, and 360 point maximum while the detail retains at least 430
@@ -23,7 +24,8 @@ RelayBar is a native SwiftUI `MenuBarExtra` application for macOS 13 or newer.
 - A gear button in the list header opens an in-popover settings screen with the editor's back-navigation idiom; Escape returns to the list.
 - The settings screen's Launch at Login toggle registers or unregisters the main app as the current user's login item through `SMAppService.mainApp` — no helper executable, launch daemon, elevated privilege, or separate settings window.
 - The General card's second row is **Automatic Updates**. It controls
-  Sparkle's own persisted scheduled-check preference, defaults off, checks at
+  the preference document's scheduled-check choice, imported once from Sparkle's
+  native preference and applied only after a successful save. It defaults off, checks at
   a seven-day interval when enabled, and cannot enable automatic download or
   installation. Settings and application activation do not initiate checks.
 - The General card's **SSH Retry Limit** stepper sets 0–100 retries globally
@@ -54,16 +56,22 @@ RelayBar is a native SwiftUI `MenuBarExtra` application for macOS 13 or newer.
   not persisted. An invalid requested override prevents the updater from
   starting; an ordinary launch uses the signed HTTPS production feed.
 - Quit stops all managed SSH processes before terminating the app.
+- Only Debug builds recognize the explicit preview-window and Remote Files
+  preview launch modes. Release builds always enable normal configuration
+  persistence and bridge startup, regardless of preview-looking arguments or
+  the containing folder's name.
 
 ## Ownership
 
 - `RelayBarApp` owns application lifecycle.
 - `RelayBarRootView` owns navigation and presentation.
-- `TunnelStore.shared` owns tunnel and process state.
+- `RelayBarComposition` supplies the tunnel store and owns the feature runtime;
+  each profile context owns its process lifecycle.
 - `LaunchAtLoginModel` owns login-item state behind the injected `LoginItemServicing` boundary.
-- `UpdateModel` owns the Settings-facing state behind one app-lifetime
+- `UpdateModel` owns the Settings-facing state behind a feature-owned
   `UpdateServicing` boundary. The Xcode app supplies Sparkle; SwiftPM tests
   supply an inert or injected service and cannot contact the update feed.
 - `ApplicationAboutModel` owns bundle metadata, version copying, and canonical
   project-link routing.
-- `RemoteFilesWindowController.shared` owns the Remote Files window.
+- The remote-window feature supplies `RemoteFilesWindowController` and its
+  isolated model, services and preview registrations.

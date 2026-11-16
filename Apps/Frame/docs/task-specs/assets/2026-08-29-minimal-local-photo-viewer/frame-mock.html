@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Frame — unified inspection mock</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --paper: #f7f6f2;
+      --panel: #efeee9;
+      --line: #d8d7d1;
+      --ink: #20201e;
+      --muted: #777772;
+      --faint: #a4a39c;
+      --amber: #d9902f;
+      --sidebar: 192px;
+      --film: 132px;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    body {
+      background: #d9d8d3;
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    button { color: inherit; font: inherit; }
+
+    .app {
+      width: 100vw;
+      height: 100vh;
+      min-width: 960px;
+      min-height: 640px;
+      position: relative;
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      grid-template-rows: 52px minmax(0, 1fr);
+      background: var(--paper);
+    }
+
+    .titlebar {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: var(--sidebar) minmax(0, 1fr);
+      border-bottom: 1px solid var(--line);
+      background: rgba(247,246,242,.98);
+      user-select: none;
+      z-index: 5;
+    }
+
+    .title-left { display: flex; align-items: center; gap: 8px; padding-left: 18px; }
+    .title-left i { width: 12px; height: 12px; border-radius: 50%; box-shadow: inset 0 0 0 .5px rgba(0,0,0,.15); }
+    .title-left i:nth-child(1) { background: #ff5e57; }
+    .title-left i:nth-child(2) { background: #febc2e; }
+    .title-left i:nth-child(3) { background: #28c840; }
+
+    .toolbar {
+      min-width: 0;
+      height: 52px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 14px 0 18px;
+      border-left: 1px solid var(--line);
+    }
+    .brand { display: flex; align-items: baseline; min-width: 190px; gap: 9px; }
+    .brand strong { font-size: 13px; font-weight: 680; }
+    .brand span { max-width: 125px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); font-size: 11.5px; }
+    .toolbar-spacer { flex: 1; }
+    .segments { display: inline-flex; gap: 1px; padding: 2px; border-radius: 8px; background: #e8e7e2; }
+    .segment { min-width: 68px; height: 27px; border: 0; border-radius: 6px; background: transparent; color: #666661; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+    .segment.active { color: var(--ink); background: white; box-shadow: 0 1px 3px rgba(0,0,0,.14), 0 0 0 .5px rgba(0,0,0,.05); }
+    .toolbar-button {
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      padding: 0 10px;
+      border: 1px solid transparent;
+      border-radius: 7px;
+      background: transparent;
+      font-size: 11.5px;
+      font-weight: 590;
+      cursor: pointer;
+    }
+    .toolbar-button:hover { background: var(--panel); border-color: var(--line); }
+    .toolbar-button.icon { width: 30px; padding: 0; }
+    .toolbar-button.primary { padding: 0 13px; color: #fff; background: #282825; border-color: #282825; }
+    .toolbar-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.7; }
+
+    .sidebar {
+      grid-column: 1;
+      grid-row: 2;
+      position: relative;
+      padding: 20px 11px 58px;
+      border-right: 1px solid var(--line);
+      background: var(--panel);
+      overflow: hidden;
+    }
+    .section-label { margin: 0 8px 7px; color: var(--faint); font-size: 9.5px; font-weight: 720; letter-spacing: .95px; text-transform: uppercase; }
+    .nav { display: grid; gap: 2px; margin-bottom: 23px; }
+    .nav-item {
+      width: 100%; height: 32px; display: flex; align-items: center; gap: 9px; padding: 0 8px; border: 0; border-radius: 7px;
+      background: transparent; text-align: left; cursor: pointer;
+    }
+    .nav-item:hover { background: rgba(255,255,255,.55); }
+    .nav-item.active { background: #deddd7; }
+    .nav-item svg { width: 15px; height: 15px; flex: 0 0 auto; fill: none; stroke: #5d5d58; stroke-width: 1.6; }
+    .nav-item .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+    .nav-item .count { margin-left: auto; color: var(--faint); font-size: 10.5px; }
+    .folder-children { position: relative; padding-left: 23px; }
+    .folder-children::before { content: ""; position: absolute; top: 0; bottom: 0; left: 15px; border-left: 1px solid #d1d0ca; }
+    .open-folder { position: absolute; left: 11px; right: 11px; bottom: 15px; height: 34px; border: 1px solid #d1d0ca; border-radius: 8px; background: #faf9f6; font-size: 11.5px; font-weight: 620; cursor: pointer; }
+
+    .content {
+      grid-column: 2;
+      grid-row: 2;
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: minmax(0, 1fr) var(--film);
+      background: #e3e2dd;
+    }
+
+    .inspection { min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(420px, 1fr) 360px; }
+    .viewer {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 48px minmax(0, 1fr) 42px;
+      background: #dfded9;
+      border-right: 1px solid var(--line);
+    }
+    .viewer-head { display: flex; align-items: center; justify-content: space-between; padding: 0 18px; color: var(--muted); font-size: 11px; }
+    .viewer-head strong { color: #4d4d49; font-weight: 620; }
+    .stage-actions { display: flex; align-items: center; gap: 8px; }
+    .favorite-button { width: 29px; height: 29px; display: grid; place-items: center; border: 0; border-radius: 7px; background: transparent; color: #777772; cursor: pointer; }
+    .favorite-button:hover { background: rgba(255,255,255,.55); }
+    .favorite-button.on { color: var(--amber); }
+    .favorite-button svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.6; }
+    .favorite-button.on svg { fill: currentColor; }
+    .shortcut { padding: 2px 6px; border: 1px solid #cfcec8; border-radius: 4px; background: rgba(255,255,255,.46); color: var(--faint); font-size: 9px; }
+    .stage { min-width: 0; min-height: 0; display: grid; place-items: center; padding: 10px 34px 18px; overflow: hidden; }
+    .stage .art { display: block; width: 100%; height: 100%; max-width: 820px; max-height: 590px; filter: drop-shadow(0 8px 22px rgba(35,35,32,.16)); }
+    .viewer-foot { display: flex; align-items: center; justify-content: space-between; padding: 0 18px; border-top: 1px solid rgba(0,0,0,.05); }
+    .viewer-foot strong { font-size: 11.5px; font-weight: 650; }
+    .viewer-foot span { color: var(--muted); font-size: 10.5px; }
+
+    .metadata {
+      min-width: 0;
+      min-height: 0;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      background: var(--paper);
+    }
+    .metadata-title { padding: 18px 20px 15px; border-bottom: 1px solid var(--line); }
+    .metadata-title .eyebrow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 13px; color: var(--faint); font-size: 9.5px; font-weight: 720; letter-spacing: .9px; text-transform: uppercase; }
+    .metadata-title h1 { margin: 0 0 5px; font-size: 18px; font-weight: 680; letter-spacing: -.35px; }
+    .metadata-title p { margin: 0; color: var(--muted); font-size: 10.5px; }
+    .metadata-title .status-line { display: flex; align-items: center; gap: 8px; margin-top: 13px; color: #8f5a18; font-size: 10.5px; font-weight: 650; }
+    .metadata-title .status-line svg { width: 13px; height: 13px; fill: var(--amber); stroke: var(--amber); }
+    .meta-section { padding: 15px 20px; border-bottom: 1px solid var(--line); }
+    .meta-section h2 { margin: 0 0 11px; color: #999891; font-size: 9.5px; font-weight: 720; letter-spacing: .85px; text-transform: uppercase; }
+    .meta-row { display: grid; grid-template-columns: 87px minmax(0,1fr); gap: 12px; margin-bottom: 7px; font-size: 10.5px; line-height: 1.35; }
+    .meta-row:last-child { margin-bottom: 0; }
+    .meta-row dt { color: var(--muted); }
+    .meta-row dd { margin: 0; min-width: 0; color: #353532; overflow-wrap: anywhere; user-select: text; }
+    .prompt { padding: 10px 11px; border-radius: 6px; background: #ecebe6; color: #3d3d39; font-size: 10.5px; line-height: 1.45; user-select: text; }
+    .meta-section .prompt + dl { margin-top: 12px; }
+    .disclosure { width: 100%; display: flex; align-items: center; justify-content: space-between; padding: 0; border: 0; background: transparent; cursor: pointer; }
+    .disclosure strong { font-size: 11px; font-weight: 630; }
+    .disclosure span { color: var(--faint); font-size: 10px; }
+
+    .filmstrip {
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 12px 16px;
+      overflow-x: auto;
+      scrollbar-width: thin;
+      border-top: 1px solid #d1d0ca;
+      background: #ecebe6;
+    }
+    .film-card { width: 114px; min-width: 114px; height: 104px; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+    .film-image { position: relative; width: 114px; height: 80px; display: grid; place-items: center; padding: 5px; overflow: hidden; border: 2px solid transparent; border-radius: 3px; background: #dcdad4; }
+    .film-card.selected .film-image { border-color: #242421; }
+    .film-image .art { width: 100%; height: 100%; display: block; }
+    .film-card[data-orientation="portrait"] .film-image .art { width: 63%; }
+    .film-star { position: absolute; top: 6px; right: 6px; width: 16px; height: 16px; display: none; place-items: center; border-radius: 50%; background: rgba(39,34,26,.77); color: #ffc66e; }
+    .film-card[data-favorite="true"] .film-star { display: grid; }
+    .film-star svg { width: 10px; height: 10px; fill: currentColor; stroke: currentColor; }
+    .film-name { display: block; margin: 6px 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #5e5e59; font-size: 9.5px; }
+    .film-card.selected .film-name { color: var(--ink); font-weight: 650; }
+
+    .contact-sheet {
+      position: fixed;
+      z-index: 20;
+      top: 52px;
+      right: 0;
+      bottom: 0;
+      left: var(--sidebar);
+      display: none;
+      grid-template-rows: 62px minmax(0,1fr);
+      background: var(--paper);
+    }
+    .contact-sheet.open { display: grid; }
+    .contact-head { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid var(--line); }
+    .contact-head h2 { margin: 0; font-size: 18px; letter-spacing: -.3px; }
+    .contact-head span { margin-left: 8px; color: var(--muted); font-size: 11px; font-weight: 400; }
+    .contact-close { height: 30px; padding: 0 11px; border: 1px solid var(--line); border-radius: 7px; background: white; font-size: 11px; cursor: pointer; }
+    .contact-grid { display: grid; grid-template-columns: repeat(4,minmax(150px,1fr)); gap: 22px 16px; padding: 22px 24px; overflow: auto; align-content: start; }
+    .contact-card { min-width: 0; padding: 0; border: 0; background: transparent; text-align: left; cursor: pointer; }
+    .contact-image { height: 160px; display: grid; place-items: center; padding: 9px; border: 2px solid transparent; border-radius: 4px; background: #e6e4df; }
+    .contact-card:hover .contact-image { border-color: #8b8a84; }
+    .contact-image .art { width: 100%; height: 100%; }
+    .contact-card[data-orientation="portrait"] .contact-image .art { width: 64%; }
+    .contact-card strong { display: block; margin: 8px 2px 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: none;
+      place-items: center;
+      background: rgba(36,36,33,.28);
+      backdrop-filter: blur(3px);
+    }
+    .modal.open { display: grid; }
+    .export-card { width: 430px; padding: 22px; border: 1px solid rgba(0,0,0,.1); border-radius: 13px; background: #fbfaf7; box-shadow: 0 24px 70px rgba(0,0,0,.22); }
+    .export-card h2 { margin: 0 0 5px; font-size: 18px; letter-spacing: -.3px; }
+    .export-card > p { margin: 0; color: var(--muted); font-size: 11px; }
+    .export-file { display: flex; align-items: center; gap: 12px; margin: 18px 0; padding: 12px; border-radius: 8px; background: #ebeae5; }
+    .file-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 6px; background: #dad8d1; }
+    .file-icon svg { width: 21px; height: 21px; fill: none; stroke: #565651; stroke-width: 1.5; }
+    .export-file strong { display: block; margin-bottom: 3px; font-size: 11.5px; }
+    .export-file span { display: block; color: var(--muted); font-size: 10px; }
+    .policy { margin: 0 0 20px; padding: 11px 12px; border-left: 3px solid var(--amber); background: #f7ead7; color: #68441c; font-size: 10.5px; line-height: 1.45; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+    .modal-actions button { height: 30px; padding: 0 12px; border: 1px solid var(--line); border-radius: 7px; background: white; font-size: 11px; cursor: pointer; }
+    .modal-actions .confirm { color: white; border-color: #282825; background: #282825; }
+
+    .toast {
+      position: fixed;
+      z-index: 30;
+      left: calc(var(--sidebar) + 24px);
+      bottom: calc(var(--film) + 20px);
+      display: none;
+      align-items: center;
+      gap: 15px;
+      padding: 10px 12px 10px 14px;
+      border-radius: 8px;
+      background: #2a2a27;
+      color: #f9f8f4;
+      box-shadow: 0 8px 30px rgba(0,0,0,.25);
+      font-size: 10.5px;
+    }
+    .toast.show { display: flex; }
+    .toast button { padding: 0; border: 0; background: transparent; color: #f3b761; font-size: 10.5px; font-weight: 680; cursor: pointer; }
+
+    .app.focus { --sidebar: 0px; --film: 0px; }
+    .app.focus .title-left, .app.focus .sidebar, .app.focus .filmstrip { display: none; }
+    .app.focus .toolbar { grid-column: 2; }
+    .app.focus .content { grid-row: 2; }
+
+    @media (max-width: 1100px) {
+      :root { --sidebar: 176px; --film: 116px; }
+      .brand { min-width: 120px; }
+      .brand span { display: none; }
+      .toolbar-button .button-label { display: none; }
+      .inspection { grid-template-columns: minmax(340px,1fr) 310px; }
+      .film-card { width: 100px; min-width: 100px; height: 90px; }
+      .film-image { width: 100px; height: 68px; }
+      .stage { padding-left: 18px; padding-right: 18px; }
+      .metadata-title, .meta-section { padding-left: 17px; padding-right: 17px; }
+      .contact-grid { grid-template-columns: repeat(3,minmax(130px,1fr)); }
+      .contact-image { height: 130px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app" id="app" aria-label="Frame unified photo inspection mock">
+    <header class="titlebar">
+      <div class="title-left" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="toolbar">
+        <div class="brand"><strong>Frame</strong><span>AI Exports / Botanical</span></div>
+        <button class="toolbar-button icon" id="refresh" aria-label="Refresh" title="Refresh (⌘R)"><svg viewBox="0 0 24 24"><path d="M20 6v5h-5"/><path d="M19 11a7.5 7.5 0 1 0 .2 5.1"/></svg></button>
+        <div class="toolbar-spacer"></div>
+        <div class="segments" role="tablist" aria-label="Photo filter">
+          <button class="segment active" data-filter="all" role="tab">All</button>
+          <button class="segment" data-filter="favorites" role="tab">Favorites</button>
+        </div>
+        <button class="toolbar-button" id="contact-button" aria-label="Contact Sheet"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg><span class="button-label">Contact Sheet</span></button>
+        <button class="toolbar-button icon" id="trash-button" aria-label="Move to Trash" title="Move to Trash (⌘⌫)"><svg viewBox="0 0 24 24"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg></button>
+        <button class="toolbar-button primary" id="export-button"><svg viewBox="0 0 24 24"><path d="M12 15V3M8 7l4-4 4 4M5 13v7h14v-7"/></svg>Export…</button>
+      </div>
+    </header>
+
+    <aside class="sidebar">
+      <p class="section-label">Library</p>
+      <nav class="nav" aria-label="Library filters">
+        <button class="nav-item"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5"/></svg><span class="label">All Photos</span><span class="count">248</span></button>
+        <button class="nav-item" id="side-favorites"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg><span class="label">Favorites</span><span class="count">32</span></button>
+      </nav>
+      <p class="section-label">Folders</p>
+      <nav class="nav" aria-label="Folders">
+        <button class="nav-item"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></svg><span class="label">AI Exports</span><span class="count">248</span></button>
+        <div class="folder-children">
+          <button class="nav-item"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></svg><span class="label">2026-08</span><span class="count">84</span></button>
+          <button class="nav-item active"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></svg><span class="label">Botanical</span><span class="count">61</span></button>
+          <button class="nav-item"><svg viewBox="0 0 24 24"><path d="M3 7h7l2 2h9v10H3z"/></svg><span class="label">Architecture</span><span class="count">103</span></button>
+        </div>
+      </nav>
+      <button class="open-folder">Open Folder…</button>
+    </aside>
+
+    <section class="content">
+      <div class="inspection">
+        <section class="viewer" aria-label="Selected picture">
+          <div class="viewer-head">
+            <span><strong id="position">2 of 61</strong>&nbsp;&nbsp; Botanical</span>
+            <div class="stage-actions"><span class="shortcut">F</span><button class="favorite-button on" id="favorite-button" aria-label="Unfavorite"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></button></div>
+          </div>
+          <div class="stage" id="stage">
+            <svg class="art" viewBox="0 0 640 480" preserveAspectRatio="xMidYMid meet"><defs><radialGradient id="gardenGlow"><stop stop-color="#f9bfdb"/><stop offset=".32" stop-color="#bc5f9b"/><stop offset="1" stop-color="#172a25"/></radialGradient><filter id="gardenBlur"><feGaussianBlur stdDeviation="15"/></filter></defs><rect width="640" height="480" fill="#142621"/><circle cx="320" cy="232" r="177" fill="url(#gardenGlow)" opacity=".9" filter="url(#gardenBlur)"/><path d="M320 480V248M320 350l-112-89M320 383l123-119" fill="none" stroke="#a8cfa3" stroke-width="10" opacity=".72"/><g fill="none" stroke-linecap="round"><path d="M317 251c-99-38-105-131-40-161 27 58 47 105 40 161Z" stroke="#ffc9e0" stroke-width="19"/><path d="M326 249c84-67 160-18 151 55-62 3-111-11-151-55Z" stroke="#ed91c7" stroke-width="21"/><path d="M312 255c-72 57-144 23-144-47 62-7 107 9 144 47Z" stroke="#b77fd0" stroke-width="19"/></g><g fill="#ffd3e5"><circle cx="319" cy="246" r="25"/><circle cx="111" cy="123" r="5"/><circle cx="515" cy="104" r="7"/><circle cx="548" cy="382" r="5"/></g></svg>
+          </div>
+          <div class="viewer-foot"><strong id="viewer-name">neon-garden.png</strong><span id="viewer-facts">4096 × 3072 · 12.8 MB</span></div>
+        </section>
+
+        <aside class="metadata" aria-label="Metadata for selected picture">
+          <div class="metadata-title">
+            <div class="eyebrow"><span>Picture + metadata</span><span>Read only</span></div>
+            <h1 id="metadata-name">neon-garden.png</h1>
+            <p id="metadata-path">AI Exports / 2026-08 / Botanical</p>
+            <div class="status-line" id="favorite-status"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg> Favorite</div>
+          </div>
+          <section class="meta-section">
+            <h2>Identity</h2>
+            <dl style="margin:0">
+              <div class="meta-row"><dt>Type</dt><dd id="meta-type">PNG</dd></div>
+              <div class="meta-row"><dt>Dimensions</dt><dd id="meta-dimensions">4096 × 3072</dd></div>
+              <div class="meta-row"><dt>File size</dt><dd id="meta-size">12.8 MB</dd></div>
+              <div class="meta-row"><dt>Created</dt><dd>Aug 28, 2026 at 10:42 PM</dd></div>
+              <div class="meta-row"><dt>Modified</dt><dd>Aug 28, 2026 at 10:42 PM</dd></div>
+            </dl>
+          </section>
+          <section class="meta-section" id="ai-section">
+            <h2>AI generation</h2>
+            <div class="prompt" id="prompt">Luminous bioluminescent flower in a dark botanical garden, soft bloom, restrained magenta and green palette, editorial macro photography.</div>
+            <dl style="margin:0">
+              <div class="meta-row"><dt>Model</dt><dd>flux1-dev-fp8</dd></div>
+              <div class="meta-row"><dt>Seed</dt><dd>1748293016</dd></div>
+              <div class="meta-row"><dt>Steps</dt><dd>28</dd></div>
+              <div class="meta-row"><dt>Guidance</dt><dd>3.5</dd></div>
+            </dl>
+          </section>
+          <section class="meta-section"><button class="disclosure"><strong>Embedded metadata</strong><span>12 fields&nbsp; ›</span></button></section>
+        </aside>
+      </div>
+
+      <nav class="filmstrip" id="filmstrip" aria-label="Photo filmstrip">
+        <button class="film-card" data-id="dune" data-favorite="false" data-name="quiet-dunes.jpg" data-type="JPEG" data-dimensions="6000 × 4000" data-size="8.4 MB" data-path="AI Exports / 2026-08">
+          <span class="film-image"><svg class="art" viewBox="0 0 320 240"><defs><linearGradient id="d1" x2="0" y2="1"><stop stop-color="#6b9eb1"/><stop offset=".55" stop-color="#d8c4aa"/><stop offset="1" stop-color="#9d603b"/></linearGradient></defs><rect width="320" height="240" fill="url(#d1)"/><circle cx="257" cy="54" r="24" fill="#f5d6a5"/><path d="M0 160Q74 110 153 150T320 130V240H0Z" fill="#dca56c"/><path d="M0 195Q99 142 178 183T320 161V240H0Z" fill="#a85d39"/><path d="M0 213Q90 188 181 216T320 193V240H0Z" fill="#704230"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">quiet-dunes.jpg</span>
+        </button>
+
+        <button class="film-card selected" data-id="garden" data-favorite="true" data-name="neon-garden.png" data-type="PNG" data-dimensions="4096 × 3072" data-size="12.8 MB" data-path="AI Exports / 2026-08 / Botanical">
+          <span class="film-image"><svg class="art" viewBox="0 0 320 240"><defs><radialGradient id="g1"><stop stop-color="#f7b5d2"/><stop offset=".35" stop-color="#b95b95"/><stop offset="1" stop-color="#192a27"/></radialGradient><filter id="glow"><feGaussianBlur stdDeviation="7"/></filter></defs><rect width="320" height="240" fill="#142621"/><circle cx="160" cy="115" r="82" fill="url(#g1)" filter="url(#glow)"/><path d="M160 240V120M160 165l-50-39M160 180l54-65" stroke="#a9d0a4" stroke-width="5"/><g fill="none" stroke-linecap="round"><path d="M159 121c-44-17-47-59-18-72 12 25 21 46 18 72Z" stroke="#ffc7df" stroke-width="8"/><path d="M163 120c37-30 71-8 67 25-28 1-50-5-67-25Z" stroke="#ec90c6" stroke-width="9"/><path d="M157 123c-32 25-64 10-64-21 28-3 48 4 64 21Z" stroke="#ba81d1" stroke-width="8"/></g><circle cx="159" cy="118" r="11" fill="#ffd0e3"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">neon-garden.png</span>
+        </button>
+
+        <button class="film-card" data-id="coast" data-favorite="false" data-name="north-coast.jpg" data-type="JPEG" data-dimensions="5472 × 3648" data-size="6.1 MB" data-path="AI Exports / 2026-08">
+          <span class="film-image"><svg class="art" viewBox="0 0 320 240"><defs><linearGradient id="c1" x2="0" y2="1"><stop stop-color="#b8d3dc"/><stop offset=".57" stop-color="#e6d3b3"/><stop offset=".58" stop-color="#7ea7ad"/><stop offset="1" stop-color="#305e68"/></linearGradient></defs><rect width="320" height="240" fill="url(#c1)"/><path d="M0 168Q56 143 111 169T222 166T320 151" fill="none" stroke="#eaf1ec" stroke-width="8"/><path d="M0 215Q82 183 150 209T320 188V240H0Z" fill="#496f73"/><path d="M24 145l32-58 33 58zM245 139l18-38 26 38z" fill="#6b6f65"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">north-coast.jpg</span>
+        </button>
+
+        <button class="film-card" data-id="concrete" data-favorite="true" data-orientation="portrait" data-name="concrete-07.png" data-type="PNG" data-dimensions="3072 × 4096" data-size="9.6 MB" data-path="AI Exports / Architecture">
+          <span class="film-image"><svg class="art" viewBox="0 0 190 250"><defs><linearGradient id="a1" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#d5d1c7"/><stop offset="1" stop-color="#817f79"/></linearGradient></defs><rect width="190" height="250" fill="url(#a1)"/><path d="M16 225V62L94 18v207z" fill="#b8b4aa"/><path d="M94 225V18l80 44v163z" fill="#595a57"/><rect x="52" y="84" width="84" height="118" fill="#ece7db"/><rect x="73" y="105" width="42" height="97" fill="#3a3c3a"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">concrete-07.png</span>
+        </button>
+
+        <button class="film-card" data-id="still" data-favorite="false" data-name="citrus-study.jpg" data-type="JPEG" data-dimensions="4500 × 3375" data-size="4.8 MB" data-path="AI Exports / 2026-08">
+          <span class="film-image"><svg class="art" viewBox="0 0 320 240"><rect width="320" height="240" fill="#c8bbaa"/><rect y="160" width="320" height="80" fill="#897361"/><ellipse cx="166" cy="185" rx="88" ry="20" fill="#55493f" opacity=".35"/><path d="M112 77h92l-16 100h-60z" fill="#2c3f3d"/><path d="M126 78q8-42 38-42t40 42" fill="none" stroke="#687b69" stroke-width="8"/><circle cx="160" cy="90" r="43" fill="#d7a767"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">citrus-study.jpg</span>
+        </button>
+
+        <button class="film-card" data-id="forest" data-favorite="true" data-name="forest-light.jpg" data-type="JPEG" data-dimensions="6000 × 4000" data-size="7.7 MB" data-path="AI Exports / 2026-08">
+          <span class="film-image"><svg class="art" viewBox="0 0 320 240"><defs><linearGradient id="f1" x2="0" y2="1"><stop stop-color="#b8c0ad"/><stop offset="1" stop-color="#30483a"/></linearGradient></defs><rect width="320" height="240" fill="url(#f1)"/><path d="M38 0v240M98 0v240M204 0v240M278 0v240" stroke="#29392f" stroke-width="16"/><path d="M0 198q77-25 150 0t170-13v55H0z" fill="#243a30"/><g fill="#627962"><circle cx="49" cy="62" r="34"/><circle cx="112" cy="39" r="42"/><circle cx="190" cy="65" r="49"/><circle cx="270" cy="35" r="46"/></g><path d="M151 240 190 0h25l-18 240z" fill="#d4b77d" opacity=".25"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">forest-light.jpg</span>
+        </button>
+
+        <button class="film-card" data-id="paper" data-favorite="false" data-orientation="portrait" data-name="paper-forms.png" data-type="PNG" data-dimensions="3072 × 4096" data-size="5.2 MB" data-path="AI Exports / 2026-08">
+          <span class="film-image"><svg class="art" viewBox="0 0 190 250"><rect width="190" height="250" fill="#eadfd1"/><path d="M10 184 69 24l30 162z" fill="#d86f58"/><path d="m76 219 43-193 57 193z" fill="#394f61"/><circle cx="98" cy="131" r="47" fill="#efd09d"/><circle cx="98" cy="131" r="17" fill="#303c43"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">paper-forms.png</span>
+        </button>
+
+        <button class="film-card" data-id="night" data-favorite="false" data-name="blue-hour.jpg" data-type="JPEG" data-dimensions="5472 × 3648" data-size="10.3 MB" data-path="AI Exports / 2026-08">
+          <span class="film-image"><svg class="art" viewBox="0 0 320 240"><defs><linearGradient id="n1" x2="0" y2="1"><stop stop-color="#101b35"/><stop offset="1" stop-color="#362c49"/></linearGradient></defs><rect width="320" height="240" fill="url(#n1)"/><circle cx="243" cy="57" r="21" fill="#f8edc0"/><path d="M0 198 69 102l54 64 39-46 84 89 38-52 36 41v42H0z" fill="#111927"/><path d="m104 240 56-120 28 120z" fill="#26304a"/></svg><span class="film-star"><svg viewBox="0 0 24 24"><path d="m12 3 2.7 5.5 6.1.9-4.4 4.3 1 6.1-5.4-2.9-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg></span></span><span class="film-name">blue-hour.jpg</span>
+        </button>
+      </nav>
+    </section>
+
+    <section class="contact-sheet" id="contact-sheet" aria-label="Contact Sheet">
+      <header class="contact-head"><h2>Contact Sheet <span id="contact-count">61 images</span></h2><button class="contact-close">Return to Inspect&nbsp;&nbsp; G</button></header>
+      <div class="contact-grid" id="contact-grid"></div>
+    </section>
+
+    <section class="modal" id="export-modal" aria-label="Export selected picture">
+      <div class="export-card">
+        <h2>Export selected picture</h2>
+        <p>One exact copy. No conversion or settings.</p>
+        <div class="export-file"><div class="file-icon"><svg viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6zM14 3v5h5"/></svg></div><div><strong id="export-name">neon-garden.png</strong><span id="export-facts">PNG · 12.8 MB</span></div></div>
+        <div class="policy"><strong>Replacement policy:</strong> if you confirm Replace, the source file becomes the complete destination. All metadata previously in the destination is overwritten, never merged.</div>
+        <div class="modal-actions"><button id="export-cancel">Cancel</button><button class="confirm" id="export-confirm">Choose Location…</button></div>
+      </div>
+    </section>
+
+    <div class="toast" id="toast"><span id="toast-message">Moved neon-garden.png to Trash</span><button id="undo-button">Undo</button></div>
+  </main>
+
+  <script>
+    const app = document.querySelector('#app');
+    const cards = [...document.querySelectorAll('.film-card')];
+    const segments = [...document.querySelectorAll('.segment')];
+    const contact = document.querySelector('#contact-sheet');
+    const contactGrid = document.querySelector('#contact-grid');
+    const exportModal = document.querySelector('#export-modal');
+    const toast = document.querySelector('#toast');
+    let selected = document.querySelector('.film-card.selected');
+    let filter = 'all';
+    let deletedCard = null;
+
+    const gardenPrompt = 'Luminous bioluminescent flower in a dark botanical garden, soft bloom, restrained magenta and green palette, editorial macro photography.';
+
+    function visibleCards() {
+      return cards.filter(card => card.dataset.deleted !== 'true' && (filter === 'all' || card.dataset.favorite === 'true'));
+    }
+
+    function applyVisibility() {
+      cards.forEach(card => {
+        card.hidden = card.dataset.deleted === 'true' || (filter === 'favorites' && card.dataset.favorite !== 'true');
+      });
+      const visible = visibleCards();
+      if (!visible.length) return;
+      selectCard(visible.includes(selected) ? selected : visible[0]);
+    }
+
+    function selectCard(card) {
+      if (!card || card.dataset.deleted === 'true') return;
+      selected?.classList.remove('selected');
+      selected = card;
+      selected.classList.add('selected');
+      document.querySelector('#stage').innerHTML = card.querySelector('.art').outerHTML;
+      document.querySelector('#viewer-name').textContent = card.dataset.name;
+      document.querySelector('#viewer-facts').textContent = `${card.dataset.dimensions} · ${card.dataset.size}`;
+      document.querySelector('#metadata-name').textContent = card.dataset.name;
+      document.querySelector('#metadata-path').textContent = card.dataset.path;
+      document.querySelector('#meta-type').textContent = card.dataset.type;
+      document.querySelector('#meta-dimensions').textContent = card.dataset.dimensions;
+      document.querySelector('#meta-size').textContent = card.dataset.size;
+      document.querySelector('#export-name').textContent = card.dataset.name;
+      document.querySelector('#export-facts').textContent = `${card.dataset.type} · ${card.dataset.size}`;
+      const aiSection = document.querySelector('#ai-section');
+      aiSection.style.display = card.dataset.id === 'garden' ? 'block' : 'none';
+      if (card.dataset.id === 'garden') document.querySelector('#prompt').textContent = gardenPrompt;
+      const visible = visibleCards();
+      const globalCount = filter === 'all' ? 61 : 8;
+      document.querySelector('#position').textContent = `${Math.max(1, visible.indexOf(card) + 1)} of ${globalCount}`;
+      syncFavorite();
+      selected.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'center' });
+    }
+
+    function syncFavorite() {
+      const isFavorite = selected?.dataset.favorite === 'true';
+      const button = document.querySelector('#favorite-button');
+      button.classList.toggle('on', isFavorite);
+      button.setAttribute('aria-label', isFavorite ? 'Unfavorite' : 'Favorite');
+      document.querySelector('#favorite-status').style.display = isFavorite ? 'flex' : 'none';
+    }
+
+    function toggleFavorite() {
+      if (!selected) return;
+      selected.dataset.favorite = String(selected.dataset.favorite !== 'true');
+      syncFavorite();
+      if (filter === 'favorites') applyVisibility();
+    }
+
+    function setFilter(next) {
+      filter = next;
+      segments.forEach(segment => segment.classList.toggle('active', segment.dataset.filter === next));
+      applyVisibility();
+      document.querySelector('#contact-count').textContent = next === 'all' ? '61 images' : '8 favorites';
+    }
+
+    function openContact() {
+      contactGrid.innerHTML = '';
+      visibleCards().forEach(card => {
+        const item = document.createElement('button');
+        item.className = 'contact-card';
+        item.dataset.orientation = card.dataset.orientation || '';
+        item.innerHTML = `<span class="contact-image">${card.querySelector('.art').outerHTML}</span><strong>${card.dataset.name}</strong>`;
+        item.addEventListener('click', () => { selectCard(card); contact.classList.remove('open'); });
+        contactGrid.appendChild(item);
+      });
+      contact.classList.add('open');
+    }
+
+    function moveToTrash() {
+      if (!selected) return;
+      deletedCard = selected;
+      const name = selected.dataset.name;
+      const current = visibleCards();
+      const index = current.indexOf(selected);
+      selected.dataset.deleted = 'true';
+      applyVisibility();
+      const next = visibleCards()[Math.min(index, visibleCards().length - 1)];
+      if (next) selectCard(next);
+      document.querySelector('#toast-message').textContent = `Moved ${name} to Trash`;
+      toast.classList.add('show');
+    }
+
+    function undoTrash() {
+      if (!deletedCard) return;
+      deletedCard.dataset.deleted = 'false';
+      applyVisibility();
+      selectCard(deletedCard);
+      deletedCard = null;
+      toast.classList.remove('show');
+    }
+
+    function navigate(delta) {
+      const visible = visibleCards();
+      const index = visible.indexOf(selected);
+      if (!visible.length) return;
+      selectCard(visible[(index + delta + visible.length) % visible.length]);
+    }
+
+    cards.forEach(card => card.addEventListener('click', () => selectCard(card)));
+    segments.forEach(segment => segment.addEventListener('click', () => setFilter(segment.dataset.filter)));
+    document.querySelector('#side-favorites').addEventListener('click', () => setFilter('favorites'));
+    document.querySelector('#favorite-button').addEventListener('click', toggleFavorite);
+    document.querySelector('#contact-button').addEventListener('click', openContact);
+    document.querySelector('.contact-close').addEventListener('click', () => contact.classList.remove('open'));
+    document.querySelector('#trash-button').addEventListener('click', moveToTrash);
+    document.querySelector('#undo-button').addEventListener('click', undoTrash);
+    document.querySelector('#export-button').addEventListener('click', () => exportModal.classList.add('open'));
+    document.querySelector('#export-cancel').addEventListener('click', () => exportModal.classList.remove('open'));
+    document.querySelector('#export-confirm').addEventListener('click', () => exportModal.classList.remove('open'));
+
+    document.addEventListener('keydown', event => {
+      if (event.key === 'Escape') { contact.classList.remove('open'); exportModal.classList.remove('open'); app.classList.remove('focus'); return; }
+      if (event.metaKey && event.key === 'Backspace') { event.preventDefault(); moveToTrash(); return; }
+      if (event.key === 'ArrowRight') { navigate(1); return; }
+      if (event.key === 'ArrowLeft') { navigate(-1); return; }
+      if (event.key.toLowerCase() === 'g') { contact.classList.contains('open') ? contact.classList.remove('open') : openContact(); return; }
+      if (event.key.toLowerCase() === 'f') { toggleFavorite(); return; }
+      if (event.code === 'Space') { event.preventDefault(); app.classList.toggle('focus'); }
+    });
+  </script>
+</body>
+</html>

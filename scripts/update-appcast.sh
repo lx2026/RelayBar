@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+source "$ROOT/scripts/require-publication-approval.sh"
 ARCHIVE="${1:-}"
 DOWNLOAD_URL="${2:-}"
 APPCAST="$ROOT/docs/appcast.xml"

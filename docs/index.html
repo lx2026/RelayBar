@@ -12,7 +12,7 @@
     <link rel="canonical" href="https://lx2026.github.io/RelayBar/">
     <link rel="icon" href="./favicon.png">
     <link rel="apple-touch-icon" href="./relaybar-icon.png">
-    <link rel="stylesheet" href="./styles.css?v=20260726">
+    <link rel="stylesheet" href="./styles.css?v=20261114">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="RelayBar | SSH tunnels, one click away">
@@ -55,6 +55,7 @@
         </a>
         <div class="nav-links">
           <a href="#remote-files">Remote Files</a>
+          <a href="#frame">Frame preview</a>
           <a href="#how-it-works">How it works</a>
           <a href="#whats-new">What’s new</a>
           <a
@@ -74,7 +75,7 @@
         <div class="hero-copy">
           <div class="release-pill">
             <span aria-hidden="true"></span>
-            v1.6.0 · notarized · open source
+            Stable v1.6.0 · notarized · open source
           </div>
           <h1>SSH tunnels,<br>one click away.</h1>
           <p class="hero-lede">
@@ -88,7 +89,7 @@
               href="https://github.com/lx2026/RelayBar/releases/download/v1.6.0/RelayBar.zip"
               aria-label="Download RelayBar 1.6.0 for macOS"
             >
-              Download for macOS <span aria-hidden="true">↓</span>
+              Download RelayBar <span aria-hidden="true">↓</span>
             </a>
             <a class="button secondary" href="https://github.com/lx2026/RelayBar">
               View source <span aria-hidden="true">↗</span>
@@ -202,6 +203,80 @@
             </p>
           </article>
         </div>
+      </section>
+
+      <section class="section preview-section shell" id="frame" aria-labelledby="frame-title">
+        <div class="section-heading split-heading">
+          <div>
+            <span class="section-kicker">In testing · next paired update</span>
+            <h2 id="frame-title">Browse here.<br>Review in Frame.</h2>
+          </div>
+          <p>
+            Frame adds a folder workspace for images, video and documents.
+            Open local folders on their own, or use RelayBar to reach files on
+            your server. Nothing is imported.
+          </p>
+        </div>
+        <p class="preview-notice">
+          These features are in the current source, under test. They are not in
+          the stable RelayBar 1.6.0 download. Frame has no public release yet and
+          requires macOS 14 or newer. Remote access needs compatible versions
+          of both apps; update them together.
+        </p>
+        <div class="feature-grid preview-features">
+          <article>
+            <span class="feature-number">01 · Frame</span>
+            <h3>Keep the folder in view</h3>
+            <p>
+              A folder tree, contact sheet, file previews and companion metadata.
+              Search filenames and prompt text, mark favorites, and export exact
+              copies of related files together.
+            </p>
+          </article>
+          <article>
+            <span class="feature-number">02 · Both apps</span>
+            <h3>Read the whole note</h3>
+            <p>
+              Highlighted code with Copy, typeset math, callouts, footnotes and
+              tables that fit. One Markdown reading design, in each app’s palette.
+            </p>
+          </article>
+          <article>
+            <span class="feature-number">03 · Plugins</span>
+            <h3>Choose the useful extras</h3>
+            <p>
+              Reconnect on Wake and Prompt Search start on. Service Labels starts
+              off; enable it to check forwarded web services. Switch built-in
+              features in the Plugins window.
+            </p>
+          </article>
+        </div>
+        <div class="preview-renders">
+          <figure>
+            <div class="media-frame">
+              <div class="frame-bar"><span>RelayBar · Markdown</span><span>light appearance</span></div>
+              <img src="./verification/assets/063-markdown/after-relaybar-ordinary.png"
+                alt="RelayBar test note with a checklist, aligned results table and highlighted Python code"
+                width="820" height="1232" loading="lazy">
+            </div>
+            <figcaption>RelayBar keeps document images unloaded.</figcaption>
+          </figure>
+          <figure>
+            <div class="media-frame">
+              <div class="frame-bar"><span>Frame · Markdown</span><span>light appearance</span></div>
+              <img src="./verification/assets/063-markdown/after-frame-ordinary.png"
+                alt="The same test note in Frame’s green palette, with its sample image loaded"
+                width="820" height="1373" loading="lazy">
+            </div>
+            <figcaption>Frame can show images and follow neighbouring documents.</figcaption>
+          </figure>
+        </div>
+        <p class="preview-caption">Current renderer captures using the same synthetic document.</p>
+        <p class="preview-detail">
+          Markdown HTML stays literal text. HTML-file previews are different:
+          they can run page scripts and load online resources.
+          <a href="https://github.com/lx2026/RelayBar/blob/main/README.md#current-source-frame-plugins-and-documents">Read about the current source <span aria-hidden="true">↗</span></a>
+        </p>
       </section>
 
       <section class="section workflow shell" id="how-it-works">
@@ -359,7 +434,7 @@
           href="https://github.com/lx2026/RelayBar/releases/download/v1.6.0/RelayBar.zip"
           aria-label="Download RelayBar 1.6.0 for macOS"
         >
-          Download for macOS <span aria-hidden="true">↓</span>
+          Download RelayBar <span aria-hidden="true">↓</span>
         </a>
       </section>
     </main>

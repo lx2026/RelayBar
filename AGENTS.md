@@ -41,6 +41,7 @@ Do not commit or push merely because a task is complete; follow the Git workflow
 
 ## Deployment approval
 
+- During development, only increment build numbers as needed. Change release versions only when explicitly asked.
 - For macOS releases, first read `docs/system-specs/operations/build-and-release.md`.
   It contains the maintainer's working notarization profile and the signing,
   Sparkle, GitHub Pages, and Homebrew publication sequence. The personal

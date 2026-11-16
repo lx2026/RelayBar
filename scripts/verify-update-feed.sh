@@ -4,13 +4,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 APPCAST="${1:-$ROOT/docs/appcast.xml}"
 SPARKLE_ACCOUNT="${SPARKLE_ACCOUNT:-com.lx2026.RelayBar}"
-EXPECTED_FEED="$(plutil -extract SUFeedURL raw "$ROOT/Packaging/Info.plist")"
-EXPECTED_KEY="$(plutil -extract SUPublicEDKey raw "$ROOT/Packaging/Info.plist")"
+EXPECTED_FEED="$(plutil -extract SUFeedURL raw "$ROOT/Apps/RelayBar/Packaging/Info.plist")"
+EXPECTED_KEY="$(plutil -extract SUPublicEDKey raw "$ROOT/Apps/RelayBar/Packaging/Info.plist")"
 REQUIRES_SIGNED_FEED="$(
-  plutil -extract SURequireSignedFeed raw "$ROOT/Packaging/Info.plist"
+  plutil -extract SURequireSignedFeed raw "$ROOT/Apps/RelayBar/Packaging/Info.plist"
 )"
 VERIFIES_BEFORE_EXTRACTION="$(
-  plutil -extract SUVerifyUpdateBeforeExtraction raw "$ROOT/Packaging/Info.plist"
+  plutil -extract SUVerifyUpdateBeforeExtraction raw "$ROOT/Apps/RelayBar/Packaging/Info.plist"
 )"
 
 if [[ "$EXPECTED_FEED" != "https://lx2026.github.io/RelayBar/appcast.xml" ]]; then

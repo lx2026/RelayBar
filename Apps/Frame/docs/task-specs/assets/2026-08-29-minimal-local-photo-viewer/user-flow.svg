@@ -1,0 +1,72 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="390" viewBox="0 0 1440 390" role="img" aria-labelledby="title desc">
+  <title id="title">Frame revision two user flow</title>
+  <desc id="desc">Open a local folder and inspect a large picture with attached metadata, then navigate, favorite, filter, move to Trash with Undo, or export an exact replacement.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 10 5 0 10Z" fill="#8d8d89"/>
+    </marker>
+    <style>
+      .bg{fill:#f7f6f2}.card{fill:#fff;stroke:#deddd8;stroke-width:1.5}.core{fill:#fff9ef;stroke:#d9902f;stroke-width:2}.main{font:600 17px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#20201e}.sub{font:400 12.5px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;fill:#777772}.eye{font:700 10.5px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;letter-spacing:1.2px;fill:#b66f1b}.line{stroke:#8d8d89;stroke-width:2;fill:none;marker-end:url(#arrow)}.branch{stroke:#c2c1bc;stroke-width:1.6;fill:none;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1440" height="390" rx="24"/>
+  <text x="44" y="43" class="eye">ONE INSPECTION LOOP</text>
+
+  <g transform="translate(44 126)">
+    <rect class="card" width="190" height="104" rx="15"/>
+    <text x="18" y="39" class="main">Open folder</text>
+    <text x="18" y="65" class="sub">Grant access</text>
+    <text x="18" y="84" class="sub">Scan JPEG + PNG</text>
+  </g>
+  <path class="line" d="M245 178H302"/>
+
+  <g transform="translate(314 92)">
+    <rect class="core" width="300" height="172" rx="18"/>
+    <text x="22" y="39" class="eye">DEFAULT VIEW</text>
+    <text x="22" y="71" class="main">Inspect as one surface</text>
+    <rect x="22" y="92" width="142" height="55" rx="8" fill="#e6e4de"/>
+    <path d="M41 133 75 103l27 20 18-12 25 22Z" fill="#8c9188"/>
+    <rect x="179" y="92" width="98" height="8" rx="4" fill="#d7d4cb"/>
+    <rect x="179" y="111" width="78" height="7" rx="3.5" fill="#d7d4cb"/>
+    <rect x="179" y="130" width="90" height="7" rx="3.5" fill="#d7d4cb"/>
+    <text x="22" y="162" class="sub">large image + attached metadata</text>
+  </g>
+
+  <path class="line" d="M625 178H698"/>
+  <rect x="710" y="8" width="700" height="365" rx="19" fill="none" stroke="#d5d3cc" stroke-width="1.5" stroke-dasharray="5 5"/>
+  <text x="740" y="34" class="eye">AVAILABLE FROM INSPECT</text>
+
+  <g transform="translate(740 47)">
+    <rect class="card" width="300" height="65" rx="13"/>
+    <text x="17" y="28" class="main">Navigate + filter</text>
+    <text x="17" y="49" class="sub">Filmstrip, arrows, All ⇄ Favorites</text>
+  </g>
+  <g transform="translate(740 126)">
+    <rect class="card" width="300" height="65" rx="13"/>
+    <text x="17" y="28" class="main">Jump with Contact Sheet</text>
+    <text x="17" y="49" class="sub">Choose once → return to Inspect</text>
+  </g>
+  <g transform="translate(740 205)">
+    <rect class="card" width="300" height="65" rx="13"/>
+    <text x="17" y="28" class="main">Favorite</text>
+    <text x="17" y="49" class="sub">Press F; only local catalog changes</text>
+  </g>
+  <g transform="translate(740 284)">
+    <rect class="card" width="300" height="65" rx="13"/>
+    <text x="17" y="28" class="main">Focus</text>
+    <text x="17" y="49" class="sub">Space keeps picture + metadata together</text>
+  </g>
+
+  <g transform="translate(1109 91)">
+    <rect class="card" width="287" height="86" rx="14"/>
+    <text x="17" y="31" class="main">Move to Trash</text>
+    <text x="17" y="53" class="sub">Advance immediately</text>
+    <text x="17" y="72" class="sub">Undo restores when possible</text>
+  </g>
+  <g transform="translate(1109 257)">
+    <rect class="card" width="287" height="86" rx="14"/>
+    <text x="17" y="31" class="main">Export exact copy</text>
+    <text x="17" y="53" class="sub">Confirm Replace when needed</text>
+    <text x="17" y="72" class="sub">Source metadata replaces destination</text>
+  </g>
+</svg>

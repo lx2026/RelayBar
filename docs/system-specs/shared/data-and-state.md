@@ -14,14 +14,16 @@
 
 ## Runtime ownership
 
-The global forwarding retry limit is stored separately from profiles as an
-integer in `UserDefaults` under `sshRetryLimit.v1`. Missing or non-integer
-values default to 10; integer values are clamped to 0–100, preserving 0 as
-disabled. Settings writes through `TunnelStore.setMaxRetryAttempts` so active
-retry waits immediately observe the policy change. Attempts, deadlines, and
-monotonic connection-start times remain runtime-only.
+The global forwarding retry limit lives in the versioned preference document
+(`preferences.json`), separately from profiles. Its one-time import reads
+`sshRetryLimit.v1` from UserDefaults: missing or non-integer values default to
+10, and integers clamp to 0–100, preserving 0 as disabled. The legacy value is
+retained for recovery. Settings saves the document before the retry-limit
+feature applies the new value to the active store. Failed saves leave retry waits intact; successful
+changes preserve running processes and allowed retry deadlines. Attempts,
+deadlines and monotonic connection-start times remain runtime-only.
 
-`TunnelStore` is main-actor isolated and publishes saved tunnels plus phase by UUID. It separately tracks:
+`TunnelStore` is main-actor isolated and publishes saved tunnels plus phase by UUID. Each composed profile owns its process lifecycle; the store aggregates:
 
 - desired active profiles;
 - master and control processes plus bounded output buffers;
