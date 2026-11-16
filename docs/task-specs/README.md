@@ -31,6 +31,8 @@ Completion does not authorize a commit, push, release, or deployment. Follow [`A
 
 ## Active tasks
 
+- [Task 066 — Interface polish](066-interface-polish.md) — implemented; consistent button hierarchy, type, colour and spacing in both apps, with before-and-after captures; awaiting the owner's review
+
 - [Task 065 — Public-readiness cleanup](065-public-readiness.md) — implemented; Frame bundle identifier, Open in Frame plugin and removal of personal details before the first commit; automated checks pass, native acceptance not run
 
 - [Task 063 — One Markdown renderer](063-one-markdown-renderer.md) — implemented; one shared renderer with RelayBar's reading design, drawn by WebKit in both apps; automated gate passes, native acceptance not run

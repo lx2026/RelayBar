@@ -171,8 +171,8 @@ struct RemoteFilesView: View {
                 .controlSize(.small)
                 .disabled(!model.canActivateLocation)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 11)
+            .padding(.horizontal, 16)
+            .frame(minHeight: RemoteFilesWindowSizing.toolbarHeight)
 
             Divider()
 
@@ -227,8 +227,8 @@ struct RemoteFilesView: View {
                                 .buttonStyle(.plain)
                                 .font(.caption.weight(.medium))
                                 .foregroundStyle(Color.accentColor)
-                                .padding(.horizontal, 9)
-                                .padding(.top, 3)
+                                .padding(.horizontal, 8)
+                                .padding(.top, 4)
                                 .focused(
                                     $focusedSidebarItem,
                                     equals: .showAllRecentFolders
@@ -259,8 +259,8 @@ struct RemoteFilesView: View {
                 .font(.caption2)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 9)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
         }
         .background(.ultraThinMaterial)
         .accessibilityLabel("Remote locations")
@@ -271,11 +271,8 @@ struct RemoteFilesView: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .tracking(0.5)
-                .padding(.horizontal, 9)
+            SectionLabel(title)
+                .padding(.horizontal, 8)
             content()
         }
     }
@@ -287,10 +284,7 @@ struct RemoteFilesView: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(title)
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .tracking(0.5)
+                SectionLabel(title)
                 Spacer()
                 Menu {
                     menu()
@@ -302,7 +296,7 @@ struct RemoteFilesView: View {
                 .frame(width: 18)
                 .accessibilityLabel("Recent folders actions")
             }
-            .padding(.horizontal, 9)
+            .padding(.horizontal, 8)
             content()
         }
     }
@@ -531,8 +525,8 @@ struct RemoteFilesView: View {
                 Button("Upload…") {}
                     .disabled(true)
             }
-            .padding(.horizontal, 14)
-            .frame(minHeight: 52)
+            .padding(.horizontal, 16)
+            .frame(minHeight: RemoteFilesWindowSizing.toolbarHeight)
             Divider()
             if let errorMessage = model.errorMessage {
                 LoadErrorStrip(
@@ -810,7 +804,7 @@ struct RemoteFilesView: View {
             browserToolbarContent(compact: geometry.size.width < 650)
                 .frame(height: geometry.size.height)
         }
-        .frame(height: 48)
+        .frame(height: RemoteFilesWindowSizing.toolbarHeight)
     }
 
     private func browserToolbarContent(compact: Bool) -> some View {
@@ -872,7 +866,6 @@ struct RemoteFilesView: View {
                     )
                 }
                 .fixedSize()
-                .tint(.red)
                 .foregroundStyle(model.canDeleteSelectedFiles ? Color.red : Color.secondary)
                 .disabled(!model.canDeleteSelectedFiles)
                 .help("Delete the selected files after a 5-second Undo window")
@@ -916,8 +909,8 @@ struct RemoteFilesView: View {
                 .disabled(!model.canUpload)
             }
         }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 48)
+        .padding(.horizontal, 16)
+        .frame(minHeight: RemoteFilesWindowSizing.toolbarHeight)
     }
 
     @ViewBuilder
@@ -957,7 +950,7 @@ struct RemoteFilesView: View {
     }
 
     private var previewToolbar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             sidebarToggle
 
             Button {
@@ -1012,18 +1005,21 @@ struct RemoteFilesView: View {
                     || model.isLoadingPreview
             )
 
+            Divider()
+                .frame(height: 18)
+
             Button(role: .destructive) {
                 model.deletePreviewEntry()
             } label: {
                 Label("Delete", systemImage: "trash")
             }
             .buttonStyle(.bordered)
-            .tint(.red)
+            .foregroundStyle(model.canDeletePreviewEntry ? Color.red : Color.secondary)
             .disabled(!model.canDeletePreviewEntry)
             .help("Delete this file after a 5-second Undo window")
         }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 52)
+        .padding(.horizontal, 16)
+        .frame(minHeight: RemoteFilesWindowSizing.toolbarHeight)
     }
 
     private var previewDetail: some View {
@@ -1055,7 +1051,7 @@ struct RemoteFilesView: View {
                     if let progress = model.previewProgress {
                         Text(previewProgressDescription(progress))
                             .font(.caption.monospacedDigit())
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                         Button("Cancel", action: model.cancelPreviewLoading)
                             .buttonStyle(.bordered)
                     }
@@ -1573,7 +1569,7 @@ private struct PreviewSidebarRow: View {
     var body: some View {
         HStack(spacing: 9) {
             Image(systemName: (RemotePreviewPresentation.format(of: entry) ?? .markdown).symbol)
-                .font(.system(size: 13))
+                .font(.body)
                 .foregroundStyle(.secondary)
                 .frame(width: 18)
 
@@ -1585,14 +1581,14 @@ private struct PreviewSidebarRow: View {
 
                 Text(metadata)
                     .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
 
             Spacer(minLength: 4)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 3)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
         .frame(minHeight: 38)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(
@@ -1759,8 +1755,8 @@ private struct RemoteFileRow: View {
                 Color.clear.frame(width: 26, height: 1)
             }
         }
-        .padding(.horizontal, 14)
-        .frame(minHeight: 43)
+        .padding(.horizontal, 16)
+        .frame(minHeight: 44)
         .background(
             (isSelectionMode ? isFileSelected : isSelected)
                 ? Color.accentColor.opacity(0.12)
@@ -1984,8 +1980,8 @@ private struct TransferStrip: View {
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(Color.accentColor.opacity(0.06))
     }
 
@@ -2102,8 +2098,8 @@ private struct UploadStrip: View {
                 Button("Dismiss") { model.dismissUpload() }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(Color.accentColor.opacity(0.06))
     }
 
@@ -2206,8 +2202,8 @@ private struct DeletionStrip: View {
                 Button("Refresh") { model.refreshAfterUnknownDeletion() }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(Color.orange.opacity(0.07))
     }
 }
@@ -2233,9 +2229,12 @@ private struct LoadErrorStrip: View {
 
             Button("Try Again", action: onRetry)
             if showsRemoveFromRecents {
+                Divider()
+                    .frame(height: 16)
                 Button("Remove from Recents", role: .destructive) {
                     onRemoveFromRecents()
                 }
+                .foregroundStyle(.red)
             }
             Button {
                 onDismiss()
@@ -2245,8 +2244,8 @@ private struct LoadErrorStrip: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Dismiss error")
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 9)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .background(Color.red.opacity(0.06))
     }
 }

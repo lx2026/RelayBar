@@ -13,7 +13,7 @@ struct FrameRootView: View {
       let showsRail = store.showsFolderOutline ?? true
       VStack(spacing: 0) {
         if store.activeRootID != nil {
-          FrameToolbar(store: store, showsRail: showsRail).frame(height: 62)
+          FrameToolbar(store: store, showsRail: showsRail).frame(height: FrameMetrics.toolbarHeight)
           Divider()
         }
         if showsRail && store.activeRootID != nil && !store.isFocusMode {
@@ -30,7 +30,8 @@ struct FrameRootView: View {
       }
       .overlay(alignment: .bottom) {
         if let notice = store.notice {
-          NoticeView(notice: notice, store: store).padding(.bottom, 62).padding(.horizontal, 20)
+          NoticeView(notice: notice, store: store).padding(.bottom, FrameMetrics.barHeight + 12)
+            .padding(.horizontal, FrameMetrics.inset)
         }
       }
     }
@@ -77,7 +78,7 @@ struct FrameRootView: View {
           }.frame(maxWidth: .infinity, alignment: .leading)
         }
         HStack { Spacer(); Button("Done") { store.fileActionFailures = [] }.keyboardShortcut(.defaultAction) }
-      }.font(.system(size: 12)).padding(24).frame(width: 520, height: 360)
+      }.font(.callout).padding(24).frame(width: 520, height: 360)
         .foregroundStyle(FramePalette.ink).background(FramePalette.paper)
     }
     .task { await store.start(modelContext: modelContainer.mainContext) }
@@ -93,20 +94,50 @@ enum FramePalette {
   static let stage = Color(nsColor: FrameColors.stage)
   static let ink = Color(nsColor: FrameColors.ink)
   static let muted = Color(nsColor: FrameColors.muted)
-  static let faint = muted
   static let amber = Color(nsColor: FrameColors.amber)
 }
 
+/// Shared sizes on a 4-point rhythm: every bar, header and panel uses the same inset and row height.
+enum FrameMetrics {
+  static let inset: CGFloat = 16
+  static let barHeight: CGFloat = 44
+  static let toolbarHeight: CGFloat = 52
+  static let radius: CGFloat = 6
+}
+
+/// The one emphasised action of a surface; `prominent: false` gives its neutral companion the same shape.
 struct FilledButtonStyle: ButtonStyle {
+  var prominent = true
   @Environment(\.isEnabled) private var enabled
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .font(.system(size: 12, weight: .semibold))
-      .padding(.horizontal, 14).padding(.vertical, 8)
-      .foregroundStyle(Color(nsColor: enabled ? FrameColors.buttonText : FrameColors.muted))
-      .background(Color(nsColor: enabled ? FrameColors.button : FrameColors.panel),
-                  in: RoundedRectangle(cornerRadius: 6))
+      .font(.callout.weight(.semibold))
+      .padding(.horizontal, FrameMetrics.inset).frame(minHeight: 28)
+      .foregroundStyle(Color(nsColor: !enabled ? FrameColors.muted : prominent ? FrameColors.buttonText : FrameColors.ink))
+      .background(Color(nsColor: enabled && prominent ? FrameColors.button : FrameColors.panel),
+                  in: RoundedRectangle(cornerRadius: FrameMetrics.radius))
       .opacity(configuration.isPressed ? 0.8 : 1)
+  }
+}
+
+/// Borderless symbol buttons share one glyph size and one square hit area.
+struct IconButtonStyle: ButtonStyle {
+  var size: CGFloat = 28
+  @Environment(\.isEnabled) private var enabled
+  func makeBody(configuration: Configuration) -> some View {
+    configuration.label
+      .font(size < 28 ? .caption : .body).imageScale(size < 28 ? .medium : .large)
+      .frame(width: size, height: size).contentShape(Rectangle())
+      .opacity(!enabled ? 0.35 : configuration.isPressed ? 0.6 : 1)
+  }
+}
+
+/// The one treatment for section labels (Recent, Local, Generation, File).
+struct SectionLabel: View {
+  let title: String
+  init(_ title: String) { self.title = title }
+  var body: some View {
+    Text(title).textCase(.uppercase).font(.caption.weight(.semibold)).tracking(0.8).foregroundStyle(FramePalette.muted)
   }
 }
 
@@ -125,20 +156,25 @@ private struct FrameToolbar: View {
     if store.isRemote { return "\(store.rootName) · \(store.remotePath)" }
     return store.rootName + (store.filter == .archive ? "  ›  Archive" : store.selectedFolderPath.isEmpty ? "" : "  ›  " + store.selectedFolderPath)
   }
+  /// Mirrors when the workspace shows a document in Preview, so its Back and Forward join this row.
+  private var showsDocumentNavigation: Bool {
+    store.viewMode == .inspect && store.selectedPhoto?.format.isDocument == true && !store.rootUnavailable
+      && !store.isReadingFolder && store.remoteError == nil && store.folderReadError == nil
+  }
   var body: some View {
-    HStack(spacing: 16) {
-        Button { store.showsFolderOutline = !showsRail } label: {
-          Image(systemName: "sidebar.left").font(.system(size: 16))
-        }.buttonStyle(.plain).accessibilityLabel(showsRail ? "Hide folders" : "Show folders")
+    HStack(spacing: 12) {
+      Button { store.showsFolderOutline = !showsRail } label: { Image(systemName: "sidebar.left") }
+        .accessibilityLabel(showsRail ? "Hide folders" : "Show folders")
       Button("Open…", action: store.presentOpenChooser).buttonStyle(.bordered)
-      Divider().frame(height: 22)
+      Divider().frame(height: 20)
+      if showsDocumentNavigation { DocumentNavigation(renderer: store.documentRenderer) }
       Text(location)
-        .font(.system(size: 12)).lineLimit(1).truncationMode(.middle).help(path).accessibilityLabel(path)
+        .font(.callout).lineLimit(1).truncationMode(.middle).help(path).accessibilityLabel(path)
       Spacer(minLength: 8)
       if store.isSearchAvailable {
         if let matches = store.searchMatchCount {
           Text("\(matches) of \(store.folderFileCount)")
-            .font(.system(size: 12)).foregroundStyle(FramePalette.muted).lineLimit(1)
+            .font(.callout).foregroundStyle(FramePalette.muted).lineLimit(1)
         }
         PromptSearchField(store: store)
           .frame(minWidth: 140, idealWidth: 200, maxWidth: 200)
@@ -154,18 +190,20 @@ private struct FrameToolbar: View {
       }
       if store.viewMode == .inspect {
         Button(action: store.toggleInfo) { Image(systemName: "sidebar.right") }
-          .buttonStyle(.plain).help("Info").accessibilityLabel("Info")
+          .help("Info").accessibilityLabel("Info")
       }
       if store.isScanning { ProgressView().controlSize(.small) }
       if store.viewMode == .inspect {
         Button(action: store.toggleFullScreen) {
           Image(systemName: "arrow.up.left.and.arrow.down.right")
-        }.buttonStyle(.plain).font(.system(size: 11)).help("Full screen (⌃⌘F)")
+        }.help("Full screen (⌃⌘F)")
           .accessibilityLabel("Full screen")
       }
       Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
-        .buttonStyle(.plain).disabled(!store.canRefresh).help("Refresh folder (⌘R)").accessibilityLabel("Refresh folder")
-    }.disabled(store.isFileOperation).padding(.horizontal, 20).background(FramePalette.paper)
+        .disabled(!store.canRefresh).help("Refresh folder (⌘R)").accessibilityLabel("Refresh folder")
+    }.buttonStyle(IconButtonStyle()).disabled(store.isFileOperation)
+      .padding(.horizontal, FrameMetrics.inset - 6) // The end icons' hit areas overhang; their glyphs sit on the inset.
+      .background(FramePalette.paper)
   }
 }
 
@@ -217,18 +255,18 @@ struct NoticeView: View {
   @ObservedObject var store: LibraryStore
 
   var body: some View {
-    HStack(spacing: 14) {
+    HStack(spacing: 12) {
       Text(notice.message).lineLimit(2)
       if let actionTitle = notice.actionTitle {
         Button(actionTitle, action: store.performNoticeAction).buttonStyle(.plain).fontWeight(.semibold)
           .underline()
       }
       Button(action: store.dismissNotice) { Image(systemName: "xmark") }
-        .buttonStyle(.plain).accessibilityLabel("Dismiss notice")
+        .buttonStyle(IconButtonStyle(size: 20)).accessibilityLabel("Dismiss notice")
     }
-    .font(.system(size: 12))
+    .font(.callout)
     .foregroundStyle(FramePalette.ink)
-    .padding(12)
+    .padding(.vertical, 8).padding(.leading, 12).padding(.trailing, 8)
     .background(FramePalette.paper, in: RoundedRectangle(cornerRadius: 8))
     .overlay { RoundedRectangle(cornerRadius: 8).stroke(FramePalette.muted, lineWidth: 1) }
     .shadow(color: .black.opacity(0.15), radius: 10, y: 3)

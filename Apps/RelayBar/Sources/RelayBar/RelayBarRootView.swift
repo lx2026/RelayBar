@@ -93,7 +93,7 @@ private struct TunnelListView: View {
                 emptyState
             } else {
                 ScrollView {
-                    LazyVStack(spacing: grouping.isGrouped ? 14 : 9) {
+                    LazyVStack(spacing: grouping.isGrouped ? 16 : 8) {
                         if grouping.isGrouped {
                             ForEach(grouping.sections) { section in
                                 VStack(spacing: 8) {
@@ -118,7 +118,7 @@ private struct TunnelListView: View {
                             }
                         }
                     }
-                    .padding(12)
+                    .padding(RelayBarPopoverLayout.contentInset)
                 }
             }
 
@@ -150,11 +150,11 @@ private struct TunnelListView: View {
             )
         } else {
             Text(section.displayName)
-                .font(.system(size: 10.5, weight: .medium))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 4)
+                .padding(.horizontal, 12)
                 .accessibilityAddTraits(.isHeader)
         }
     }
@@ -181,14 +181,14 @@ private struct TunnelListView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 11) {
-            AppMark(size: 34)
+        HStack(spacing: 12) {
+            AppMark(size: 32)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text("RelayBar")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.title3.weight(.semibold))
                 Text(activityText)
-                    .font(.system(size: 11))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
             }
 
@@ -197,28 +197,20 @@ private struct TunnelListView: View {
             HStack(spacing: 8) {
                 Button(action: onSettings) {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 12.5, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color.primary.opacity(0.06)))
                 }
-                .buttonStyle(.plain)
                 .help("Settings")
                 .accessibilityLabel("Settings")
 
                 Button(action: onAdd) {
                     Image(systemName: "plus")
-                        .font(.system(size: 13, weight: .semibold))
-                        .frame(width: 28, height: 28)
-                        .background(Circle().fill(Color.accentColor.opacity(0.12)))
                 }
-                .buttonStyle(.plain)
                 .help("Add tunnel")
                 .accessibilityLabel("Add tunnel")
             }
+            .buttonStyle(PopoverIconButtonStyle())
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 11)
+        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
+        .frame(minHeight: RelayBarPopoverLayout.headerHeight)
     }
 
     private var activityText: String {
@@ -230,23 +222,23 @@ private struct TunnelListView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: 13) {
+        VStack(spacing: 12) {
             Spacer()
 
             ZStack {
                 Circle()
                     .fill(Color.accentColor.opacity(0.09))
-                    .frame(width: 66, height: 66)
+                    .frame(width: 64, height: 64)
                 Image(systemName: "point.3.connected.trianglepath.dotted")
                     .font(.system(size: 28, weight: .medium))
                     .foregroundStyle(Color.accentColor)
             }
 
-            VStack(spacing: 5) {
+            VStack(spacing: 4) {
                 Text("Your shortcuts to anywhere")
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.title3.weight(.semibold))
                 Text("Paste an SSH command or add a tunnel by hand.")
-                    .font(.system(size: 12))
+                    .font(.callout)
                     .foregroundStyle(.secondary)
             }
 
@@ -263,36 +255,33 @@ private struct TunnelListView: View {
     private var footer: some View {
         HStack {
             Label("Uses macOS SSH", systemImage: "lock.shield")
-                .font(.system(size: 10.5))
-                .foregroundStyle(.tertiary)
             Spacer()
             Button("Quit") { store.quit() }
                 .buttonStyle(.plain)
-                .font(.system(size: 11.5))
-                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 14)
-        .frame(height: 38)
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
+        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
+        .frame(minHeight: 36)
     }
 
     private var remoteFilesAction: some View {
         Button(action: onRemoteFiles) {
-            HStack(spacing: 9) {
+            HStack(spacing: 8) {
                 Image(systemName: "folder")
-                    .font(.system(size: 12.5, weight: .medium))
                     .foregroundStyle(Color.accentColor)
                 Text("Remote Files…")
-                    .font(.system(size: 11.5, weight: .medium))
                 Spacer()
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 9.5, weight: .semibold))
+                    .font(.caption2.weight(.semibold))
                     .foregroundStyle(.tertiary)
             }
+            .font(.callout.weight(.medium))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 14)
-        .frame(height: 36)
+        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
+        .frame(minHeight: 36)
         .help("Open a folder on a saved SSH server")
         .accessibilityHint("Opens the Remote Files window")
     }
@@ -315,34 +304,26 @@ private struct TunnelRow: View {
     @State private var isNamingNewGroup = false
 
     var body: some View {
-        VStack(spacing: 9) {
-            HStack(spacing: 11) {
+        VStack(spacing: 8) {
+            // One spacing for text and controls keeps the button columns
+            // aligned with the group header's controls.
+            HStack(spacing: 8) {
                 statusIndicator
 
                 VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         Text(tunnel.displayName)
-                            .font(.system(size: 13.5, weight: .semibold))
+                            .font(.body.weight(.semibold))
                             .lineLimit(1)
                         if case .failed = phase {
-                            Text("Issue")
-                                .font(.system(size: 9.5, weight: .medium))
-                                .foregroundStyle(.red)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(Color.red.opacity(0.1)))
+                            statusBadge("Issue", color: .red)
                         } else if case .retrying(let attempt, let maxAttempts, _, _) = phase {
-                            Text("Retry \(attempt)/\(maxAttempts)")
-                                .font(.system(size: 9.5, weight: .medium))
-                                .foregroundStyle(.orange)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .background(Capsule().fill(Color.orange.opacity(0.1)))
+                            statusBadge("Retry \(attempt)/\(maxAttempts)", color: .orange)
                         }
                     }
 
                     Text(tunnel.compactDisplaySummary(runtimePorts: runtimePorts))
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .font(.system(.callout, design: .monospaced))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -350,7 +331,7 @@ private struct TunnelRow: View {
                         .accessibilityLabel(tunnel.displaySummary(runtimePorts: runtimePorts))
 
                     Text(errorOrHost)
-                        .font(.system(size: 10.5))
+                        .font(.subheadline)
                         .foregroundStyle(isFailure ? Color.red : Color.secondary)
                         .lineLimit(1)
                 }
@@ -360,11 +341,8 @@ private struct TunnelRow: View {
                 if tunnel.unambiguousBrowserURL != nil {
                     Button(action: onOpen) {
                         Image(systemName: "safari")
-                            .font(.system(size: 13, weight: .medium))
-                            .frame(width: 28, height: 28)
-                            .background(Circle().fill(Color.accentColor.opacity(0.1)))
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(PopoverIconButtonStyle(isEmphasized: phase == .running))
                     .help(openButtonHelp)
                     .accessibilityLabel("Open \(tunnel.displayName) in browser")
                 }
@@ -437,21 +415,15 @@ private struct TunnelRow: View {
                     Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
                 } label: {
                     Image(systemName: "ellipsis")
-                        .frame(width: 25, height: 25)
                 }
-                .menuStyle(.borderlessButton)
-                .menuIndicator(.hidden)
-                .fixedSize()
+                .popoverIconMenu()
 
+                // Start is what a stopped or failed profile most likely needs;
+                // once it runs, Open in Browser takes the emphasis instead.
                 Button(action: onToggle) {
-                    ZStack {
-                        Circle()
-                            .fill(toggleFill)
-                            .frame(width: 32, height: 32)
-                        toggleIcon
-                    }
+                    toggleIcon
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(PopoverIconButtonStyle(isEmphasized: !isActive))
                 .help(isActive ? "Stop profile" : "Start profile")
                 .accessibilityLabel(
                     isActive ? "Stop \(tunnel.displayName)" : "Start \(tunnel.displayName)"
@@ -475,16 +447,17 @@ private struct TunnelRow: View {
                 )
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
-        .background(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .fill(Color(nsColor: .controlBackgroundColor))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                .stroke(Color.primary.opacity(0.07), lineWidth: 1)
-        )
+        .padding(12)
+        .popoverCard()
+    }
+
+    private func statusBadge(_ title: String, color: Color) -> some View {
+        Text(title)
+            .font(.subheadline.weight(.medium))
+            .foregroundStyle(color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(color.opacity(0.1)))
     }
 
     private var statusIndicator: some View {
@@ -501,8 +474,7 @@ private struct TunnelRow: View {
                 .scaleEffect(0.7)
         } else {
             Image(systemName: isActive ? "stop.fill" : "play.fill")
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(isActive ? Color.white : Color.primary.opacity(0.72))
+                .imageScale(.small)
                 .offset(x: isActive ? 0 : 1)
         }
     }
@@ -532,10 +504,6 @@ private struct TunnelRow: View {
         case .failed: return .red
         case .stopped: return Color.secondary.opacity(0.45)
         }
-    }
-
-    private var toggleFill: Color {
-        isActive ? Color.accentColor : Color.primary.opacity(0.07)
     }
 
     private var openButtonHelp: String {
@@ -650,9 +618,9 @@ private struct TunnelGroupHeader: View {
                     }
                 )
             } else {
-                HStack(spacing: 6) {
+                HStack(spacing: 8) {
                     Text(name)
-                        .font(.system(size: 10.5, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .truncationMode(.tail)
@@ -667,17 +635,15 @@ private struct TunnelGroupHeader: View {
                         groupMenuActions
                     } label: {
                         Image(systemName: "ellipsis")
-                            .frame(width: 22, height: 18)
                     }
-                    .menuStyle(.borderlessButton)
-                    .menuIndicator(.hidden)
-                    .fixedSize()
+                    .popoverIconMenu()
                     .opacity(isHovered || isMenuFocused ? 1 : 0.001)
                     .focused($isMenuFocused)
                     .accessibilityLabel("\(name) group actions")
                 }
-                .padding(.leading, 4)
-                .padding(.trailing, 2)
+                // Matches the row card's inset so the controls line up
+                // with the rows' button columns.
+                .padding(.horizontal, 12)
                 .contentShape(Rectangle())
                 .onHover { isHovered = $0 }
                 .contextMenu {
@@ -689,16 +655,14 @@ private struct TunnelGroupHeader: View {
 
     @ViewBuilder
     private var groupLifecycleControls: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 8) {
             Button {
                 onStartAll()
             } label: {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                    .frame(width: 22, height: 18)
-                    .contentShape(Rectangle())
+                    .imageScale(.small)
+                    .offset(x: 1)
             }
-            .buttonStyle(.plain)
             .disabled(!availability.canStartAll)
             .help("Start all tunnels in \(name)")
             .accessibilityLabel("Start all tunnels in \(name)")
@@ -707,20 +671,13 @@ private struct TunnelGroupHeader: View {
                 onStopAll()
             } label: {
                 Image(systemName: "stop.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                    .frame(width: 22, height: 18)
-                    .contentShape(Rectangle())
+                    .imageScale(.small)
             }
-            .buttonStyle(.plain)
             .disabled(!availability.canStopAll)
             .help("Stop all tunnels in \(name)")
             .accessibilityLabel("Stop all tunnels in \(name)")
         }
-        .foregroundStyle(.secondary)
-        .background(
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .fill(Color.primary.opacity(0.055))
-        )
+        .buttonStyle(PopoverIconButtonStyle())
         .accessibilityElement(children: .contain)
     }
 
@@ -785,7 +742,7 @@ private struct InlineGroupNameEditor: View {
             HStack(spacing: 6) {
                 TextField(placeholder, text: $draftName)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11.5))
+                    .font(.callout)
                     .focused($isFocused)
                     .onSubmit(commit)
                     .onExitCommand(perform: cancel)
@@ -810,7 +767,7 @@ private struct InlineGroupNameEditor: View {
 
             if let validationMessage {
                 Text(validationMessage)
-                    .font(.system(size: 10))
+                    .font(.subheadline)
                     .foregroundStyle(.red)
             }
         }

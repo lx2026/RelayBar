@@ -246,6 +246,109 @@ final class VisualSnapshotHarness: XCTestCase {
         }
     }
 
+    /// Every row lifecycle state, ungrouped and grouped, so the emphasis of
+    /// each row's actions can be compared across states.
+    func testCaptureTunnelRowStateSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let fixtures: [(name: String, group: String?, phase: TunnelPhase)] = [
+            ("Hermes Dashboard", "Work", .running),
+            ("Virtual Desktop", "Work", .retrying(
+                attempt: 2, maxAttempts: 10, delay: 4, message: "Connection refused"
+            )),
+            ("Photos", "Personal", .failed("Operation timed out")),
+            ("Scratch", nil, .stopped),
+            ("Build Cache", nil, .starting)
+        ]
+
+        for grouped in [false, true] {
+            let suiteName = "RelayBarRowStates.\(UUID().uuidString)"
+            let defaults = UserDefaults(suiteName: suiteName)!
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let store = TunnelStore(defaults: defaults)
+            for (index, fixture) in fixtures.enumerated() {
+                let tunnel = Tunnel(
+                    name: fixture.name,
+                    localPort: 8_000 + index,
+                    destinationHost: "localhost",
+                    destinationPort: 3_000 + index,
+                    sshHost: "preview-\(index + 1).example.com",
+                    groupTag: grouped ? fixture.group : nil
+                )
+                store.add(tunnel)
+                store.setPreviewPhase(fixture.phase, for: tunnel)
+            }
+
+            for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+                let label = appearanceName == .aqua ? "light" : "dark"
+                let layout = grouped ? "grouped" : "ungrouped"
+                for (position, offset) in [("top", nil), ("bottom", 1_000)] as [(String, CGFloat?)] {
+                    try capture(
+                        view: RelayBarRootView(
+                            loginItemService: LoginItemServiceSpy(status: .enabled),
+                            updateModel: previewUpdateModel()
+                        )
+                        .environmentObject(store),
+                        appearance: appearanceName,
+                        scrollOffsetY: offset,
+                        to: outputDirectory.appendingPathComponent(
+                            "tunnel-row-states-\(layout)-\(position)-\(label).png"
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /// Settings as the app presents it, with the composition's Plugins row
+    /// and preview limits below General.
+    func testCaptureComposedSettingsSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        let suiteName = "RelayBarComposedSettings.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let composition = RelayBarComposition(
+            defaults: defaults,
+            startsBridge: false,
+            showsWindows: false,
+            makeUpdates: { _ in UnavailableUpdateService() },
+            loginService: LoginItemServiceSpy(status: .enabled),
+            frameInstalled: false
+        )
+        let store = TunnelStore(defaults: defaults)
+
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearance == .aqua ? "light" : "dark"
+            for (position, offset) in [("top", nil), ("bottom", 1_000)] as [(String, CGFloat?)] {
+                try capture(
+                    view: SettingsView(
+                        store: store,
+                        launchAtLogin: LaunchAtLoginModel(
+                            service: LoginItemServiceSpy(status: .enabled)
+                        ),
+                        updates: previewUpdateModel(),
+                        about: previewAboutModel(),
+                        composition: composition,
+                        onBack: {}
+                    )
+                    .background(Color(nsColor: .windowBackgroundColor)),
+                    appearance: appearance,
+                    scrollOffsetY: offset,
+                    assertHorizontalContainment: true,
+                    to: outputDirectory.appendingPathComponent(
+                        "settings-composed-\(position)-\(label).png"
+                    )
+                )
+            }
+        }
+    }
+
     private func previewUpdateModel(
         result: UpdateCheckResult? = nil
     ) -> UpdateModel {

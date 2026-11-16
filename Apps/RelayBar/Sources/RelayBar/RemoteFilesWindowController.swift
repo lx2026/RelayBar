@@ -8,6 +8,8 @@ enum RemoteFilesWindowSizing {
     static let browserMinimum = NSSize(width: 760, height: 440)
     static let previewPreferred = NSSize(width: 980, height: 640)
     static let previewMinimum = NSSize(width: 760, height: 440)
+    /// Shared by the sidebar header and every detail toolbar so their dividers meet.
+    static let toolbarHeight: CGFloat = 52
 
     static func previewSize(from current: NSSize) -> NSSize {
         NSSize(

@@ -38,7 +38,7 @@ struct MetadataPanel: View {
           Divider()
           DisclosureGroup("All metadata (\(store.metadata.embedded.count))", isExpanded: $embeddedExpanded) {
             MetadataSectionView(title: nil, rows: store.metadata.embedded)
-          }.font(.system(size: 11)).padding(16)
+          }.font(.subheadline).padding(.horizontal, FrameMetrics.inset).padding(.vertical, 12)
         }
       }
     }.background(FramePalette.paper).id(photo.id)
@@ -58,11 +58,11 @@ private struct SidecarSection: View {
   @State private var expanded = false
   var body: some View {
     DisclosureGroup(isExpanded: $expanded) {
-      Text(text ?? "No text preview.").font(.system(size: 11, design: .monospaced))
-        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 10)
+      Text(text ?? "No text preview.").font(.system(.subheadline, design: .monospaced))
+        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
     } label: {
-      Text(name).font(.system(size: 11)).lineLimit(1).truncationMode(.middle)
-    }.padding(20)
+      Text(name).font(.subheadline).lineLimit(1).truncationMode(.middle)
+    }.padding(.horizontal, FrameMetrics.inset).padding(.vertical, 12)
   }
 }
 
@@ -85,20 +85,17 @@ private struct MetadataSectionView: View {
   }
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
+    VStack(alignment: .leading, spacing: 8) {
       if let title {
         HStack {
-          Text(title.uppercased())
-            .font(.system(size: 10, weight: .semibold))
-            .tracking(0.8)
-            .foregroundStyle(FramePalette.faint)
+          SectionLabel(title)
           Spacer()
           if title.hasPrefix("Generation") {
-            Button(action: copySection) { Image(systemName: "doc.on.doc").font(.system(size: 9)) }
-              .buttonStyle(.plain).foregroundStyle(FramePalette.faint).help("Copy generation metadata")
+            Button(action: copySection) { Image(systemName: "doc.on.doc") }
+              .buttonStyle(IconButtonStyle(size: 20)).foregroundStyle(FramePalette.muted).help("Copy generation metadata")
               .accessibilityLabel("Copy \(title)")
           }
-        }
+        }.frame(height: 20)
       }
 
       if let prompt, !prompt.isEmpty {
@@ -108,7 +105,7 @@ private struct MetadataSectionView: View {
         PromptBlock(label: "Negative", value: negativePrompt)
       }
 
-      Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 7) {
+      Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 8) {
         ForEach(rows) { row in
           GridRow {
             Text(row.label)
@@ -120,10 +117,10 @@ private struct MetadataSectionView: View {
           }
         }
       }
-      .font(.system(size: 12))
+      .font(.callout)
     }
-    .padding(.horizontal, 20)
-    .padding(.vertical, title == nil ? 4 : 15)
+    .padding(.horizontal, title == nil ? 0 : FrameMetrics.inset)
+    .padding(.vertical, title == nil ? 4 : 12)
     .frame(maxWidth: .infinity, alignment: .leading)
   }
 
@@ -143,17 +140,17 @@ private struct PromptBlock: View {
   let value: String
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 5) {
+    VStack(alignment: .leading, spacing: 4) {
       Text(label)
-        .font(.system(size: 11, weight: .semibold))
+        .font(.subheadline.weight(.semibold))
         .foregroundStyle(FramePalette.muted)
       Text(value)
-        .font(.system(size: 12))
+        .font(.callout)
         .lineSpacing(2)
         .textSelection(.enabled)
     }
-    .padding(10)
+    .padding(8)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(FramePalette.panel, in: RoundedRectangle(cornerRadius: 6))
+    .background(FramePalette.panel, in: RoundedRectangle(cornerRadius: FrameMetrics.radius))
   }
 }

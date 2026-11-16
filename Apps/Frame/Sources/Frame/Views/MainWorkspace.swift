@@ -19,8 +19,8 @@ struct MainWorkspace: View {
         ProgressView("Reading folder…").frame(maxWidth: .infinity, maxHeight: .infinity)
       } else if let error = store.remoteError {
         WorkspaceMessage(symbol: "network", title: "Remote folder unavailable", detail: error) {
-          HStack {
-            Button("Open RelayBar", action: store.openRelayBar)
+          HStack(spacing: 12) {
+            Button("Open RelayBar", action: store.openRelayBar).buttonStyle(FilledButtonStyle(prominent: false))
             Button("Retry", action: store.refresh).buttonStyle(FilledButtonStyle())
           }
         }
@@ -51,30 +51,30 @@ struct MainWorkspace: View {
 private struct WelcomeView: View {
   @ObservedObject var store: LibraryStore
   var body: some View {
-    VStack(spacing: 18) {
+    VStack(spacing: 12) {
       Image(systemName: "photo.on.rectangle.angled").font(.system(size: 38, weight: .ultraLight))
-        .foregroundStyle(FramePalette.muted)
+        .foregroundStyle(FramePalette.muted).padding(.bottom, 4)
       Button("Open…", action: store.presentOpenChooser).buttonStyle(FilledButtonStyle())
-      Text("or drop a folder").font(.system(size: 12)).foregroundStyle(FramePalette.muted)
+      Text("or drop a folder").font(.callout).foregroundStyle(FramePalette.muted)
       if !store.recentFolders.isEmpty {
         VStack(alignment: .leading, spacing: 12) {
-          Text("Recent").font(.system(size: 11, weight: .semibold)).foregroundStyle(FramePalette.muted)
+          SectionLabel("Recent")
           ForEach(store.recentFolders) { recent in
             Button {
               Task { await store.openRecent(recent.id) }
             } label: {
               HStack {
                 Image(systemName: "folder")
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                   Text(recent.name + (recent.available ? "" : " — Unavailable")).fontWeight(.medium)
-                  Text(recent.parentPath).font(.system(size: 11)).foregroundStyle(FramePalette.muted)
+                  Text(recent.parentPath).font(.subheadline).foregroundStyle(FramePalette.muted)
                 }
                 Spacer()
                 Image(systemName: "arrow.up.right").foregroundStyle(FramePalette.muted)
               }.contentShape(Rectangle())
             }.buttonStyle(.plain)
           }
-        }.frame(width: 420).padding(.top, 18)
+        }.frame(width: 420).padding(.top, 24)
       }
     }.frame(maxWidth: .infinity, maxHeight: .infinity)
   }
@@ -87,13 +87,13 @@ struct WorkspaceMessage<Actions: View>: View {
   @ViewBuilder var actions: () -> Actions
   var body: some View {
     VStack(spacing: 12) {
-      Image(systemName: symbol).font(.system(size: 28, weight: .light)).foregroundStyle(FramePalette.muted)
-      Text(title).font(.system(size: 17, weight: .semibold))
+      Image(systemName: symbol).font(.largeTitle.weight(.light)).foregroundStyle(FramePalette.muted)
+      Text(title).font(.title2.weight(.semibold))
       if !detail.isEmpty {
-        Text(detail).font(.system(size: 12)).foregroundStyle(FramePalette.muted)
+        Text(detail).font(.callout).foregroundStyle(FramePalette.muted)
           .multilineTextAlignment(.center).frame(maxWidth: 400)
       }
-      actions().padding(.top, 6)
+      actions().padding(.top, 4)
     }.padding(28).frame(maxWidth: .infinity, maxHeight: .infinity)
   }
 }
@@ -149,9 +149,9 @@ private struct MediaStage: View {
       .onAppear { if mayTakeFocus { viewerFocused = true } }
       .onChange(of: photo.id) { _, _ in if mayTakeFocus { viewerFocused = true } }
 
-      HStack(spacing: 14) {
-        Text(photo.name).font(.system(size: 12, weight: .medium)).lineLimit(1)
-        Spacer(minLength: 6)
+      HStack(spacing: 12) {
+        Text(photo.name).font(.callout.weight(.medium)).lineLimit(1)
+        Spacer(minLength: 8)
         if store.isSelecting {
           Button(action: store.toggleCurrentSelection) {
             Label(store.batchSelection.ids.contains(photo.id) ? "Selected" : "Select",
@@ -164,29 +164,32 @@ private struct MediaStage: View {
             .help("Download full-resolution original")
         }
         if store.isFocusMode {
+          // The destructive action stands apart from Favorite and navigation, in the system red.
+          Button(store.deleteTitle + (store.isSelecting ? " \(store.actionPhotos.count)" : ""), role: .destructive,
+                 action: store.deleteSelected)
+            .foregroundStyle(Color(nsColor: .systemRed))
+            .help(store.deleteHelp)
+            .accessibilityLabel(store.deleteTitle + (store.isSelecting ? " \(store.actionPhotos.count) selected" : "")).disabled(!store.canDelete)
+          Divider().frame(height: 16)
           Button(action: store.toggleFavorite) {
             Image(systemName: store.isFavorite(photo) ? "heart.fill" : "heart")
               .foregroundStyle(store.isFavorite(photo) ? FramePalette.amber : FramePalette.ink)
-              .frame(width: 30, height: 30)
-          }.help("Favorite and next (F)")
+          }.buttonStyle(IconButtonStyle()).help("Favorite and next (F)")
             .accessibilityLabel(store.isFavorite(photo) ? "Unfavorite this image" : "Favorite this image")
             .disabled(!store.canFavorite)
-          Group {
-            Button(store.deleteTitle + (store.isSelecting ? " \(store.actionPhotos.count)" : ""), action: store.deleteSelected)
-              .help(store.deleteHelp)
-              .accessibilityLabel(store.deleteTitle + (store.isSelecting ? " \(store.actionPhotos.count) selected" : "")).disabled(!store.canDelete)
-          }
           Divider().frame(height: 16)
         }
-        Button { store.navigate(by: -1); viewerFocused = true } label: { Image(systemName: "chevron.left") }
-          .help("Previous file (← in viewer)").accessibilityLabel("Previous file")
-          .disabled(!store.hasAvailableSelection)
-        Text(position).font(.system(size: 11).monospacedDigit()).foregroundStyle(FramePalette.muted)
-        Button { store.navigate(by: 1); viewerFocused = true } label: { Image(systemName: "chevron.right") }
-          .help("Next file (→ in viewer)").accessibilityLabel("Next file")
-          .disabled(!store.hasAvailableSelection)
+        HStack(spacing: 4) {
+          Button { store.navigate(by: -1); viewerFocused = true } label: { Image(systemName: "chevron.left") }
+            .help("Previous file (← in viewer)").accessibilityLabel("Previous file")
+            .disabled(!store.hasAvailableSelection)
+          Text(position).font(.subheadline.monospacedDigit()).foregroundStyle(FramePalette.muted)
+          Button { store.navigate(by: 1); viewerFocused = true } label: { Image(systemName: "chevron.right") }
+            .help("Next file (→ in viewer)").accessibilityLabel("Next file")
+            .disabled(!store.hasAvailableSelection)
+        }.buttonStyle(IconButtonStyle())
       }
-      .buttonStyle(.plain).padding(.horizontal, 20).frame(height: 44)
+      .buttonStyle(.plain).padding(.horizontal, FrameMetrics.inset).frame(height: FrameMetrics.barHeight)
       .background(FramePalette.panel)
     }.background(FramePalette.stage)
   }

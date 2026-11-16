@@ -76,7 +76,7 @@ struct TunnelEditorView: View {
             Divider()
 
             PopoverScrollContainer {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 16) {
                     if tunnel == nil { quickImport }
                     connectionDetails
                     forwardingRules
@@ -95,36 +95,33 @@ struct TunnelEditorView: View {
     }
 
     private var editorHeader: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Button(action: onCancel) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PopoverIconButtonStyle())
             .accessibilityLabel("Back")
 
             Text(tunnel == nil ? "New Profile" : "Edit Profile")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.title3.weight(.semibold))
             Spacer()
         }
-        .padding(.horizontal, 14)
-        .frame(height: 56)
+        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
+        .frame(minHeight: RelayBarPopoverLayout.headerHeight)
     }
 
     private var quickImport: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            sectionLabel("QUICK ADD")
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("QUICK ADD")
 
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
                 TextField(
                     "ssh -N -L 8080:localhost:3000 -D 1080 user@host",
                     text: $command
                 )
                 .accessibilityLabel("SSH command")
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11.5, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
                 .frame(minWidth: 0)
                 .layoutPriority(1)
                 .focused($focusedField, equals: .command)
@@ -138,28 +135,28 @@ struct TunnelEditorView: View {
 
             if let importError {
                 Label(importError, systemImage: "exclamationmark.circle.fill")
-                    .font(.system(size: 10.5))
+                    .font(.subheadline)
                     .foregroundStyle(.red)
             } else {
                 Text("Paste a forwarding-only SSH command. All -L, -D, and -R rules are imported.")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.tertiary)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
             }
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: RelayBarPopoverLayout.cardCornerRadius, style: .continuous)
                 .fill(Color.accentColor.opacity(0.07))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
+            RoundedRectangle(cornerRadius: RelayBarPopoverLayout.cardCornerRadius, style: .continuous)
                 .stroke(Color.accentColor.opacity(0.14), lineWidth: 1)
         )
     }
 
     private var connectionDetails: some View {
-        VStack(alignment: .leading, spacing: 11) {
-            sectionLabel("CONNECTION")
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel("CONNECTION")
 
             EditorField(label: "Name", hint: "Optional") {
                 TextField("Development access", text: $name)
@@ -186,16 +183,16 @@ struct TunnelEditorView: View {
                     "\(additionalArguments.count) imported SSH option values will be preserved.",
                     systemImage: "checkmark.circle"
                 )
-                .font(.system(size: 10.5))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
         }
     }
 
     private var forwardingRules: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack {
-                sectionLabel("FORWARDING RULES")
+                SectionLabel("FORWARDING RULES")
                 Spacer()
                 Menu {
                     ForEach(ForwardingRuleKind.allCases, id: \.self) { kind in
@@ -209,7 +206,9 @@ struct TunnelEditorView: View {
                 } label: {
                     Label("Add", systemImage: "plus")
                 }
-                .menuStyle(.borderlessButton)
+                .menuStyle(.button)
+                .buttonStyle(.bordered)
+                .controlSize(.small)
                 .fixedSize()
                 .accessibilityLabel("Add forwarding rule")
             }
@@ -231,15 +230,15 @@ struct TunnelEditorView: View {
                     "Add at least one forwarding rule.",
                     systemImage: "exclamationmark.circle"
                 )
-                .font(.system(size: 10.5))
+                .font(.subheadline)
                 .foregroundStyle(.red)
             }
         }
     }
 
     private var reverseSOCKSSettings: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            sectionLabel("REMOTE SOCKS DESTINATIONS")
+        VStack(alignment: .leading, spacing: 12) {
+            SectionLabel("REMOTE SOCKS DESTINATIONS")
 
             Picker("Allowed destinations", selection: $reversePolicyChoice) {
                 ForEach(ReversePolicyChoice.allCases, id: \.self) { choice in
@@ -252,8 +251,8 @@ struct TunnelEditorView: View {
                 EditorField(label: "Allowlist", hint: "One host:port per line") {
                     TextEditor(text: $reverseAllowedDestinations)
                         .accessibilityLabel("Remote SOCKS allowed destinations")
-                        .font(.system(size: 11.5, design: .monospaced))
-                        .frame(minHeight: 54)
+                        .font(.system(.callout, design: .monospaced))
+                        .frame(minHeight: 56)
                         .overlay(
                             RoundedRectangle(cornerRadius: 5)
                                 .stroke(Color.secondary.opacity(0.25))
@@ -264,22 +263,22 @@ struct TunnelEditorView: View {
             Text(
                 "Remote SOCKS lets clients on the SSH-server side open TCP connections from this Mac’s network position."
             )
-            .font(.system(size: 10.5))
+            .font(.subheadline)
             .foregroundStyle(.secondary)
         }
         .padding(12)
         .background(
-            RoundedRectangle(cornerRadius: 10)
+            RoundedRectangle(cornerRadius: RelayBarPopoverLayout.cardCornerRadius, style: .continuous)
                 .fill(Color.orange.opacity(0.07))
         )
     }
 
     private var unixSocketSettings: some View {
         DisclosureGroup("Unix socket options") {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 EditorField(label: "Local socket bind mask", hint: "Octal") {
                     TextField("0177", text: $streamBindMask)
-                        .font(.system(size: 11.5, design: .monospaced))
+                        .font(.system(.callout, design: .monospaced))
                         .accessibilityLabel("Local socket bind mask")
                 }
 
@@ -287,17 +286,17 @@ struct TunnelEditorView: View {
                     "Retry cleanup of RelayBar-owned stale local sockets",
                     isOn: $unlinkStaleSocket
                 )
-                .font(.system(size: 10.5))
+                .font(.subheadline)
 
                 Text(
                     "RelayBar never replaces an existing file, directory, symlink, or unowned socket."
                 )
-                .font(.system(size: 10.5))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
             .padding(.top, 8)
         }
-        .font(.system(size: 11.5, weight: .medium))
+        .font(.callout.weight(.medium))
     }
 
     @ViewBuilder
@@ -308,7 +307,7 @@ struct TunnelEditorView: View {
                     "Rule \(index + 1) listens beyond loopback \(rule.kind.listensRemotely ? "on the SSH server" : "on this Mac") at \(rule.listenAddress).",
                     systemImage: "exclamationmark.triangle.fill"
                 )
-                .font(.system(size: 10.5, weight: .medium))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(.orange)
             }
         }
@@ -318,7 +317,7 @@ struct TunnelEditorView: View {
                 "For remote hostname resolution, configure the client to send hostnames through SOCKS5 (often called socks5h).",
                 systemImage: "network"
             )
-            .font(.system(size: 10.5))
+            .font(.subheadline)
             .foregroundStyle(.secondary)
         }
 
@@ -327,33 +326,31 @@ struct TunnelEditorView: View {
                 "Choose an explicit destination policy for Remote SOCKS.",
                 systemImage: "exclamationmark.circle.fill"
             )
-            .font(.system(size: 10.5))
+            .font(.subheadline)
             .foregroundStyle(.red)
         }
     }
 
     private var actionBar: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 8) {
             if let validationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.circle")
-                    .font(.system(size: 10.5))
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Cannot save: \(validationMessage)")
             }
             HStack {
                 Button("Cancel", action: onCancel)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
                 Spacer()
                 Button(tunnel == nil ? "Add Profile" : "Save Changes", action: save)
                     .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
                     .disabled(!isValid)
             }
+            .controlSize(.large)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
+        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
+        .padding(.vertical, 12)
         .frame(minHeight: 56)
     }
 
@@ -515,13 +512,6 @@ struct TunnelEditorView: View {
     private func deleteRule(_ id: UUID) {
         rules.removeAll { $0.id == id }
     }
-
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 9.5, weight: .semibold))
-            .tracking(0.6)
-            .foregroundStyle(.tertiary)
-    }
 }
 
 private struct GroupSelectionControl: View {
@@ -537,7 +527,7 @@ private struct GroupSelectionControl: View {
     var body: some View {
         EditorField(label: "Group", hint: "Optional") {
             if isNamingNewGroup {
-                VStack(alignment: .leading, spacing: 5) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(spacing: 6) {
                         TextField("New group name", text: $draftName)
                             .accessibilityLabel("New group name")
@@ -562,7 +552,7 @@ private struct GroupSelectionControl: View {
 
                     if let validationMessage {
                         Text(validationMessage)
-                            .font(.system(size: 10))
+                            .font(.subheadline)
                             .foregroundStyle(.red)
                     }
                 }
@@ -661,10 +651,10 @@ private struct ForwardingRuleEditor: View {
     let onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
                 Text("Rule \(position)")
-                    .font(.system(size: 11, weight: .semibold))
+                    .font(.callout.weight(.semibold))
                 Spacer()
 
                 Button(action: onMoveUp) {
@@ -687,13 +677,17 @@ private struct ForwardingRuleEditor: View {
                 .help("Duplicate rule")
                 .accessibilityLabel("Duplicate rule \(position)")
 
+                Divider()
+                    .frame(height: 16)
+
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
+                        .foregroundStyle(.red)
                 }
                 .help("Delete rule")
                 .accessibilityLabel("Delete rule \(position)")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(PopoverIconButtonStyle())
 
             Picker("Type", selection: $draft.kind) {
                 ForEach(ForwardingRuleKind.allCases, id: \.self) { kind in
@@ -703,7 +697,7 @@ private struct ForwardingRuleEditor: View {
             .labelsHidden()
             .pickerStyle(.menu)
             .frame(maxWidth: .infinity)
-            .font(.system(size: 11.5))
+            .font(.callout)
             .accessibilityLabel("Rule \(position) type")
             .onChange(of: draft.kind) { newKind in
                 if newKind.isDynamic {
@@ -741,19 +735,12 @@ private struct ForwardingRuleEditor: View {
                         ? "SOCKS clients connect here; destinations open from the SSH server."
                         : "Remote SOCKS clients connect here; destinations open from this Mac."
                 )
-                .font(.system(size: 10))
+                .font(.subheadline)
                 .foregroundStyle(.secondary)
             }
         }
         .padding(12)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(Color.primary.opacity(0.035))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 10)
-                .stroke(Color.primary.opacity(0.08))
-        )
+        .popoverCard()
     }
 
     private func endpointEditor(
@@ -765,10 +752,10 @@ private struct ForwardingRuleEditor: View {
         allowsAutomaticPort: Bool,
         kindLockedToTCP: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(title)
-                    .font(.system(size: 10.5, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                 Spacer()
                 if !kindLockedToTCP {
                     Picker("Endpoint type", selection: kind) {
@@ -790,11 +777,11 @@ private struct ForwardingRuleEditor: View {
                         .accessibilityLabel("\(title) port")
                 }
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11.5, design: .monospaced))
+                .font(.system(.callout, design: .monospaced))
             } else {
                 TextField("/absolute/socket/path", text: path)
                     .textFieldStyle(.roundedBorder)
-                    .font(.system(size: 11.5, design: .monospaced))
+                    .font(.system(.callout, design: .monospaced))
                     .accessibilityLabel("\(title) Unix socket path")
             }
         }
@@ -947,19 +934,19 @@ private struct EditorField<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack(spacing: 4) {
                 Text(label)
-                    .font(.system(size: 10.5, weight: .medium))
+                    .font(.subheadline.weight(.medium))
                 if let hint {
                     Text("· \(hint)")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.tertiary)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
                 }
             }
             content
                 .textFieldStyle(.roundedBorder)
-                .font(.system(size: 11.5))
+                .font(.callout)
         }
     }
 }

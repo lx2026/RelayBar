@@ -9,9 +9,13 @@ RelayBar is a native SwiftUI `MenuBarExtra` application for macOS 13 or newer.
 - The profile editor and Settings use one viewport-constrained vertical-scroll
   container. Its document width is the viewport minus balanced 16-point
   insets, so focus rings and intrinsically wide controls cannot create a
-  horizontal scroll range or shift content against an edge. Field labels
-  appear once; native picker labels are hidden where a custom field label is
-  present.
+  horizontal scroll range or shift content against an edge. When an
+  always-visible scroller narrows the view, content keeps its leading inset.
+  Field labels appear once; native picker labels are hidden where a custom
+  field label is present.
+- Popover chrome and content share a 16-point inset. Icon buttons share one
+  28-point circular shape; only the action most likely wanted next is filled
+  with the accent colour, and never while it is unavailable.
 - The menu-bar icon indicates whether any tunnel is starting, retrying, or running.
 - The list header reports the active tunnel count.
 - A labeled Remote Files row below the tunnel list opens or focuses one separate window.

@@ -9,7 +9,7 @@ struct OpenFolderChooser: View {
   }
   var body: some View {
     VStack(alignment: .leading, spacing: 20) {
-      Text("Open").font(.system(size: 20, weight: .semibold))
+      Text("Open").font(.title2.weight(.semibold))
       ScrollView {
         VStack(alignment: .leading, spacing: 12) {
           heading("Local")
@@ -45,30 +45,28 @@ struct OpenFolderChooser: View {
                   Text(location.source.name).fontWeight(.medium)
                   Text(location.path).foregroundStyle(FramePalette.muted).lineLimit(1).truncationMode(.middle)
                   Spacer(minLength: 0)
-                }.padding(.vertical, 5).contentShape(Rectangle())
+                }.padding(.vertical, 4).contentShape(Rectangle())
               }.buttonStyle(.plain).help(location.source.name + ":" + location.path)
             }
             if !relayInstalled {
               Text("RelayBar isn’t installed.")
-                .font(.system(size: 11)).foregroundStyle(FramePalette.muted)
+                .font(.subheadline).foregroundStyle(FramePalette.muted)
             }
           }
         }
       }.frame(maxHeight: 410)
       HStack { Spacer(); Button("Cancel") { store.showsOpenChooser = false }.keyboardShortcut(.cancelAction) }
-    }.font(.system(size: 12)).padding(24).frame(width: 500)
+    }.font(.callout).padding(24).frame(width: 500)
       .foregroundStyle(FramePalette.ink).background(FramePalette.paper)
       .task { if store.showsRemoteFolders && relayInstalled { await store.refreshRemoteLocations() } }
   }
-  private func heading(_ text: String) -> some View {
-    Text(text).font(.system(size: 12, weight: .semibold)).foregroundStyle(FramePalette.muted)
-  }
+  private func heading(_ text: String) -> some View { SectionLabel(text) }
   private func row(symbol: String, text: String) -> some View {
     HStack(spacing: 8) {
       Image(systemName: symbol).foregroundStyle(FramePalette.muted)
       Text(text).lineLimit(1).truncationMode(.middle)
       Spacer(minLength: 0)
-    }.padding(.vertical, 5).contentShape(Rectangle())
+    }.padding(.vertical, 4).contentShape(Rectangle())
   }
   private func abbreviated(_ path: String) -> String { (path as NSString).abbreviatingWithTildeInPath }
 }

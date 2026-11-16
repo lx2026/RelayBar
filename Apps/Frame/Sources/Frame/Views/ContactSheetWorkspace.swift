@@ -27,45 +27,54 @@ private struct ContactSheetBrowser: View {
   @State private var showsScanDetails = false
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 12) {
-        Text(store.hasFileFilters ? "\(store.visiblePhotos.count) of \(store.folderFileCount) files" : "\(store.visiblePhotos.count) \(store.visiblePhotos.count == 1 ? "file" : "files")")
-          .font(.system(size: 12, weight: .medium)).lineLimit(1)
-        Spacer(minLength: 0)
-        FileFilterMenu(store: store)
-        HStack(spacing: 6) {
-          Slider(value: Binding(get: { store.thumbnailWidth }, set: { value in Task { await store.setThumbnailWidth(value) } }),
-            in: ContactSheetMetrics.thumbnailRange, step: 10)
-            .frame(width: 82).accessibilityLabel("Thumbnail size")
-            .accessibilityValue("\(Int(store.thumbnailWidth)) points")
+      // Subfolders joins the header row whenever the column is wide enough, instead of costing a row of its own.
+      ViewThatFits(in: .horizontal) {
+        HStack(spacing: 12) { count; subfolders; Spacer(minLength: 0); controls }.frame(height: FrameMetrics.barHeight)
+        VStack(spacing: 0) {
+          HStack(spacing: 12) { count; Spacer(minLength: 0); controls }.frame(height: FrameMetrics.barHeight)
+          if store.filter != .archive { HStack { subfolders; Spacer(minLength: 0) }.padding(.bottom, 12) }
         }
-      }.padding(.horizontal, 16).frame(height: 44).background(FramePalette.paper)
-        .disabled(store.isFileOperation)
-      if store.filter != .archive {
-        HStack(spacing: 10) {
-          Toggle("Subfolders", isOn: Binding(get: { store.includesSubfolders }, set: { value in Task { await store.setIncludesSubfolders(value) } }))
-            .toggleStyle(.checkbox).disabled(store.isFileOperation)
-          Spacer(minLength: 0)
-          if store.isScanningSubfolders {
-            ProgressView().controlSize(.mini)
-            Button("Stop", action: store.stopRemoteScan).buttonStyle(.plain).help("Stop scanning (Escape)")
-          } else if store.remoteScanIssue != nil {
-            Button { showsScanDetails.toggle() } label: { Image(systemName: "exclamationmark.circle") }
-              .buttonStyle(.plain).help("Some subfolders have not been read").accessibilityLabel("Scan incomplete")
-              .popover(isPresented: $showsScanDetails) {
-                VStack(alignment: .leading, spacing: 12) {
-                  Text(store.remoteScanIssue ?? "").textSelection(.enabled)
-                  Button("Retry") { showsScanDetails = false; store.refresh() }
-                }.font(.system(size: 12)).padding(18).frame(width: 320)
-              }
-          }
-        }.font(.system(size: 11)).padding(.horizontal, 16).padding(.bottom, 12)
-      }
+      }.padding(.horizontal, FrameMetrics.inset).background(FramePalette.paper)
       Divider()
       if store.visiblePhotos.isEmpty {
         EmptyFilesView(store: store)
       } else {
         NativeContactSheet(store: store)
       }
+    }
+  }
+  private var count: some View {
+    Text(store.hasFileFilters ? "\(store.visiblePhotos.count) of \(store.folderFileCount) files" : "\(store.visiblePhotos.count) \(store.visiblePhotos.count == 1 ? "file" : "files")")
+      .font(.callout.weight(.medium)).lineLimit(1).fixedSize()
+  }
+  private var controls: some View {
+    HStack(spacing: 12) {
+      FileFilterMenu(store: store)
+      Slider(value: Binding(get: { store.thumbnailWidth }, set: { value in Task { await store.setThumbnailWidth(value) } }),
+        in: ContactSheetMetrics.thumbnailRange, step: 10)
+        .frame(width: 82).accessibilityLabel("Thumbnail size")
+        .accessibilityValue("\(Int(store.thumbnailWidth)) points").disabled(store.isFileOperation)
+    }
+  }
+  @ViewBuilder private var subfolders: some View {
+    if store.filter != .archive {
+      HStack(spacing: 8) {
+        Toggle("Subfolders", isOn: Binding(get: { store.includesSubfolders }, set: { value in Task { await store.setIncludesSubfolders(value) } }))
+          .toggleStyle(.checkbox).disabled(store.isFileOperation).fixedSize()
+        if store.isScanningSubfolders {
+          ProgressView().controlSize(.mini)
+          Button("Stop", action: store.stopRemoteScan).buttonStyle(.plain).help("Stop scanning (Escape)")
+        } else if store.remoteScanIssue != nil {
+          Button { showsScanDetails.toggle() } label: { Image(systemName: "exclamationmark.circle") }
+            .buttonStyle(.plain).help("Some subfolders have not been read").accessibilityLabel("Scan incomplete")
+            .popover(isPresented: $showsScanDetails) {
+              VStack(alignment: .leading, spacing: 12) {
+                Text(store.remoteScanIssue ?? "").textSelection(.enabled)
+                Button("Retry") { showsScanDetails = false; store.refresh() }
+              }.font(.callout).padding(16).frame(width: 320)
+            }
+        }
+      }.font(.subheadline)
     }
   }
 }
@@ -138,20 +147,22 @@ private struct ContactSheetPreview: View {
       VStack(spacing: 0) {
         if let photo = store.selectedPhoto, !store.selectionMissing {
           HStack(spacing: 8) {
-            Text(photo.name).font(.system(size: 12, weight: .medium))
+            if photo.format.isDocument { DocumentNavigation(renderer: store.documentRenderer) }
+            Text(photo.name).font(.callout.weight(.medium))
               .lineLimit(1).truncationMode(.middle).help(photo.relativePath)
             Spacer(minLength: 0)
             if photo.remote != nil && photo.format.isImage {
               Button("Original",
-                action: store.loadOriginal).buttonStyle(.plain).font(.system(size: 11))
+                action: store.loadOriginal).buttonStyle(.plain).font(.subheadline)
                 .disabled(store.isLoadingOriginal || store.originalPreview != nil)
                 .help("Download full-resolution original")
             }
             Button { store.inspect(photo) } label: {
               Image(systemName: "arrow.up.left.and.arrow.down.right")
-            }.buttonStyle(.plain).font(.system(size: 11)).disabled(!store.canInspect)
+            }.buttonStyle(IconButtonStyle()).disabled(!store.canInspect)
               .help("Open viewer (Return)").accessibilityLabel("Open viewer")
-          }.padding(.horizontal, 14).frame(height: 42).background(FramePalette.paper)
+          }.padding(.leading, photo.format.isDocument ? 8 : FrameMetrics.inset).padding(.trailing, 8)
+            .frame(height: FrameMetrics.barHeight).background(FramePalette.paper)
           Group {
             if photo.format.isDocument {
               DocumentPreview(photo: photo, store: store)
@@ -165,9 +176,9 @@ private struct ContactSheetPreview: View {
           }.frame(maxWidth: .infinity, maxHeight: .infinity)
         } else {
           VStack(spacing: 10) {
-            Image(systemName: "photo").font(.system(size: 24, weight: .light))
+            Image(systemName: "photo").font(.largeTitle.weight(.light))
             if store.selectionMissing { Text("File missing")
-              .font(.system(size: 12)).multilineTextAlignment(.center)
+              .font(.callout).multilineTextAlignment(.center)
             }
           }.foregroundStyle(FramePalette.muted).padding(24).frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -193,7 +204,7 @@ struct SelectionActionsBar: View {
   @ObservedObject var store: LibraryStore
   private var count: Int { store.actionPhotos.count }
   var body: some View {
-    HStack(spacing: 14) {
+    HStack(spacing: 8) {
       if store.isFileOperation {
         ProgressView(value: Double(store.operationProgress), total: Double(max(1, store.operationTotal))).frame(width: 100)
         Text("\(store.operationTitle) \(store.operationProgress) of \(store.operationTotal)")
@@ -201,8 +212,11 @@ struct SelectionActionsBar: View {
           Button("Cancel", action: store.cancelFileOperation).buttonStyle(.bordered)
         }
       } else {
-        if store.isSelecting || count != 1 { Text("\(count) selected").fontWeight(.medium).fixedSize() }
-        Spacer(minLength: 0)
+        if store.isSelecting || count != 1 { Text("\(count) selected").fontWeight(.medium).fixedSize().padding(.trailing, 8) }
+        // The destructive action sits apart from the everyday group, away from the trailing edge.
+        Button(store.deleteTitle + (store.isSelecting || count > 1 ? " \(count)" : ""), role: .destructive, action: store.deleteSelected)
+          .foregroundStyle(Color(nsColor: .systemRed)).disabled(!store.canDelete).help(store.deleteHelp)
+        Spacer(minLength: 16)
         Button {
           store.toggleFavorite()
         } label: {
@@ -211,15 +225,11 @@ struct SelectionActionsBar: View {
         Button(store.isExporting ? "Exporting…" : "Export…", action: store.exportSelected)
           .disabled(!store.canExport)
           .help(store.exportHelp)
-        Group {
-          Button(store.filter == .archive ? "Restore" : "Archive", action: store.archiveSelected)
-            .disabled(!store.canArchive).help(store.groupedActionHelp ?? "Move selected groups to Archive")
-          Button(store.deleteTitle + (store.isSelecting || count > 1 ? " \(count)" : ""), action: store.deleteSelected)
-            .disabled(!store.canDelete).help(store.deleteHelp)
-        }
+        Button(store.filter == .archive ? "Restore" : "Archive", action: store.archiveSelected)
+          .disabled(!store.canArchive).help(store.groupedActionHelp ?? "Move selected groups to Archive")
       }
-    }.buttonStyle(.bordered).font(.system(size: 11)).padding(.horizontal, 16)
-      .frame(height: 50).background(FramePalette.paper)
+    }.buttonStyle(.bordered).padding(.horizontal, FrameMetrics.inset)
+      .frame(height: FrameMetrics.barHeight).background(FramePalette.paper)
   }
 }
 
@@ -238,9 +248,10 @@ struct NativeContactSheet: NSViewRepresentable {
     grid.backgroundColors = [FrameColors.paper]
     let layout = NSCollectionViewFlowLayout()
     layout.itemSize = NSSize(width: store.thumbnailWidth, height: store.thumbnailWidth + 24)
-    layout.minimumInteritemSpacing = 12
-    layout.minimumLineSpacing = 16
-    layout.sectionInset = NSEdgeInsets(top: 18, left: 16, bottom: 18, right: 16)
+    layout.minimumInteritemSpacing = ContactSheetMetrics.columnGap
+    layout.minimumLineSpacing = ContactSheetMetrics.rowGap
+    let inset = ContactSheetMetrics.inset
+    layout.sectionInset = NSEdgeInsets(top: inset, left: inset, bottom: inset, right: inset)
     grid.collectionViewLayout = layout
     grid.register(MediaCell.self, forItemWithIdentifier: MediaCell.identifier)
     grid.delegate = context.coordinator
@@ -594,7 +605,7 @@ struct NativeContactSheet: NSViewRepresentable {
     setFavorite(favorite)
     card.selecting = selecting
     card.active = active
-    card.name.stringValue = photo.name
+    if card.name.stringValue != photo.name { card.name.stringValue = photo.name; card.needsDisplay = true }
     card.setAccessibilityLabel(photo.name + (companion.map { ", " + $0 } ?? "") + (photo.companions.isEmpty ? "" : ", \(photo.companions.count) companion files") + (active ? ", active preview" : ""))
     card.check.setAccessibilityLabel("Select \(photo.name)")
     card.toolTip = photo.exportMembers.map(\.relativePath).joined(separator: "\n")
@@ -657,14 +668,18 @@ struct NativeContactSheet: NSViewRepresentable {
   override init(frame frameRect: NSRect) {
     super.init(frame: frameRect)
     image.imageScaling = .scaleProportionallyUpOrDown
-    name.font = .systemFont(ofSize: 11)
+    name.font = .preferredFont(forTextStyle: .subheadline)
     name.lineBreakMode = .byTruncatingMiddle
     name.maximumNumberOfLines = 1
-    duration.font = .monospacedDigitSystemFont(ofSize: 10, weight: .medium)
+    duration.font = .monospacedDigitSystemFont(ofSize: NSFont.preferredFont(forTextStyle: .caption1).pointSize, weight: .medium)
     duration.textColor = .white
+    duration.alignment = .center
     duration.backgroundColor = NSColor.black.withAlphaComponent(0.8)
     duration.drawsBackground = true
-    favorite.font = .systemFont(ofSize: 12)
+    duration.wantsLayer = true
+    duration.layer?.cornerRadius = 3
+    duration.layer?.masksToBounds = true
+    favorite.font = .preferredFont(forTextStyle: .callout)
     favorite.textColor = FrameColors.amber
     check.target = self; check.action = #selector(toggleChecked)
     check.setAccessibilityLabel("Select item")
@@ -679,31 +694,39 @@ struct NativeContactSheet: NSViewRepresentable {
     onActivate()
     return true
   }
+  // Everything sits 4 points inside the card so the selection ring never covers it; the caption and the
+  // badges share the image's 8-point edge.
+  private var well: NSRect { NSRect(x: 4, y: 26, width: bounds.width - 8, height: bounds.height - 30) }
+  private var caption: NSRect {
+    NSRect(x: 4, y: 4, width: min(name.intrinsicContentSize.width + 12, bounds.width - 8), height: 20)
+  }
   override func layout() {
     super.layout()
-    image.frame = NSRect(x: 5, y: 25, width: bounds.width - 10, height: bounds.height - 30)
-    name.frame = NSRect(x: 7, y: 3, width: bounds.width - 14, height: 17)
-    duration.frame = NSRect(x: 7, y: 28, width: duration.stringValue.isEmpty ? 0 : max(48, duration.intrinsicContentSize.width + 6), height: 16)
-    favorite.frame = NSRect(x: bounds.width - 21, y: bounds.height - 22, width: 18, height: 18)
-    check.frame = NSRect(x: 7, y: bounds.height - 22, width: 16, height: 16)
+    image.frame = well.insetBy(dx: 4, dy: 4)
+    name.frame = NSRect(x: 10, y: 6, width: bounds.width - 20, height: 16)
+    duration.frame = NSRect(x: 12, y: 34, width: duration.stringValue.isEmpty ? 0 : max(48, duration.intrinsicContentSize.width + 8), height: 16)
+    favorite.frame = NSRect(x: well.maxX - 22, y: well.maxY - 22, width: 18, height: 18)
+    check.frame = NSRect(x: 8, y: well.maxY - 20, width: 16, height: 16)
   }
   override func viewDidChangeEffectiveAppearance() { super.viewDidChangeEffectiveAppearance(); needsDisplay = true }
   override func draw(_ dirtyRect: NSRect) {
     FrameColors.stage.setFill()
-    NSBezierPath(roundedRect: NSRect(x: 1, y: 23, width: bounds.width - 2, height: bounds.height - 24), xRadius: 3, yRadius: 3).fill()
+    NSBezierPath(roundedRect: well, xRadius: 4, yRadius: 4).fill()
     check.isHidden = !selecting && !selected
     check.isEnabled = selecting
     check.state = selected ? .on : .off
+    // Selection uses the sidebar's accent colour as a ring; the previewed item alone gets the accent caption,
+    // so it stays distinguishable inside a multiple selection and in Select mode.
     if active {
-      FrameColors.button.setFill()
-      NSBezierPath(roundedRect: NSRect(x: 1, y: 1, width: bounds.width - 2, height: 22), xRadius: 3, yRadius: 3).fill()
+      NSColor.selectedContentBackgroundColor.setFill()
+      NSBezierPath(roundedRect: caption, xRadius: 5, yRadius: 5).fill()
     }
-    name.textColor = active ? FrameColors.buttonText : FrameColors.muted
-    if selected || active {
-      (active ? FrameColors.ink : FrameColors.muted).setStroke()
-      let path = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: 4, yRadius: 4)
-      path.lineWidth = active ? 3 : 1
-      path.stroke()
+    name.textColor = active ? .alternateSelectedControlTextColor : selected ? FrameColors.ink : FrameColors.muted
+    if selected {
+      NSColor.controlAccentColor.setStroke()
+      let ring = NSBezierPath(roundedRect: bounds.insetBy(dx: 1.5, dy: 1.5), xRadius: 7, yRadius: 7)
+      ring.lineWidth = 3
+      ring.stroke()
     }
   }
 }

@@ -35,11 +35,11 @@ struct SettingsView: View {
             Divider()
 
             PopoverScrollContainer(fillsViewport: true) {
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 16) {
                     generalSection
                     if let composition {
                         FrameAccessRow(composition: composition, onRevoke: onRevokeFrame)
-                        RelayPreviewSettings(composition: composition).padding(.horizontal, 14)
+                        RelayPreviewSettings(composition: composition)
                     }
                     Spacer(minLength: 8)
                     aboutFooter
@@ -66,27 +66,24 @@ struct SettingsView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 12) {
             Button(action: onBack) {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 12, weight: .semibold))
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(Color.primary.opacity(0.06)))
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PopoverIconButtonStyle())
             .accessibilityLabel("Back")
 
             Text("Settings")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.title3.weight(.semibold))
             Spacer()
         }
-        .padding(.horizontal, 14)
-        .frame(height: 56)
+        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
+        .frame(minHeight: RelayBarPopoverLayout.headerHeight)
     }
 
     private var generalSection: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            sectionLabel("GENERAL")
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("GENERAL")
 
             VStack(spacing: 0) {
                 launchAtLoginRow
@@ -94,8 +91,9 @@ struct SettingsView: View {
                     Divider()
                         .padding(.horizontal, 12)
                     launchAtLoginCaption
+                        .font(.subheadline)
                         .padding(.horizontal, 12)
-                        .padding(.vertical, 9)
+                        .padding(.vertical, 8)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Divider()
@@ -110,44 +108,53 @@ struct SettingsView: View {
                     pluginsRow(composition)
                 }
             }
-            .background(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .fill(Color(nsColor: .controlBackgroundColor))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 13, style: .continuous)
-                    .stroke(Color.primary.opacity(0.07), lineWidth: 1)
-            )
+            .popoverCard()
 
             Text("Retries wait 5s, 10s, 20s… up to 5 minutes. The retry count resets after 1 minute connected.")
-                .font(.system(size: 10.5))
-                .foregroundStyle(.tertiary)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 4)
         }
     }
 
-    private var retryLimitRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.clockwise")
-                .font(.system(size: 13, weight: .medium))
+    /// One General row: symbol, title, a line of detail, and its control.
+    private func settingRow<Control: View>(
+        _ systemImage: String,
+        title: String,
+        detail: String,
+        @ViewBuilder control: () -> Control
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(.body.weight(.medium))
                 .foregroundStyle(Color.accentColor)
-                .frame(width: 22)
+                .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("SSH Retry Limit")
-                    .font(.system(size: 12.5, weight: .medium))
-                Text("For all profiles. 0 turns off retries.")
-                    .font(.system(size: 10.5))
+                Text(title)
+                    .font(.body.weight(.medium))
+                Text(detail)
+                    .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: 8)
 
+            control()
+        }
+        .padding(12)
+    }
+
+    private var retryLimitRow: some View {
+        settingRow(
+            "arrow.clockwise",
+            title: "SSH Retry Limit",
+            detail: "For all profiles. 0 turns off retries."
+        ) {
             Text("\(store.maxRetryAttempts)")
-                .font(.system(size: 12.5).monospacedDigit())
-                .frame(minWidth: 25, alignment: .trailing)
+                .font(.body.monospacedDigit())
+                .frame(minWidth: 24, alignment: .trailing)
                 .accessibilityHidden(true)
             Stepper(
                 "SSH Retry Limit",
@@ -170,54 +177,26 @@ struct SettingsView: View {
                 store.maxRetryAttempts == 0 ? "Off" : "\(store.maxRetryAttempts) retries"
             )
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
     }
 
     private func pluginsRow(_ composition: RelayBarComposition) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "puzzlepiece.extension")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 22)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Plugins")
-                    .font(.system(size: 12.5, weight: .medium))
-                Text("Optional features and what they depend on")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 8)
-
+        settingRow(
+            "puzzlepiece.extension",
+            title: "Plugins",
+            detail: "Optional features and what they depend on"
+        ) {
             Button("Open…", action: composition.showPlugins)
-                .controlSize(.mini)
+                .controlSize(.small)
                 .accessibilityLabel("Open Plugins")
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
     }
 
     private var automaticUpdatesRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "arrow.triangle.2.circlepath")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 22)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Automatic Updates")
-                    .font(.system(size: 12.5, weight: .medium))
-                Text("Checks about once a week and offers new versions. Nothing installs without you.")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer(minLength: 8)
-
+        settingRow(
+            "arrow.triangle.2.circlepath",
+            title: "Automatic Updates",
+            detail: "Checks about once a week and offers new versions. Nothing installs without you."
+        ) {
             Toggle(
                 "Automatic Updates",
                 isOn: Binding(
@@ -237,28 +216,14 @@ struct SettingsView: View {
             .controlSize(.mini)
             .disabled(!updates.isAvailable)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
     }
 
     private var launchAtLoginRow: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "power")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(Color.accentColor)
-                .frame(width: 22)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Launch at Login")
-                    .font(.system(size: 12.5, weight: .medium))
-                Text("Open at login; profiles stay stopped.")
-                    .font(.system(size: 10.5))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            Spacer()
-
+        settingRow(
+            "power",
+            title: "Launch at Login",
+            detail: "Open at login; profiles stay stopped."
+        ) {
             // Bound to the authoritative system status, including when the
             // latest register or unregister operation surfaced an error.
             Toggle(
@@ -272,22 +237,18 @@ struct SettingsView: View {
             .toggleStyle(.switch)
             .controlSize(.mini)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 11)
     }
 
     private var aboutFooter: some View {
-        VStack(alignment: .leading, spacing: 7) {
-            HStack(spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 4) {
                 Text(about.metadata.displayText)
-                    .font(.system(size: 11.5))
-                    .foregroundStyle(.secondary)
                     .accessibilityLabel(about.metadata.accessibilityLabel)
 
                 Button(action: about.copyVersion) {
                     Image(systemName: about.didCopyVersion ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 10.5, weight: .medium))
-                        .frame(width: 22, height: 22)
+                        .foregroundStyle(Color.accentColor)
+                        .frame(width: 20, height: 20)
                         .contentTransition(.identity)
                 }
                 .buttonStyle(.plain)
@@ -297,7 +258,7 @@ struct SettingsView: View {
                 Spacer()
             }
 
-            HStack(spacing: 7) {
+            HStack(spacing: 8) {
                 footerLink(
                     "Check for Updates…",
                     isEnabled: updates.canCheckForUpdates,
@@ -308,7 +269,7 @@ struct SettingsView: View {
                 updateStatus
             }
 
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 footerLink("Website", action: about.openWebsite)
                     .accessibilityLabel("Open RelayBar website in browser")
                 Text("·")
@@ -318,7 +279,8 @@ struct SettingsView: View {
                     .accessibilityLabel("Open RelayBar on GitHub in browser")
             }
         }
-        .padding(.horizontal, 4)
+        .font(.subheadline)
+        .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -355,7 +317,6 @@ struct SettingsView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(title, action: action)
-            .font(.system(size: 10.5))
             .foregroundStyle(isEnabled ? Color.accentColor : Color.secondary)
             .buttonStyle(.plain)
             .disabled(!isEnabled)
@@ -376,10 +337,9 @@ struct SettingsView: View {
             Button(action: launchAtLogin.openLoginItemsSettings) {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 9))
+                        .font(.caption2)
                         .foregroundStyle(.orange)
                     Text("Needs approval — open Login Items settings")
-                        .font(.system(size: 10.5))
                         .foregroundStyle(Color.accentColor)
                 }
                 .contentShape(Rectangle())
@@ -388,22 +348,13 @@ struct SettingsView: View {
             .accessibilityLabel("Open Login Items settings to approve launching at login")
         case .notFound:
             Text("macOS couldn’t find this copy of RelayBar as a login item.")
-                .font(.system(size: 10.5))
                 .foregroundStyle(.secondary)
         case .error(status: _, message: let message):
             Text(message)
-                .font(.system(size: 10.5))
                 .foregroundStyle(.red)
                 .lineLimit(3)
                 .help(message)
         }
-    }
-
-    private func sectionLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 9.5, weight: .semibold))
-            .tracking(0.6)
-            .foregroundStyle(.tertiary)
     }
 }
 
@@ -416,13 +367,16 @@ private struct FrameAccessRow: View {
     var body: some View {
         if frameAllowed, composition.frameHost != nil {
             HStack {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("Frame Viewer").fontWeight(.medium)
-                    Text("Remote folder access").font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Frame Viewer").font(.body.weight(.medium))
+                    Text("Remote folder access").font(.subheadline).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button("Revoke") { onRevoke(); frameAllowed = false }
-            }.padding(.horizontal, 14)
+                Button("Revoke", role: .destructive) { onRevoke(); frameAllowed = false }
+                    .foregroundStyle(.red)
+            }
+            .padding(12)
+            .popoverCard()
         }
     }
 }
@@ -431,26 +385,35 @@ private struct RelayPreviewSettings: View {
     @ObservedObject var composition: RelayBarComposition
     private let mib: Int64 = 1_024 * 1_024
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("PREVIEWS").font(.caption).foregroundStyle(.secondary)
-            ForEach(RemotePreviewPlugins.descriptors) { descriptor in
-                Toggle(descriptor.title, isOn: Binding(get: { composition.previewEnabled(descriptor.id) }, set: { value in
-                    Task {
-                        do { try await composition.setPreviewEnabled(descriptor.id, value) }
-                        catch { composition.errorMessage = error.localizedDescription }
+        VStack(alignment: .leading, spacing: 8) {
+            SectionLabel("PREVIEWS")
+            VStack(spacing: 0) {
+                ForEach(Array(RemotePreviewPlugins.descriptors.enumerated()), id: \.element.id) { index, descriptor in
+                    if index > 0 { Divider().padding(.horizontal, 12) }
+                    HStack(spacing: 8) {
+                        Toggle(descriptor.title, isOn: Binding(get: { composition.previewEnabled(descriptor.id) }, set: { value in
+                            Task {
+                                do { try await composition.setPreviewEnabled(descriptor.id, value) }
+                                catch { composition.errorMessage = error.localizedDescription }
+                            }
+                        }))
+                        Spacer(minLength: 8)
+                        Picker("Size limit", selection: Binding(get: { composition.previewLimit(descriptor.id) }, set: { bytes in
+                            Task {
+                                do { try await composition.setPreviewLimit(descriptor.id, bytes) }
+                                catch { composition.errorMessage = error.localizedDescription }
+                            }
+                        })) {
+                            let sizes = Set([1, 2, 5, 10, 25, 50, 100, 200, 500].map { Int64($0) * mib }
+                                .filter { $0 <= descriptor.maximumBytes } + [descriptor.maximumBytes]).sorted()
+                            ForEach(sizes, id: \.self) { bytes in Text("\(bytes / mib) MiB").tag(bytes) }
+                        }.fixedSize().disabled(!composition.previewEnabled(descriptor.id))
                     }
-                }))
-                Picker("Size limit", selection: Binding(get: { composition.previewLimit(descriptor.id) }, set: { bytes in
-                    Task {
-                        do { try await composition.setPreviewLimit(descriptor.id, bytes) }
-                        catch { composition.errorMessage = error.localizedDescription }
-                    }
-                })) {
-                    let sizes = Set([1, 2, 5, 10, 25, 50, 100, 200, 500].map { Int64($0) * mib }
-                        .filter { $0 <= descriptor.maximumBytes } + [descriptor.maximumBytes]).sorted()
-                    ForEach(sizes, id: \.self) { bytes in Text("\(bytes / mib) MiB").tag(bytes) }
-                }.disabled(!composition.previewEnabled(descriptor.id))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                }
             }
-        }.font(.system(size: 12))
+            .popoverCard()
+        }
     }
 }

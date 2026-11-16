@@ -12,13 +12,11 @@ struct DocumentPreview: View {
   }
   var body: some View {
     VStack(spacing: 0) {
-      HStack(spacing: 12) {
-        Button(action: renderer.back) { Image(systemName: "chevron.left") }.disabled(!renderer.canGoBack).help("Back")
-        Button(action: renderer.forward) { Image(systemName: "chevron.right") }.disabled(!renderer.canGoForward).help("Forward")
-        Spacer()
-        if renderer.loading { ProgressView().controlSize(.mini) }
-        if let error = renderer.error {
-          Text(error).font(.system(size: 11)).foregroundStyle(.secondary).lineLimit(1).help(error)
+      // Back and Forward live in the header or toolbar above (DocumentNavigation); only a failure takes a row here.
+      if let error = renderer.error {
+        HStack(spacing: 12) {
+          Text(error).font(.subheadline).foregroundStyle(FramePalette.muted).lineLimit(1).help(error)
+          Spacer(minLength: 0)
           Button("Retry") { if photo.remote == nil { renderer.retry() } else { show() } }
           Button("Open in Default App") {
             Task {
@@ -29,8 +27,9 @@ struct DocumentPreview: View {
               catch { store.errorMessage = error.localizedDescription }
             }
           }.disabled(!store.canOpenSelectedInDefaultApp)
-        }
-      }.buttonStyle(.plain).padding(.horizontal, 16).frame(height: 32)
+        }.buttonStyle(.plain).padding(.horizontal, FrameMetrics.inset).frame(height: FrameMetrics.barHeight)
+          .background(FramePalette.panel)
+      }
       DocumentWebView(renderer: renderer)
     }
     .onAppear { show() }
@@ -47,6 +46,18 @@ struct DocumentPreview: View {
     guard let location = store.documentLocation else { return }
     renderer.onNavigate = { store.openDocumentLink($0) }
     store.previews.showDocument(photo, path: store.documentPath(photo), location: location)
+  }
+}
+
+/// Back and Forward for the document on screen, shown in the row that already sits above it.
+struct DocumentNavigation: View {
+  @ObservedObject var renderer: DocumentRenderer
+  var body: some View {
+    HStack(spacing: 0) {
+      Button(action: renderer.back) { Image(systemName: "chevron.left") }.disabled(!renderer.canGoBack).help("Back")
+      Button(action: renderer.forward) { Image(systemName: "chevron.right") }.disabled(!renderer.canGoForward).help("Forward")
+      if renderer.loading { ProgressView().controlSize(.mini).padding(.leading, 4) }
+    }.buttonStyle(IconButtonStyle())
   }
 }
 

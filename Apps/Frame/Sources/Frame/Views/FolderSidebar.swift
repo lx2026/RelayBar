@@ -8,13 +8,13 @@ struct FolderSidebar: View {
     VStack(spacing: 0) {
       if store.isRemote, store.remoteFolders?.rootPath != "/" {
         Button(action: store.remoteParent) { Label("Parent Folder", systemImage: "arrow.up") }
-          .buttonStyle(.plain).frame(maxWidth: .infinity, alignment: .leading).padding(12)
+          .buttonStyle(.plain).frame(maxWidth: .infinity, alignment: .leading).padding(12).font(.callout)
       }
       FileTree(store: store)
       Divider()
       Button { store.setFilter(.archive) } label: {
         Label("Archive", systemImage: "archivebox").frame(maxWidth: .infinity, alignment: .leading)
-      }.buttonStyle(.plain).padding(12)
+      }.buttonStyle(.plain).font(.callout).padding(.horizontal, 12).frame(height: FrameMetrics.barHeight)
     }.background(FramePalette.panel).disabled(store.isFileOperation)
   }
 }
@@ -111,7 +111,7 @@ private struct FileTree: NSViewRepresentable {
       let cell = (outlineView.makeView(withIdentifier: id, owner: self) as? NSTableCellView) ?? NSTableCellView()
       if cell.textField == nil {
         cell.identifier = id
-        let text = NSTextField(labelWithString: ""); text.font = .systemFont(ofSize: 12); text.lineBreakMode = .byTruncatingMiddle
+        let text = NSTextField(labelWithString: ""); text.font = .preferredFont(forTextStyle: .callout); text.lineBreakMode = .byTruncatingMiddle
         let image = NSImageView()
         text.translatesAutoresizingMaskIntoConstraints = false; image.translatesAutoresizingMaskIntoConstraints = false
         cell.addSubview(text); cell.addSubview(image); cell.textField = text; cell.imageView = image
