@@ -184,7 +184,7 @@ Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfo
 - Preview retrieval is limited to 100 MiB.
 - Bounded native ImageIO thumbnail decoding runs off the main actor from private temporary storage; only the completed immutable image is published back to the UI.
 - Leaving the preview or closing the window removes preview content, including when cancellation happens after retrieval but during decoding.
-- The detail uses an adaptive quiet canvas, keeps intrinsic aspect ratio, and never enlarges an image beyond its decoded dimensions.
+- The detail sits on the house palette's stage colour, keeps intrinsic aspect ratio, and never enlarges an image beyond its decoded dimensions. With Paper Appearance on, the window's sidebar is on the panel colour and its file list and other content on paper; with it off, the sidebar is translucent and the list and previews keep their system backgrounds ([House style](../shared/house-style.md)).
 - Preview has no thumbnails, metadata inspector, markup, or editing behavior.
 
 Empty folders show a single focused empty state with an explicit accessibility description.

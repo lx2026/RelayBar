@@ -1,5 +1,6 @@
 import AppKit
 import Composition
+import HouseStyle
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -22,16 +23,14 @@ private struct RelayBarMenuContent: View {
     @ObservedObject var composition: RelayBarComposition
     var body: some View {
         Group {
-            if let store = composition.store, let login = composition.login {
-                RelayBarRootView(updateModel: composition.updates, loginModel: login,
-                    onRemoteFiles: composition.openRemoteFiles, onRevokeFrame: composition.revokeFrame,
-                    serviceLabels: composition.serviceLabels?.labels ?? [:],
-                    composition: composition).environmentObject(store)
+            if let store = composition.store, composition.login != nil {
+                RelayBarRootView(onRemoteFiles: composition.openRemoteFiles, onSettings: composition.showSettings,
+                    serviceLabels: composition.serviceLabels?.labels ?? [:]).environmentObject(store)
             } else {
                 VStack(spacing: 12) {
                     Text(composition.errorMessage ?? "Starting RelayBar…")
                     Button("Retry") { Task { await composition.start() } }
-                }.padding().frame(width: 380)
+                }.padding().frame(width: RelayBarPopoverLayout.width)
             }
         }
         .alert("RelayBar", isPresented: Binding(get: { composition.errorMessage != nil }, set: {
@@ -40,11 +39,16 @@ private struct RelayBarMenuContent: View {
     }
 }
 
+/// The menu bar shows only the Label's icon.
 private struct RelayBarStatusLabel: View {
     @ObservedObject var composition: RelayBarComposition
     var body: some View {
-        Label("RelayBar", systemImage: (composition.store?.runningCount ?? 0) > 0
-              ? "arrow.left.arrow.right.circle.fill" : "arrow.left.arrow.right.circle")
+        let summary = StatusItemGlyph.Summary(phases: composition.store.map { Array($0.phases.values) } ?? [])
+        Label {
+            Text(summary.accessibilityLabel)
+        } icon: {
+            Image(nsImage: StatusItemGlyph.image(for: summary))
+        }
     }
 }
 
@@ -322,12 +326,10 @@ final class RelayBarAppDelegate: NSObject, NSApplicationDelegate {
             previewStore = composition.store ?? TunnelStore()
         }
 
-        let rootView = RelayBarRootView(
-            updateModel: UpdateModel(service: UnavailableUpdateService())
-        )
+        let rootView = RelayBarRootView()
             .environmentObject(previewStore)
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 380, height: 440),
+            contentRect: NSRect(origin: .zero, size: RelayBarPopoverLayout.size),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false

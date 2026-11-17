@@ -43,9 +43,11 @@
 		40000000000000000000003A /* RelayPlugins.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003A /* RelayPlugins.swift */; };
 		40000000000000000000003B /* ReconnectOnWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003B /* ReconnectOnWake.swift */; };
 		40000000000000000000003C /* ServiceLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003C /* ServiceLabels.swift */; };
+		40000000000000000000003D /* StatusItemGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003D /* StatusItemGlyph.swift */; };
 		400000000000000000000047 /* Composition in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000007 /* Composition */; };
 		400000000000000000000048 /* PreviewSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000008 /* PreviewSupport */; };
 		400000000000000000000049 /* MarkdownRendering in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000009 /* MarkdownRendering */; };
+		40000000000000000000004A /* HouseStyle in Frameworks */ = {isa = PBXBuildFile; productRef = 70000000000000000000000A /* HouseStyle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -85,6 +87,7 @@
 		30000000000000000000003A /* RelayPlugins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayPlugins.swift; sourceTree = "<group>"; };
 		30000000000000000000003B /* ReconnectOnWake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectOnWake.swift; sourceTree = "<group>"; };
 		30000000000000000000003C /* ServiceLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLabels.swift; sourceTree = "<group>"; };
+		30000000000000000000003D /* StatusItemGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemGlyph.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,6 +100,7 @@
 				400000000000000000000047 /* Composition in Frameworks */,
 				400000000000000000000048 /* PreviewSupport in Frameworks */,
 				400000000000000000000049 /* MarkdownRendering in Frameworks */,
+				40000000000000000000004A /* HouseStyle in Frameworks */,
 				40000000000000000000001D /* Sparkle in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -150,6 +154,7 @@
 				30000000000000000000003A /* RelayPlugins.swift */,
 				30000000000000000000003B /* ReconnectOnWake.swift */,
 				30000000000000000000003C /* ServiceLabels.swift */,
+				30000000000000000000003D /* StatusItemGlyph.swift */,
 				300000000000000000000018 /* RemoteFileSSHSession.swift */,
 				30000000000000000000000C /* SFTPRemoteFileService.swift */,
 				30000000000000000000000D /* RemoteFilesModel.swift */,
@@ -201,6 +206,7 @@
 			packageProductDependencies = (
 				700000000000000000000008 /* PreviewSupport */,
 				700000000000000000000009 /* MarkdownRendering */,
+				70000000000000000000000A /* HouseStyle */,
 				700000000000000000000007 /* Composition */,
 				700000000000000000000006 /* AssetGrouping */,
 				700000000000000000000005 /* BridgeProtocol */,
@@ -314,6 +320,7 @@
 				40000000000000000000003A /* RelayPlugins.swift in Sources */,
 				40000000000000000000003B /* ReconnectOnWake.swift in Sources */,
 				40000000000000000000003C /* ServiceLabels.swift in Sources */,
+				40000000000000000000003D /* StatusItemGlyph.swift in Sources */,
 				40000000000000000000001A /* RemoteFileSSHSession.swift in Sources */,
 				40000000000000000000000C /* SFTPRemoteFileService.swift in Sources */,
 				40000000000000000000000D /* RemoteFilesModel.swift in Sources */,
@@ -352,6 +359,7 @@
 		700000000000000000000007 /* Composition */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = Composition; };
 		700000000000000000000008 /* PreviewSupport */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = PreviewSupport; };
 		700000000000000000000009 /* MarkdownRendering */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = MarkdownRendering; };
+		70000000000000000000000A /* HouseStyle */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = HouseStyle; };
 /* End XCSwiftPackageProductDependency section */
 
 /* Begin XCBuildConfiguration section */
@@ -402,7 +410,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = Packaging/RelayBar.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 24;
 				DEAD_CODE_STRIPPING = YES;
 				ENABLE_DEBUG_DYLIB = NO;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -411,7 +419,7 @@
 				INFOPLIST_FILE = Packaging/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -428,7 +436,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CODE_SIGN_ENTITLEMENTS = Packaging/RelayBar.entitlements;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 21;
+				CURRENT_PROJECT_VERSION = 24;
 				DEAD_CODE_STRIPPING = YES;
 				DEPLOYMENT_POSTPROCESSING = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -436,7 +444,7 @@
 				INFOPLIST_FILE = Packaging/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
 				MACOSX_DEPLOYMENT_TARGET = 13.0;
-				MARKETING_VERSION = 1.6.0;
+				MARKETING_VERSION = 2.0.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

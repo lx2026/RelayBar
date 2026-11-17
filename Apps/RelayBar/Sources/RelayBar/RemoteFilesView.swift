@@ -1,4 +1,5 @@
 import AVKit
+import HouseStyle
 import SwiftUI
 
 /// One reused formatter. `ByteCountFormatter.string(fromByteCount:countStyle:)`
@@ -46,6 +47,7 @@ enum RemoteSidebarFocusNavigator {
 }
 
 struct RemoteFilesView: View {
+    @HouseTracking private var house
     @ObservedObject var model: RemoteFilesModel
     @FocusState private var focusedSidebarItem: RemoteSidebarFocus?
     @State private var isAddingPath = false
@@ -90,7 +92,7 @@ struct RemoteFilesView: View {
                 workspaceDetail
             }
         }
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(HouseColor.paper)
         .background(
             KeyDownMonitor { event, window in
                 guard
@@ -262,7 +264,8 @@ struct RemoteFilesView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
         }
-        .background(.ultraThinMaterial)
+        // Paper puts the sidebar on its panel tone; the standard form keeps the translucent sidebar it had.
+        .background(house == .paper ? AnyShapeStyle(HouseColor.panel) : AnyShapeStyle(.ultraThinMaterial))
         .accessibilityLabel("Remote locations")
     }
 
@@ -946,6 +949,7 @@ struct RemoteFilesView: View {
             }
         }
         .listStyle(.plain)
+        .scrollContentBackground(house == .paper ? .hidden : .automatic)
         .disabled(!model.canInteractWithFileList)
     }
 
@@ -1066,7 +1070,7 @@ struct RemoteFilesView: View {
                     let maximumWidth = max(0, geometry.size.width - 64)
                     let maximumHeight = max(0, geometry.size.height - 64)
                     ZStack {
-                        Color(nsColor: .underPageBackgroundColor)
+                        HouseColor.stage
 
                         Image(nsImage: image)
                             .resizable()
@@ -1092,7 +1096,7 @@ struct RemoteFilesView: View {
                 SafeRemoteJSONView(document: json)
             }
         }
-        .background(Color(nsColor: .textBackgroundColor))
+        .background(house == .paper ? HouseColor.paper : Color(nsColor: .textBackgroundColor))
     }
 
     private func previewDescription(for entry: RemoteFileEntry) -> String {
@@ -1128,6 +1132,7 @@ struct RemoteFilesView: View {
 }
 
 struct AddRemotePathView: View {
+    @HouseTracking private var house
     @ObservedObject var model: RemoteFilesModel
 
     @Environment(\.dismiss) private var dismiss
@@ -1223,7 +1228,7 @@ struct AddRemotePathView: View {
         }
         .padding(20)
         .frame(width: 430)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(HouseColor.paper)
         .onAppear {
             isPathFocused = true
         }

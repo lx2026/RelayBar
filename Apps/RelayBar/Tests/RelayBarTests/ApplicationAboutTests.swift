@@ -74,6 +74,27 @@ final class ApplicationAboutTests: XCTestCase {
         )
     }
 
+    func testVersionLineShowsWhatTheBundleProvides() {
+        func line(_ info: [String: Any]) -> String {
+            ApplicationMetadata(infoDictionary: info).versionLine
+        }
+        XCTAssertEqual(
+            line(["CFBundleShortVersionString": "2.0.0", "CFBundleVersion": "22"]),
+            "Version 2.0.0 (22)"
+        )
+        XCTAssertEqual(line(["CFBundleShortVersionString": "2.0.0"]), "Version 2.0.0")
+        XCTAssertEqual(line(["CFBundleShortVersionString": " ", "CFBundleVersion": "22"]), "Build 22")
+        XCTAssertEqual(line(["CFBundleVersion": 22]), "Version unavailable")
+
+        // Copying still writes the full string with the name.
+        XCTAssertEqual(
+            ApplicationMetadata(infoDictionary: [
+                "CFBundleShortVersionString": "2.0.0", "CFBundleVersion": "22"
+            ]).displayText,
+            "RelayBar 2.0.0 (22)"
+        )
+    }
+
     func testProjectActionsOpenEachCanonicalURLOnce() {
         let opener = ExternalLinkOpenerSpy()
         let model = ApplicationAboutModel(linkOpener: opener)

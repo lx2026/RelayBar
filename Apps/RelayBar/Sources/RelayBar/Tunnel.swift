@@ -260,7 +260,8 @@ struct ForwardingRule: Identifiable, Codable, Equatable, Hashable, Sendable {
         switch kind {
         case .local: return "\(listener) → \(target)"
         case .remote: return "\(listener) ⇠ \(target)"
-        case .localDynamic: return "\(listener) → SOCKS via server"
+        // The row shows the SSH host right after this text, so "via server" would repeat it.
+        case .localDynamic: return "\(listener) → SOCKS"
         case .remoteDynamic: return "\(listener) ⇠ SOCKS via Mac"
         }
     }

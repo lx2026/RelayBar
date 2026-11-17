@@ -1,5 +1,6 @@
 import BridgeProtocol
 import AppKit
+import CompositionFixtures
 import WebKit
 import XCTest
 @testable import RelayBar
@@ -17,7 +18,7 @@ final class HTMLPreviewTests: XCTestCase {
     }
 
     @MainActor func testModelRendersHTMLWithRelativeAndOnlineResourcesAndCleansUp() async throws {
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         let online = try await HTMLHTTPFixture(files: [
             "/online.js": "window.onlineScript=true",
             "/online.css": "h1{color:rgb(10, 50, 90)}",
@@ -38,7 +39,7 @@ final class HTMLPreviewTests: XCTestCase {
         try await wait { model.previewHTML != nil || model.errorMessage != nil }
         XCTAssertNil(model.errorMessage)
         let renderer = try XCTUnwrap(model.previewHTML)
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 600), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = QuietWindow(size: NSSize(width: 900, height: 600), styleMask: [.titled])
         window.contentView = renderer.webView
         defer { renderer.stop(); window.contentView = nil }
         try await waitJS(renderer.webView, "window.localValue === 42 && window.onlineScript === true && window.onlineValue === 73 && getComputedStyle(document.querySelector('h1')).color === 'rgb(10, 50, 90)'")

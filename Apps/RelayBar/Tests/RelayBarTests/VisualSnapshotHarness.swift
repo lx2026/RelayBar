@@ -3,6 +3,10 @@
 // unless RELAYBAR_SNAPSHOT_DIR is set, following the opt-in pattern the live
 // SSH tests use.
 import AppKit
+import Composition
+import CompositionFixtures
+import CompositionUI
+import HouseStyle
 import SwiftUI
 import XCTest
 @testable import RelayBar
@@ -61,119 +65,12 @@ final class VisualSnapshotHarness: XCTestCase {
 
         for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
             let label = appearanceName == .aqua ? "light" : "dark"
-            let listURL = outputDirectory.appendingPathComponent(
-                "tunnel-list-\(label).png"
-            )
             try capture(
-                view: RelayBarRootView(
-                    loginItemService: LoginItemServiceSpy(status: .enabled),
-                    updateModel: previewUpdateModel()
-                )
-                .environmentObject(store),
+                view: RelayBarRootView()
+                    .environmentObject(store),
                 appearance: appearanceName,
-                to: listURL
+                to: outputDirectory.appendingPathComponent("tunnel-list-\(label).png")
             )
-            let listWithUpdateStateURL = outputDirectory.appendingPathComponent(
-                "tunnel-list-update-state-\(label).png"
-            )
-            try capture(
-                view: RelayBarRootView(
-                    loginItemService: LoginItemServiceSpy(status: .enabled),
-                    updateModel: previewUpdateModel(result: .upToDate)
-                )
-                .environmentObject(store),
-                appearance: appearanceName,
-                to: listWithUpdateStateURL
-            )
-            XCTAssertEqual(
-                try Data(contentsOf: listURL),
-                try Data(contentsOf: listWithUpdateStateURL),
-                "Updater state must not change the tunnel list or Settings button."
-            )
-            try capture(
-                view: SettingsView(
-                    store: store,
-                    launchAtLogin: LaunchAtLoginModel(
-                        service: LoginItemServiceSpy(status: .enabled)
-                    ),
-                    updates: previewUpdateModel(),
-                    about: previewAboutModel(),
-                    onBack: {}
-                )
-                .background(Color(nsColor: .windowBackgroundColor)),
-                appearance: appearanceName,
-                assertHorizontalContainment: true,
-                to: outputDirectory.appendingPathComponent("settings-\(label).png")
-            )
-            try capture(
-                view: SettingsView(
-                    store: store,
-                    launchAtLogin: LaunchAtLoginModel(
-                        service: LoginItemServiceSpy(status: .enabled)
-                    ),
-                    updates: previewUpdateModel(result: .upToDate),
-                    about: previewAboutModel(copied: true),
-                    onBack: {}
-                )
-                .background(Color(nsColor: .windowBackgroundColor)),
-                appearance: appearanceName,
-                assertHorizontalContainment: true,
-                to: outputDirectory.appendingPathComponent(
-                    "settings-transient-confirmations-\(label).png"
-                )
-            )
-            // The approval-required caption is the tallest Launch at Login
-            // variant; capture it to verify the card's second row.
-            try capture(
-                view: SettingsView(
-                    store: store,
-                    launchAtLogin: LaunchAtLoginModel(
-                        service: LoginItemServiceSpy(status: .requiresApproval)
-                    ),
-                    updates: previewUpdateModel(),
-                    about: previewAboutModel(),
-                    onBack: {}
-                )
-                .background(Color(nsColor: .windowBackgroundColor)),
-                appearance: appearanceName,
-                assertHorizontalContainment: true,
-                to: outputDirectory.appendingPathComponent(
-                    "settings-login-approval-\(label).png"
-                )
-            )
-        }
-    }
-
-    func testCaptureRetrySettingsSnapshots() throws {
-        try XCTSkipIf(
-            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
-            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
-        )
-        let suiteName = "RelayBarSnapshot.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let store = TunnelStore(defaults: defaults)
-        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
-            let label = appearance == .aqua ? "light" : "dark"
-            for limit in [0, 10, 100] {
-                store.setMaxRetryAttempts(limit)
-                try capture(
-                    view: SettingsView(
-                        store: store,
-                        launchAtLogin: LaunchAtLoginModel(
-                            service: LoginItemServiceSpy(status: .enabled)
-                        ),
-                        updates: previewUpdateModel(),
-                        about: previewAboutModel(),
-                        onBack: {}
-                    )
-                    .background(Color(nsColor: .windowBackgroundColor)),
-                    appearance: appearance,
-                    assertHorizontalContainment: true,
-                    assertFitsViewport: true,
-                    to: outputDirectory.appendingPathComponent("settings-retries-\(limit)-\(label).png")
-                )
-            }
         }
     }
 
@@ -231,11 +128,8 @@ final class VisualSnapshotHarness: XCTestCase {
                 }
 
                 try capture(
-                    view: RelayBarRootView(
-                        loginItemService: LoginItemServiceSpy(status: .enabled),
-                        updateModel: previewUpdateModel()
-                    )
-                    .environmentObject(store),
+                    view: RelayBarRootView()
+                        .environmentObject(store),
                     appearance: appearanceName,
                     assertHorizontalContainment: true,
                     to: outputDirectory.appendingPathComponent(
@@ -246,122 +140,433 @@ final class VisualSnapshotHarness: XCTestCase {
         }
     }
 
-    /// Every row lifecycle state, ungrouped and grouped, so the emphasis of
-    /// each row's actions can be compared across states.
-    func testCaptureTunnelRowStateSnapshots() throws {
+    /// The popover as the approved mock draws it: grouped and flat lists with
+    /// every row state and one hovered row, six rows and two headers fitting
+    /// without scrolling, an overflowing list with scroll bars set to Always,
+    /// the empty list and the top of the profile editor.
+    func testCaptureSwitchboardPopoverSnapshots() throws {
         try XCTSkipIf(
             ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
             "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
         )
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
 
-        let fixtures: [(name: String, group: String?, phase: TunnelPhase)] = [
-            ("Hermes Dashboard", "Work", .running),
-            ("Virtual Desktop", "Work", .retrying(
-                attempt: 2, maxAttempts: 10, delay: 4, message: "Connection refused"
-            )),
-            ("Photos", "Personal", .failed("Operation timed out")),
-            ("Scratch", nil, .stopped),
-            ("Build Cache", nil, .starting)
-        ]
-
-        for grouped in [false, true] {
-            let suiteName = "RelayBarRowStates.\(UUID().uuidString)"
-            let defaults = UserDefaults(suiteName: suiteName)!
-            defer { defaults.removePersistentDomain(forName: suiteName) }
-            let store = TunnelStore(defaults: defaults)
-            for (index, fixture) in fixtures.enumerated() {
-                let tunnel = Tunnel(
-                    name: fixture.name,
-                    localPort: 8_000 + index,
-                    destinationHost: "localhost",
-                    destinationPort: 3_000 + index,
-                    sshHost: "preview-\(index + 1).example.com",
-                    groupTag: grouped ? fixture.group : nil
-                )
-                store.add(tunnel)
-                store.setPreviewPhase(fixture.phase, for: tunnel)
-            }
-
-            for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
-                let label = appearanceName == .aqua ? "light" : "dark"
-                let layout = grouped ? "grouped" : "ungrouped"
-                for (position, offset) in [("top", nil), ("bottom", 1_000)] as [(String, CGFloat?)] {
-                    try capture(
-                        view: RelayBarRootView(
-                            loginItemService: LoginItemServiceSpy(status: .enabled),
-                            updateModel: previewUpdateModel()
-                        )
-                        .environmentObject(store),
-                        appearance: appearanceName,
-                        scrollOffsetY: offset,
-                        to: outputDirectory.appendingPathComponent(
-                            "tunnel-row-states-\(layout)-\(position)-\(label).png"
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    /// Settings as the app presents it, with the composition's Plugins row
-    /// and preview limits below General.
-    func testCaptureComposedSettingsSnapshots() throws {
-        try XCTSkipIf(
-            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
-            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
-        )
-        let suiteName = "RelayBarComposedSettings.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-        let composition = RelayBarComposition(
-            defaults: defaults,
-            startsBridge: false,
-            showsWindows: false,
-            makeUpdates: { _ in UnavailableUpdateService() },
-            loginService: LoginItemServiceSpy(status: .enabled),
-            frameInstalled: false
-        )
-        let store = TunnelStore(defaults: defaults)
+        let mixed = switchboardStore(grouped: true)
+        let flat = switchboardStore(grouped: false)
+        let short = switchboardStore(grouped: true, only: [
+            "Photos", "Home Assistant", "Hermes Dashboard", "Virtual Desktop", "PostgreSQL", "Grafana"
+        ])
+        let empty = switchboardStore(grouped: true, only: [])
+        let editTunnel = try XCTUnwrap(mixed.store.tunnels.first { $0.name == "PostgreSQL" })
 
         for appearance in [NSAppearance.Name.aqua, .darkAqua] {
             let label = appearance == .aqua ? "light" : "dark"
-            for (position, offset) in [("top", nil), ("bottom", 1_000)] as [(String, CGFloat?)] {
+            func file(_ name: String) -> URL {
+                outputDirectory.appendingPathComponent("popover-\(name)-\(label).png")
+            }
+            for (name, fixture) in [("grouped", mixed), ("flat", flat)] {
                 try capture(
-                    view: SettingsView(
-                        store: store,
-                        launchAtLogin: LaunchAtLoginModel(
-                            service: LoginItemServiceSpy(status: .enabled)
-                        ),
-                        updates: previewUpdateModel(),
-                        about: previewAboutModel(),
-                        composition: composition,
-                        onBack: {}
-                    )
-                    .background(Color(nsColor: .windowBackgroundColor)),
+                    view: RelayBarRootView()
+                        .environmentObject(fixture.store)
+                        .environment(\.previewHoveredTunnel, fixture.hovered),
                     appearance: appearance,
-                    scrollOffsetY: offset,
                     assertHorizontalContainment: true,
-                    to: outputDirectory.appendingPathComponent(
-                        "settings-composed-\(position)-\(label).png"
+                    to: file(name)
+                )
+            }
+            try capture(
+                view: RelayBarRootView().environmentObject(short.store),
+                appearance: appearance,
+                assertHorizontalContainment: true,
+                inspect: { host in
+                    let scrollView = try XCTUnwrap(self.firstScrollView(in: host))
+                    let document = try XCTUnwrap(scrollView.documentView).bounds.height
+                    let layout = RelayBarPopoverLayout.self
+                    XCTAssertEqual(
+                        document,
+                        layout.listTopInset + layout.groupHeaderHeight * 2 + layout.groupSpacing
+                            + layout.rowHeight * 6 + layout.listBottomInset,
+                        accuracy: 0.5
                     )
+                    XCTAssertLessThanOrEqual(
+                        document - layout.listBottomInset, scrollView.contentView.bounds.height,
+                        "All six rows are inside the viewport"
+                    )
+                    XCTAssertEqual(scrollView.contentView.bounds.minY, 0, accuracy: 0.5)
+                },
+                to: file("six-rows")
+            )
+            try withScrollBarsAlwaysShown {
+                for (position, offset) in [("top", nil), ("bottom", 1_000)] as [(String, CGFloat?)] {
+                    try capture(
+                        view: RelayBarRootView()
+                            .environmentObject(mixed.store)
+                            .environment(\.previewHoveredTunnel, mixed.hovered),
+                        appearance: appearance,
+                        scrollOffsetY: offset,
+                        assertHorizontalContainment: true,
+                        inspect: { host in
+                            let scrollView = try XCTUnwrap(self.firstScrollView(in: host))
+                            XCTAssertEqual(scrollView.scrollerStyle, .overlay)
+                            XCTAssertEqual(scrollView.contentView.bounds.width, scrollView.bounds.width, accuracy: 0.5)
+                        },
+                        to: file("scroll-bars-always-\(position)")
+                    )
+                }
+            }
+            try capture(
+                view: RelayBarRootView().environmentObject(empty.store),
+                appearance: appearance,
+                to: file("empty")
+            )
+            for (name, tunnel) in [("editor-new", nil), ("editor-edit", editTunnel)] as [(String, Tunnel?)] {
+                try capture(
+                    view: TunnelEditorView(
+                        tunnel: tunnel,
+                        availableGroups: ["Personal", "Work"],
+                        onCancel: {},
+                        onSave: { _ in }
+                    )
+                    .foregroundStyle(HouseColor.ink)
+                    .background(HouseColor.paper),
+                    appearance: appearance,
+                    assertHorizontalContainment: true,
+                    to: file(name)
                 )
             }
         }
     }
 
-    private func previewUpdateModel(
-        result: UpdateCheckResult? = nil
-    ) -> UpdateModel {
-        let service = SnapshotUpdateService()
-        let model = UpdateModel(
-            service: service,
-            announcer: SnapshotAccessibilityAnnouncer()
+    /// Task 069: the popover with every row state, the profile editor, Settings, Remote Files (a folder and an image
+    /// in its well) and the Plugins window, with Paper Appearance on and off, light and dark.
+    func testCaptureTask069PaperAppearanceSnapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
         )
-        if let result {
-            model.checkForUpdates()
-            service.complete(with: result)
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        defer { HousePalette.apply(.paper) }
+
+        let mixed = switchboardStore(grouped: true)
+        let editTunnel = try XCTUnwrap(mixed.store.tunnels.first { $0.name == "PostgreSQL" })
+        let settings = try await settingsFixture()
+        let composition = settings.composition
+
+        let image = RemoteFileEntry(name: "01-dashboard.png", path: "/srv/releases/01-dashboard.png", kind: .file,
+                                    size: 84_120, modificationText: "Aug 30 12:00")
+        let entries = [
+            RemoteFileEntry(name: "builds", path: "/srv/releases/builds", kind: .directory, size: nil,
+                            modificationText: "Aug 24 14:08"),
+            RemoteFileEntry(name: "README.md", path: "/srv/releases/README.md", kind: .file, size: 8_420,
+                            modificationText: "Aug 24 13:42"),
+            image
+        ]
+        let folder = try task037WorkspaceFixture(entries: entries)
+        folder.model.activate(try XCTUnwrap(folder.model.recentLocations.first))
+        try await waitUntil { folder.model.screen == .browser && !folder.model.isLoading }
+        folder.model.select(entries[1])
+        let hostID = try XCTUnwrap(folder.model.servers(from: .recent).first?.id)
+        let preview = try task037WorkspaceFixture(entries: entries)
+        let imageDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RelayBarTask069-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: imageDirectory) }
+        let imageURL = imageDirectory.appendingPathComponent(image.name)
+        try task027ImageData().write(to: imageURL)
+        preview.service.previewURL = imageURL
+        preview.model.activate(try XCTUnwrap(preview.model.recentLocations.first))
+        try await waitUntil { preview.model.screen == .browser && !preview.model.isLoading }
+        preview.model.preview(image)
+        try await waitUntil(timeout: 5) { preview.model.previewImage != nil && !preview.model.isLoadingPreview }
+
+        for form in HouseForm.allCases {
+            // Switched through the plugin, as the Plugins window does, so its switch shows the choice too.
+            try await composition.setPlugin(RelayPlugins.paperAppearance, enabled: form == .paper)
+            XCTAssertEqual(HousePalette.form, form)
+            let composer = PluginComposer(runtime: composition.runtime, plugins: composition.plugins,
+                                          isEnabled: { composition.isPluginEnabled($0) },
+                                          setEnabled: { try await composition.setPlugin($0, enabled: $1) })
+            composer.selection = "tunnels"
+            let plugin = form == .paper ? "on" : "off"
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                let label = appearance == .aqua ? "light" : "dark"
+                func file(_ name: String) -> URL {
+                    outputDirectory.appendingPathComponent("069-\(name)-paper-\(plugin)-\(label).png")
+                }
+                try capture(
+                    view: RelayBarRootView()
+                        .environmentObject(mixed.store)
+                        .environment(\.previewHoveredTunnel, mixed.hovered),
+                    appearance: appearance,
+                    to: file("popover")
+                )
+                try capture(
+                    view: TunnelEditorView(tunnel: editTunnel, availableGroups: ["Personal", "Work"],
+                                           onCancel: {}, onSave: { _ in })
+                        .foregroundStyle(HouseColor.ink)
+                        .background(HouseColor.paper),
+                    appearance: appearance,
+                    to: file("editor")
+                )
+                _ = try captureSettingsWindow(settings.controller, appearance: appearance, to: file("settings"))
+                try capture(
+                    view: RemoteFilesView(model: folder.model, expandedHostIDs: [hostID]),
+                    appearance: appearance,
+                    size: RemoteFilesWindowSizing.workspace,
+                    to: file("remote-files")
+                )
+                try capture(
+                    view: RemoteFilesView(model: preview.model),
+                    appearance: appearance,
+                    size: RemoteFilesWindowSizing.previewPreferred,
+                    to: file("remote-preview")
+                )
+                try capture(
+                    view: PluginComposerView(composer: composer),
+                    appearance: appearance,
+                    size: NSSize(width: 1_180, height: 720),
+                    to: file("plugins")
+                )
+            }
         }
-        return model
+        folder.model.cancelAll()
+        preview.model.cancelAll()
+    }
+
+    private struct SwitchboardFixture {
+        let store: TunnelStore
+        let hovered: UUID?
+    }
+
+    /// The mock's tunnels and states. Hermes Dashboard is the hovered row.
+    private func switchboardStore(grouped: Bool, only names: [String]? = nil) -> SwitchboardFixture {
+        let suiteName = "RelayBarSwitchboard.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+        let store = TunnelStore(defaults: defaults)
+
+        func web(_ name: String, _ local: Int, _ remote: Int, _ host: String, _ group: String?) -> Tunnel {
+            Tunnel(name: name, localPort: local, destinationHost: "localhost", destinationPort: remote,
+                   sshHost: host, groupTag: grouped ? group : nil)
+        }
+        let socks = Tunnel(
+            name: "SOCKS Proxy", sshHost: "bastion.example.com",
+            rules: [ForwardingRule(kind: .localDynamic, listen: .tcp(bindAddress: "localhost", port: 1_080))],
+            groupTag: grouped ? "Work" : nil
+        )
+        let fixtures: [(Tunnel, TunnelPhase)] = [
+            (web("Photos", 8_002, 3_002, "photos.example.com", "Personal"), .failed("Operation timed out")),
+            (web("Home Assistant", 8_123, 8_123, "nas.example.com", "Personal"), .stopped),
+            (web("Hermes Dashboard", 8_000, 3_000, "preview-1.example.com", "Work"), .running),
+            (web("Virtual Desktop", 8_001, 3_001, "preview-2.example.com", "Work"), .retrying(
+                attempt: 2, maxAttempts: 10, delay: 4, message: "Connection refused"
+            )),
+            (web("PostgreSQL", 5_432, 5_432, "bastion.example.com", "Work"), .running),
+            (socks, .stopped),
+            (web("Grafana", 3_100, 3_000, "bastion.example.com", "Work"), .running),
+            (web("Scratch", 9_000, 9_000, "dev.example.com", nil), .stopped),
+            (web("Build Cache", 8_080, 8_080, "cache.example.com", nil), .starting)
+        ]
+        for (tunnel, phase) in fixtures where names?.contains(tunnel.name) ?? true {
+            store.add(tunnel)
+            store.setPreviewPhase(phase, for: tunnel)
+        }
+        let hovered = store.tunnels.first { $0.name == "Hermes Dashboard" }?.id
+        return SwitchboardFixture(store: store, hovered: names == nil ? hovered : nil)
+    }
+
+    /// Runs `body` as if "Show scroll bars" were set to Always.
+    private func withScrollBarsAlwaysShown(_ body: () throws -> Void) throws {
+        var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        let previous = arguments["AppleShowScrollBars"]
+        arguments["AppleShowScrollBars"] = "Always"
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+        NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
+        defer {
+            var restored = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+            restored["AppleShowScrollBars"] = previous
+            UserDefaults.standard.setVolatileDomain(restored, forName: UserDefaults.argumentDomain)
+            NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
+        }
+        XCTAssertEqual(NSScroller.preferredScrollerStyle, .legacy)
+        try body()
+    }
+
+    /// The Settings window's content at its fixed width in every state that
+    /// changes its height. Each capture is exactly the content's fitting
+    /// height, so nothing scrolls or clips.
+    func testCaptureSettingsWindowSnapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        let standard = try await settingsFixture()
+        let approval = try await settingsFixture(loginStatus: .requiresApproval)
+        let frame = try await settingsFixture(frameAccess: true)
+        XCTAssertNotNil(frame.composition.frameHost)
+        let checked = try await settingsFixture(copied: true)
+        checked.composition.updates.checkForUpdates()
+        checked.updates.complete(with: .upToDate)
+        XCTAssertEqual(checked.composition.updates.state, .upToDate)
+        // Also a three-digit retry limit and a preview format switched off.
+        let waiting = try await settingsFixture()
+        waiting.updates.deferredInstallTunnelCount = 2
+        waiting.composition.updates.refresh()
+        try await waiting.composition.setRetryLimit(100)
+        try await waiting.composition.setPreviewEnabled("html", false)
+
+        let fixtures = [
+            ("default", standard), ("login-approval", approval), ("frame-access", frame),
+            ("update-status", checked), ("update-waiting", waiting)
+        ]
+        var heights: [String: CGFloat] = [:]
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearance == .aqua ? "light" : "dark"
+            for (name, fixture) in fixtures {
+                heights[name] = try captureSettingsWindow(
+                    fixture.controller,
+                    appearance: appearance,
+                    to: outputDirectory.appendingPathComponent("settings-\(name)-\(label).png")
+                )
+            }
+        }
+        let base = try XCTUnwrap(heights["default"])
+        for name in ["login-approval", "frame-access", "update-status", "update-waiting"] {
+            XCTAssertGreaterThan(try XCTUnwrap(heights[name]), base, "\(name) adds a line or a box to Settings")
+        }
+    }
+
+    /// Idle, active and failed menu-bar glyphs on the menu bar's light and
+    /// dark strips, at actual size and enlarged eight times.
+    func testCaptureStatusItemGlyphSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        let states: [(String, StatusItemGlyph.State)] = [("Idle", .idle), ("Active", .active), ("Failed", .failed)]
+        let enlargement: CGFloat = 8, column: CGFloat = 25 * enlargement + 40, inset: CGFloat = 24
+        let canvas = NSSize(width: inset * 2 + column * 3, height: 290)
+        let strips: [(String, NSColor, NSColor)] = [
+            ("light", NSColor(srgbRed: 0.89, green: 0.898, blue: 0.918, alpha: 1),
+             NSColor(srgbRed: 0.114, green: 0.114, blue: 0.122, alpha: 1)),
+            ("dark", NSColor(srgbRed: 0.165, green: 0.169, blue: 0.188, alpha: 1),
+             NSColor(srgbRed: 0.949, green: 0.949, blue: 0.957, alpha: 1))
+        ]
+        for (label, background, foreground) in strips {
+            let rep = try XCTUnwrap(NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: Int(canvas.width * 2), pixelsHigh: Int(canvas.height * 2),
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+            ))
+            rep.size = canvas
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            background.setFill()
+            NSRect(origin: .zero, size: canvas).fill()
+            let caption: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: foreground.withAlphaComponent(0.7)
+            ]
+            for (index, (title, state)) in states.enumerated() {
+                let glyph = StatusItemGlyph.makeImage(for: state)
+                XCTAssertTrue(glyph.isTemplate)
+                let tinted = NSImage(size: glyph.size, flipped: false) { rect in
+                    glyph.draw(in: rect)
+                    foreground.setFill()
+                    rect.fill(using: .sourceAtop)
+                    return true
+                }
+                let x = inset + CGFloat(index) * column
+                tinted.draw(in: NSRect(
+                    x: x, y: 96,
+                    width: glyph.size.width * enlargement, height: glyph.size.height * enlargement
+                ))
+                tinted.draw(in: NSRect(x: x, y: 52, width: glyph.size.width, height: glyph.size.height))
+                (title as NSString).draw(at: NSPoint(x: x, y: 20), withAttributes: caption)
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+            try data.write(to: outputDirectory.appendingPathComponent("menu-bar-glyph-\(label).png"))
+        }
+    }
+
+    private struct SettingsFixture {
+        let composition: RelayBarComposition
+        let controller: RelaySettingsWindowController
+        let updates: SnapshotUpdateService
+    }
+
+    private func settingsFixture(
+        loginStatus: LoginItemStatus = .enabled,
+        frameAccess: Bool = false,
+        copied: Bool = false
+    ) async throws -> SettingsFixture {
+        let suite = "RelayBarSettingsWindow.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        // Short, because a socket's path is limited to 104 bytes.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rbs-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defaults.set(frameAccess, forKey: "frameViewer.readAccess.v1")
+        let updates = SnapshotUpdateService()
+        let composition = RelayBarComposition(
+            defaults: defaults, startsBridge: frameAccess, showsWindows: false,
+            makeCatalog: { RemoteServerCatalog(defaults: defaults, sshConfigURL: URL(fileURLWithPath: "/nonexistent")) },
+            makeTunnels: { TunnelStore(defaults: defaults, persistsRetryLimit: false) },
+            makeUpdates: { _ in updates },
+            loginService: LoginItemServiceSpy(status: loginStatus),
+            recoveryEvents: SilentRecoveryEvents(),
+            frameInstalled: frameAccess,
+            bridgeRoot: { root }
+        )
+        addTeardownBlock {
+            await composition.stop()
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        await composition.start()
+        XCTAssertNil(composition.errorMessage)
+        let controller = RelaySettingsWindowController(
+            composition: composition,
+            about: previewAboutModel(copied: copied),
+            windowType: QuietSettingsWindow.self
+        )
+        return SettingsFixture(composition: composition, controller: controller, updates: updates)
+    }
+
+    /// Writes the window's content and returns its height.
+    private func captureSettingsWindow(
+        _ controller: RelaySettingsWindowController,
+        appearance: NSAppearance.Name,
+        to url: URL
+    ) throws -> CGFloat {
+        let window = try XCTUnwrap(controller.window as? QuietSettingsWindow)
+        window.appearance = NSAppearance(named: appearance)
+        window.orderInOffscreen()
+        defer { window.orderOut(nil) }
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        window.layoutIfNeeded()
+
+        let content = try XCTUnwrap(window.contentView)
+        XCTAssertFalse(window.styleMask.contains(.resizable))
+        XCTAssertEqual(content.frame.width, SettingsLayout.width)
+        XCTAssertEqual(
+            content.frame.height, content.fittingSize.height, accuracy: 0.5,
+            "The window is exactly as tall as its content"
+        )
+        XCTAssertNil(firstScrollView(in: content), "Settings never scrolls")
+
+        let rep = try XCTUnwrap(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+        content.cacheDisplay(in: content.bounds, to: rep)
+        let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        try data.write(to: url)
+        XCTAssertGreaterThan(data.count, 2_000, "snapshot looks empty")
+        return content.frame.height
     }
 
     private func previewAboutModel(copied: Bool = false) -> ApplicationAboutModel {
@@ -369,8 +574,8 @@ final class VisualSnapshotHarness: XCTestCase {
             metadata: ApplicationMetadata(
                 infoDictionary: [
                     "CFBundleName": "RelayBar",
-                    "CFBundleShortVersionString": "1.3.0",
-                    "CFBundleVersion": "6"
+                    "CFBundleShortVersionString": "2.0.0",
+                    "CFBundleVersion": "22"
                 ]
             ),
             pasteboardWriter: SnapshotPasteboardWriter(),
@@ -1437,25 +1642,21 @@ final class VisualSnapshotHarness: XCTestCase {
     private func capture(
         view: some View,
         appearance: NSAppearance.Name,
-        size: NSSize = NSSize(width: 380, height: 440),
+        size: NSSize = RelayBarPopoverLayout.size,
         scrollOffsetY: CGFloat? = nil,
         assertHorizontalContainment: Bool = false,
         assertFitsViewport: Bool = false,
+        inspect: (NSView) throws -> Void = { _ in },
         to url: URL
     ) throws {
         let hosting = NSHostingView(rootView: view)
         hosting.frame = NSRect(origin: .zero, size: size)
         hosting.appearance = NSAppearance(named: appearance)
 
-        let window = NSWindow(
-            contentRect: NSRect(origin: .zero, size: size),
-            styleMask: [.titled],
-            backing: .buffered,
-            defer: false
-        )
+        let window = QuietWindow(size: size, styleMask: [.titled])
         window.appearance = NSAppearance(named: appearance)
         window.contentView = hosting
-        window.orderBack(nil)
+        window.orderInOffscreen()
         hosting.layoutSubtreeIfNeeded()
 
         // SwiftUI resolves its first layout pass on the run loop.
@@ -1514,6 +1715,8 @@ final class VisualSnapshotHarness: XCTestCase {
                 )
             }
         }
+
+        try inspect(hosting)
 
         let rep = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
@@ -1586,6 +1789,13 @@ private final class SnapshotUpdateService: UpdateServicing {
         completion = nil
     }
     func prepareForApplicationTermination() -> Bool { false }
+}
+
+/// Never delivers an event.
+private struct SilentRecoveryEvents: RecoveryEvents {
+    func events() -> AsyncStream<Void> {
+        AsyncStream { _ in }
+    }
 }
 
 @MainActor

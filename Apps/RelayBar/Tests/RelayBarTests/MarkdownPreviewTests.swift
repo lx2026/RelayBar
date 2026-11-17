@@ -1,5 +1,6 @@
 import MarkdownRendering
 import AppKit
+import CompositionFixtures
 import WebKit
 import XCTest
 @testable import RelayBar
@@ -338,10 +339,10 @@ final class RemoteMarkdownWebViewTests: XCTestCase {
     }
 
     private func makeView() -> (RemoteMarkdownWebView, NSWindow) {
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         let view = RemoteMarkdownWebView()
         view.frame = NSRect(x: 0, y: 0, width: 820, height: 600)
-        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        let window = QuietWindow(size: view.frame.size, styleMask: [.titled])
         window.contentView = view
         return (view, window)
     }
@@ -502,7 +503,7 @@ final class RemoteMarkdownSnapshotTests: XCTestCase {
         guard let output = ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] else {
             throw XCTSkip("Set RELAYBAR_SNAPSHOT_DIR to capture snapshots.")
         }
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         try FileManager.default.createDirectory(atPath: output, withIntermediateDirectories: true)
         let width: CGFloat = 820
         for (name, source) in [("ordinary", Self.ordinary), ("extended", Self.extended)] {
@@ -514,10 +515,10 @@ final class RemoteMarkdownSnapshotTests: XCTestCase {
             for (label, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
                 let view = RemoteMarkdownWebView()
                 view.frame = NSRect(x: 0, y: 0, width: width, height: 900)
-                let window = TallWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+                let window = QuietWindow(size: view.frame.size, styleMask: [.titled])
                 window.appearance = NSAppearance(named: appearance)
                 window.contentView = view
-                window.orderBack(nil)
+                window.orderInOffscreen()
                 view.show(document)
                 var height: CGFloat = 0
                 for _ in 0..<400 {
@@ -544,9 +545,4 @@ final class RemoteMarkdownSnapshotTests: XCTestCase {
             }
         }
     }
-}
-
-/// A window on screen is normally held to the screen's height, which would cut the page short.
-private final class TallWindow: NSWindow {
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
 }

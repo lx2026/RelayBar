@@ -1,4 +1,5 @@
 import AppKit
+import CompositionFixtures
 import Composition
 import CompositionUI
 import SwiftUI
@@ -15,7 +16,7 @@ final class PluginsWindowSnapshotTests: XCTestCase {
         }
         let directory = URL(fileURLWithPath: path, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         // Render as on a trackpad Mac: overlay scrollers, so no legacy scroller corner is drawn.
         var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
         arguments["AppleShowScrollBars"] = "WhenScrolling"
@@ -59,8 +60,7 @@ final class PluginsWindowSnapshotTests: XCTestCase {
         let bounds = NSRect(x: 0, y: 0, width: 1180, height: 720)
         let host = NSHostingView(rootView: PluginComposerView(composer: composer)
             .background(Color(nsColor: .windowBackgroundColor)))
-        let window = NSWindow(contentRect: bounds, styleMask: [.borderless], backing: .buffered, defer: false)
-        window.isReleasedWhenClosed = false
+        let window = QuietWindow(size: bounds.size)
         window.appearance = NSAppearance(named: appearance)
         window.contentView = host
         host.frame = bounds

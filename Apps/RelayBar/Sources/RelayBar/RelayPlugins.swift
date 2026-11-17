@@ -1,6 +1,7 @@
 import AppKit
 import Composition
 import CompositionUI
+import HouseStyle
 import SwiftUI
 
 /// RelayBar's plugin catalog: the optional features a person can switch in the Plugins window.
@@ -35,7 +36,12 @@ enum RelayPlugins {
         )
     }
 
-    static func all(frameInstalled: Bool) -> [PluginDescriptor] { [recovery, services, frame(installed: frameInstalled)] }
+    /// The palette's form, shared with Frame.
+    static let paperAppearance = PaperAppearance.plugin
+
+    static func all(frameInstalled: Bool) -> [PluginDescriptor] {
+        [recovery, services, frame(installed: frameInstalled), paperAppearance]
+    }
 }
 
 /// The Plugins window. It hosts the shared composer and stays until the app stops.

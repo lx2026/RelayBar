@@ -1,36 +1,28 @@
 import AppKit
+import HouseStyle
 import SwiftUI
 
 struct RelayBarRootView: View {
+    @HouseTracking private var house
     @EnvironmentObject private var store: TunnelStore
-    @ObservedObject private var launchAtLogin: LaunchAtLoginModel
-    @ObservedObject private var updates: UpdateModel
     @State private var screen: Screen = .list
     private let onRemoteFiles: () -> Void
-    private let onRevokeFrame: () -> Void
-    private let composition: RelayBarComposition?
+    private let onSettings: () -> Void
     private let serviceLabels: [UUID: ServiceLabel]
 
     private enum Screen {
         case list
         case editor(Tunnel?)
-        case settings
     }
 
     init(
-        loginItemService: any LoginItemServicing = MainAppLoginItemService(),
-        updateModel: UpdateModel,
-        loginModel: LaunchAtLoginModel? = nil,
         onRemoteFiles: @escaping () -> Void = {},
-        onRevokeFrame: @escaping () -> Void = {},
-        serviceLabels: [UUID: ServiceLabel] = [:],
-        composition: RelayBarComposition? = nil
+        onSettings: @escaping () -> Void = {},
+        serviceLabels: [UUID: ServiceLabel] = [:]
     ) {
-        launchAtLogin = loginModel ?? LaunchAtLoginModel(service: loginItemService)
-        updates = updateModel
-        self.onRemoteFiles = onRemoteFiles; self.onRevokeFrame = onRevokeFrame
+        self.onRemoteFiles = onRemoteFiles
+        self.onSettings = onSettings
         self.serviceLabels = serviceLabels
-        self.composition = composition
     }
 
     var body: some View {
@@ -42,7 +34,7 @@ struct RelayBarRootView: View {
                     onAdd: { screen = .editor(nil) },
                     onEdit: { screen = .editor($0) },
                     onRemoteFiles: onRemoteFiles,
-                    onSettings: { screen = .settings }
+                    onSettings: onSettings
                 )
             case .editor(let tunnel):
                 TunnelEditorView(
@@ -58,23 +50,152 @@ struct RelayBarRootView: View {
                         screen = .list
                     }
                 )
-            case .settings:
-                SettingsView(
-                    store: store,
-                    launchAtLogin: launchAtLogin,
-                    updates: updates,
-                    composition: composition,
-                    onRevokeFrame: onRevokeFrame,
-                    onBack: { screen = .list }
-                )
             }
         }
-        .frame(width: 380, height: 440)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .frame(width: RelayBarPopoverLayout.width, height: RelayBarPopoverLayout.height)
+        .foregroundStyle(HouseColor.ink)
+        .background(HouseColor.paper)
     }
 }
 
+/// What the popover header says after the app name: how many tunnels are active and, when any has
+/// failed, how many issues there are.
+struct PopoverHeaderSummary: Equatable {
+    /// Nil when there are no tunnels.
+    let activity: String?
+    /// Nil when no tunnel has failed.
+    let issues: String?
+
+    init(phases: [TunnelPhase]) {
+        if phases.isEmpty {
+            activity = nil
+        } else {
+            let active = phases.count(where: \.isLifecycleActive)
+            activity = active == 0 ? "All stopped" : "\(active) active"
+        }
+        let failed = phases.count { phase in
+            if case .failed = phase { return true }
+            return false
+        }
+        issues = switch failed {
+        case 0: nil
+        case 1: "1 issue"
+        default: "\(failed) issues"
+        }
+    }
+
+    var accessibilityLabel: String {
+        var parts = ["RelayBar"]
+        if let activity { parts.append(activity == "All stopped" ? "all stopped" : activity) }
+        if let issues { parts.append(issues) }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// The part of a row's second line after its port mapping, and the tooltip that holds its full wording.
+struct TunnelRowDetail: Equatable {
+    enum Tone: Equatable {
+        case secondary
+        case warning
+        case failure
+    }
+
+    let text: String
+    let help: String
+    /// What VoiceOver reads: everything on screen plus what only the tooltip shows.
+    let spokenText: String
+    let tone: Tone
+
+    init(phase: TunnelPhase, host: String, serviceLabel: ServiceLabel?) {
+        switch phase {
+        case .stopped, .running:
+            text = serviceLabel.map { "\(host) · \($0.caption)" } ?? host
+            help = text
+            spokenText = text
+            tone = .secondary
+        case .starting:
+            text = "Connecting…"
+            help = text
+            spokenText = text
+            tone = .secondary
+        case .retrying(let attempt, let maxAttempts, let delay, let message):
+            let countdown = "Retrying in \(max(1, Int(ceil(delay))))s"
+            text = "\(countdown) · attempt \(attempt) of \(maxAttempts)"
+            help = "\(countdown) · \(message)"
+            spokenText = "\(text) · \(message)"
+            tone = .warning
+        case .failed(let message):
+            text = message
+            help = message
+            spokenText = message
+            tone = .failure
+        }
+    }
+}
+
+/// A tunnel's switch. Its position always follows the tunnel's state. A request that
+/// changes nothing, such as a start that fails the same way again, publishes nothing,
+/// so the view refreshes itself rather than rely on the control to go back on its own.
+struct TunnelSwitch: View {
+    let name: String
+    let isActive: Bool
+    let onToggle: () -> Void
+
+    @State private var requests = 0
+
+    var body: some View {
+        let _ = requests
+        Toggle(isActive ? "Stop \(name)" : "Start \(name)", isOn: Binding(
+            get: { isActive },
+            set: {
+                guard $0 != isActive else { return }
+                onToggle()
+                requests &+= 1
+            }
+        ))
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .labelsHidden()
+        .help(isActive ? "Stop profile" : "Start profile")
+    }
+}
+
+/// The one lifecycle action a named group's header offers.
+enum TunnelGroupPrimaryAction: Equatable {
+    case startAll
+    case stopAll
+
+    var title: String {
+        switch self {
+        case .startAll: "Start All"
+        case .stopAll: "Stop All"
+        }
+    }
+
+    func label(forGroup name: String) -> String {
+        switch self {
+        case .startAll: "Start all tunnels in \(name)"
+        case .stopAll: "Stop all tunnels in \(name)"
+        }
+    }
+}
+
+#if DEBUG
+private struct PreviewHoveredTunnelKey: EnvironmentKey {
+    static let defaultValue: UUID? = nil
+}
+
+extension EnvironmentValues {
+    /// Draws this tunnel's row as if the pointer were over it, for snapshots.
+    var previewHoveredTunnel: UUID? {
+        get { self[PreviewHoveredTunnelKey.self] }
+        set { self[PreviewHoveredTunnelKey.self] = newValue }
+    }
+}
+#endif
+
 private struct TunnelListView: View {
+    @HouseTracking private var house
     @EnvironmentObject private var store: TunnelStore
     let serviceLabels: [UUID: ServiceLabel]
     let onAdd: () -> Void
@@ -83,49 +204,56 @@ private struct TunnelListView: View {
     let onSettings: () -> Void
 
     var body: some View {
-        let grouping = store.grouping
-
         VStack(spacing: 0) {
             header
-            Divider()
+            HouseDivider()
 
             if store.tunnels.isEmpty {
                 emptyState
             } else {
-                ScrollView {
-                    LazyVStack(spacing: grouping.isGrouped ? 16 : 8) {
-                        if grouping.isGrouped {
-                            ForEach(grouping.sections) { section in
-                                VStack(spacing: 8) {
-                                    groupHeader(
-                                        section,
-                                        availableGroups: grouping.groupNames
-                                    )
-                                    ForEach(section.tunnels) { tunnel in
-                                        tunnelRow(
-                                            tunnel,
-                                            availableGroups: grouping.groupNames
-                                        )
-                                    }
-                                }
-                            }
-                        } else {
-                            ForEach(store.tunnels) { tunnel in
-                                tunnelRow(
-                                    tunnel,
-                                    availableGroups: grouping.groupNames
+                list
+            }
+
+            footer
+        }
+    }
+
+    private var list: some View {
+        let grouping = store.grouping
+
+        return PopoverScrollContainer(
+            horizontalInset: RelayBarPopoverLayout.listHorizontalInset,
+            topInset: RelayBarPopoverLayout.listTopInset,
+            bottomInset: RelayBarPopoverLayout.listBottomInset
+        ) {
+            LazyVStack(alignment: .leading, spacing: 0) {
+                if grouping.isGrouped {
+                    ForEach(grouping.sections) { section in
+                        VStack(spacing: 0) {
+                            groupHeader(section, availableGroups: grouping.groupNames)
+                                .padding(
+                                    .top,
+                                    section.id == grouping.sections.first?.id
+                                        ? 0 : RelayBarPopoverLayout.groupSpacing
                                 )
+                            ForEach(section.tunnels) { tunnel in
+                                tunnelRow(tunnel, availableGroups: grouping.groupNames)
                             }
                         }
                     }
-                    .padding(RelayBarPopoverLayout.contentInset)
+                } else {
+                    ForEach(store.tunnels) { tunnel in
+                        tunnelRow(tunnel, availableGroups: grouping.groupNames)
+                    }
                 }
             }
-
-            Divider()
-            remoteFilesAction
-            Divider()
-            footer
+        }
+        .mask {
+            VStack(spacing: 0) {
+                Color.black
+                LinearGradient(colors: [.black, .clear], startPoint: .top, endPoint: .bottom)
+                    .frame(height: RelayBarPopoverLayout.listBottomInset)
+            }
         }
     }
 
@@ -150,11 +278,13 @@ private struct TunnelListView: View {
             )
         } else {
             Text(section.displayName)
-                .font(.subheadline.weight(.medium))
-                .foregroundStyle(.secondary)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(HouseColor.muted)
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
+                .padding(.leading, RelayBarPopoverLayout.rowLeadingInset)
+                .padding(.trailing, RelayBarPopoverLayout.rowTrailingInset)
+                .frame(height: RelayBarPopoverLayout.groupHeaderHeight)
                 .accessibilityAddTraits(.isHeader)
         }
     }
@@ -181,44 +311,51 @@ private struct TunnelListView: View {
     }
 
     private var header: some View {
-        HStack(spacing: 12) {
-            AppMark(size: 32)
+        let summary = PopoverHeaderSummary(phases: store.tunnels.map { store.phase(for: $0) })
 
-            VStack(alignment: .leading, spacing: 2) {
-                Text("RelayBar")
-                    .font(.title3.weight(.semibold))
-                Text(activityText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
+        return HStack(spacing: 8) {
             HStack(spacing: 8) {
-                Button(action: onSettings) {
-                    Image(systemName: "gearshape")
+                Text("RelayBar")
+                    .font(.system(size: 13, weight: .semibold))
+                if let activity = summary.activity {
+                    Text(activity)
+                        .font(.system(size: 12))
+                        .foregroundStyle(HouseColor.muted)
                 }
-                .help("Settings")
-                .accessibilityLabel("Settings")
-
-                Button(action: onAdd) {
-                    Image(systemName: "plus")
+                if let issues = summary.issues {
+                    HStack(spacing: 4) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 10))
+                        Text(issues)
+                            .font(.system(size: 12))
+                    }
+                    .foregroundStyle(HouseColor.failure)
                 }
-                .help("Add tunnel")
-                .accessibilityLabel("Add tunnel")
             }
-            .buttonStyle(PopoverIconButtonStyle())
-        }
-        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
-        .frame(minHeight: RelayBarPopoverLayout.headerHeight)
-    }
+            .lineLimit(1)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(summary.accessibilityLabel)
+            .accessibilityAddTraits(.isHeader)
 
-    private var activityText: String {
-        switch store.runningCount {
-        case 0: return store.tunnels.isEmpty ? "Simple SSH tunnels" : "All tunnels stopped"
-        case 1: return "1 tunnel active"
-        default: return "\(store.runningCount) tunnels active"
+            Spacer(minLength: 0)
+
+            Button(action: onSettings) {
+                Image(systemName: "gearshape")
+            }
+            .keyboardShortcut(",", modifiers: .command)
+            .help("Settings")
+            .accessibilityLabel("Settings")
+
+            Button(action: onAdd) {
+                Image(systemName: "plus")
+            }
+            .help("Add tunnel")
+            .accessibilityLabel("Add tunnel")
         }
+        .buttonStyle(PopoverIconButtonStyle())
+        .padding(.leading, RelayBarPopoverLayout.headerTitleInset)
+        .padding(.trailing, RelayBarPopoverLayout.headerButtonInset)
+        .frame(height: RelayBarPopoverLayout.headerHeight)
     }
 
     private var emptyState: some View {
@@ -239,7 +376,7 @@ private struct TunnelListView: View {
                     .font(.title3.weight(.semibold))
                 Text("Paste an SSH command or add a tunnel by hand.")
                     .font(.callout)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HouseColor.muted)
             }
 
             Button("Add your first tunnel", action: onAdd)
@@ -252,42 +389,41 @@ private struct TunnelListView: View {
         .padding(24)
     }
 
+    /// Forty points including the hairline above it.
     private var footer: some View {
-        HStack {
-            Label("Uses macOS SSH", systemImage: "lock.shield")
-            Spacer()
-            Button("Quit") { store.quit() }
-                .buttonStyle(.plain)
+        VStack(spacing: 0) {
+            HouseDivider()
+            footerActions
+                .frame(maxHeight: .infinity)
         }
-        .font(.subheadline)
-        .foregroundStyle(.secondary)
-        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
-        .frame(minHeight: 36)
+        .frame(height: RelayBarPopoverLayout.footerHeight)
     }
 
-    private var remoteFilesAction: some View {
-        Button(action: onRemoteFiles) {
-            HStack(spacing: 8) {
-                Image(systemName: "folder")
-                    .foregroundStyle(Color.accentColor)
-                Text("Remote Files…")
-                Spacer()
-                Image(systemName: "arrow.up.right")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.tertiary)
+    private var footerActions: some View {
+        HStack(spacing: 0) {
+            Button(action: onRemoteFiles) {
+                HStack(spacing: 7) {
+                    Image(systemName: "folder")
+                        .font(.system(size: 13))
+                        .frame(width: 16, height: 16)
+                    Text("Remote Files…")
+                }
             }
-            .font(.callout.weight(.medium))
-            .contentShape(Rectangle())
+            .buttonStyle(PopoverTextButtonStyle())
+            .help("Open a folder on a saved SSH server")
+            .accessibilityHint("Opens the Remote Files window")
+
+            Spacer(minLength: 0)
+
+            Button("Quit") { store.quit() }
+                .buttonStyle(PopoverTextButtonStyle(tint: HouseColor.muted))
         }
-        .buttonStyle(.plain)
-        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
-        .frame(minHeight: 36)
-        .help("Open a folder on a saved SSH server")
-        .accessibilityHint("Opens the Remote Files window")
+        .padding(.horizontal, RelayBarPopoverLayout.footerInset)
     }
 }
 
 private struct TunnelRow: View {
+    @HouseTracking private var house
     let tunnel: Tunnel
     let phase: TunnelPhase
     let runtimePorts: [UUID: Int]
@@ -301,137 +437,28 @@ private struct TunnelRow: View {
     let onMoveToGroup: (String?) -> Void
     let onDelete: () -> Void
 
+    @State private var isHovered = false
     @State private var isNamingNewGroup = false
+    @FocusState private var focusedControl: Control?
+    #if DEBUG
+    @Environment(\.previewHoveredTunnel) private var previewHoveredTunnel
+    #endif
+
+    private enum Control: Hashable {
+        case open
+        case menu
+        case toggle
+    }
+
+    private static let actionSpacing: CGFloat = 2
+    /// The actions sit this much closer to the switch than the row's spacing.
+    private static let actionTrailingOverlap: CGFloat = 4
 
     var body: some View {
-        VStack(spacing: 8) {
-            // One spacing for text and controls keeps the button columns
-            // aligned with the group header's controls.
-            HStack(spacing: 8) {
-                statusIndicator
-
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Text(tunnel.displayName)
-                            .font(.body.weight(.semibold))
-                            .lineLimit(1)
-                        if case .failed = phase {
-                            statusBadge("Issue", color: .red)
-                        } else if case .retrying(let attempt, let maxAttempts, _, _) = phase {
-                            statusBadge("Retry \(attempt)/\(maxAttempts)", color: .orange)
-                        }
-                    }
-
-                    Text(tunnel.compactDisplaySummary(runtimePorts: runtimePorts))
-                        .font(.system(.callout, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                        .help(tunnel.displaySummary(runtimePorts: runtimePorts))
-                        .accessibilityLabel(tunnel.displaySummary(runtimePorts: runtimePorts))
-
-                    Text(errorOrHost)
-                        .font(.subheadline)
-                        .foregroundStyle(isFailure ? Color.red : Color.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer(minLength: 4)
-
-                if tunnel.unambiguousBrowserURL != nil {
-                    Button(action: onOpen) {
-                        Image(systemName: "safari")
-                    }
-                    .buttonStyle(PopoverIconButtonStyle(isEmphasized: phase == .running))
-                    .help(openButtonHelp)
-                    .accessibilityLabel("Open \(tunnel.displayName) in browser")
-                }
-
-                Menu {
-                    ForEach(Array(tunnel.rules.enumerated()), id: \.element.id) { index, rule in
-                        Menu(ruleMenuTitle(rule, index: index)) {
-                            if rule.localBrowserURL != nil {
-                                Button("Open in Browser", systemImage: "safari") {
-                                    onOpenRule(rule.id)
-                                }
-                            }
-
-                            if let endpoint = rule.copyableListenEndpoint(
-                                runtimePort: runtimePorts[rule.id]
-                            ) {
-                                Button("Copy \(copyLabel(for: rule))", systemImage: "doc.on.doc") {
-                                    copy(endpoint)
-                                }
-                            } else if rule.listen.tcp?.port == 0 {
-                                Button("Allocated port available while running") {}
-                                    .disabled(true)
-                            }
-
-                            if
-                                rule.kind == .remoteDynamic,
-                                let policy = tunnel.reverseSOCKSPolicy
-                            {
-                                Button("Destinations: \(policy.displayText)") {}
-                                    .disabled(true)
-                            }
-
-                            // Offered from the rule's shape alone. Probing the
-                            // filesystem here would put a stat in a body that
-                            // re-evaluates on every phase change.
-                            if let path = rule.createdLocalSocketPath {
-                                Button("Reveal Local Socket", systemImage: "finder") {
-                                    revealSocket(at: path)
-                                }
-                            }
-                        }
-                    }
-                    Divider()
-                    Menu("Move to Group") {
-                        Button {
-                            onMoveToGroup(nil)
-                        } label: {
-                            groupChoiceLabel(
-                                "Ungrouped",
-                                isSelected: tunnel.groupTag == nil
-                            )
-                        }
-                        ForEach(availableGroups, id: \.self) { group in
-                            Button {
-                                onMoveToGroup(group)
-                            } label: {
-                                groupChoiceLabel(
-                                    group,
-                                    isSelected: isCurrentGroup(group)
-                                )
-                            }
-                        }
-                        Divider()
-                        Button("New Group…") {
-                            isNamingNewGroup = true
-                        }
-                    }
-                    Button("Edit", systemImage: "pencil", action: onEdit)
-                    Divider()
-                    Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
-                } label: {
-                    Image(systemName: "ellipsis")
-                }
-                .popoverIconMenu()
-
-                // Start is what a stopped or failed profile most likely needs;
-                // once it runs, Open in Browser takes the emphasis instead.
-                Button(action: onToggle) {
-                    toggleIcon
-                }
-                .buttonStyle(PopoverIconButtonStyle(isEmphasized: !isActive))
-                .help(isActive ? "Stop profile" : "Start profile")
-                .accessibilityLabel(
-                    isActive ? "Stop \(tunnel.displayName)" : "Start \(tunnel.displayName)"
-                )
-            }
+        VStack(spacing: 0) {
+            line
 
             if isNamingNewGroup {
-                Divider()
                 InlineGroupNameEditor(
                     initialValue: "",
                     placeholder: "New group name",
@@ -445,64 +472,194 @@ private struct TunnelRow: View {
                         isNamingNewGroup = false
                     }
                 )
+                .padding(.leading, RelayBarPopoverLayout.rowLeadingInset
+                    + RelayBarPopoverLayout.statusColumnWidth + RelayBarPopoverLayout.rowSpacing)
+                .padding(.trailing, RelayBarPopoverLayout.rowTrailingInset)
+                .padding(.bottom, 8)
             }
         }
-        .padding(12)
-        .popoverCard()
+        .background(
+            RoundedRectangle(cornerRadius: RelayBarPopoverLayout.rowCornerRadius, style: .continuous)
+                .fill(isHighlighted || isNamingNewGroup
+                    ? HouseColor.fill : .clear)
+        )
+        .onHover { isHovered = $0 }
+        .clearingHoverWhenWindowResignsKey($isHovered)
     }
 
-    private func statusBadge(_ title: String, color: Color) -> some View {
-        Text(title)
-            .font(.subheadline.weight(.medium))
-            .foregroundStyle(color)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(color.opacity(0.1)))
-    }
+    private var line: some View {
+        HStack(spacing: RelayBarPopoverLayout.rowSpacing) {
+            TunnelStatusGlyph(phase: phase)
 
-    private var statusIndicator: some View {
-        Circle()
-            .fill(statusColor)
-            .frame(width: 8, height: 8)
-            .shadow(color: statusColor.opacity(isActive ? 0.45 : 0), radius: 3)
-    }
+            VStack(alignment: .leading, spacing: 2) {
+                Text(tunnel.displayName)
+                    .font(.system(size: 13, weight: .medium))
+                    .lineLimit(1)
+                secondLine
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            // Revealed actions take space from the text; hidden ones stay in
+            // place, invisible, so keyboard focus and VoiceOver still reach them.
+            .padding(.trailing, isRevealed ? actionsWidth + RelayBarPopoverLayout.rowSpacing
+                - Self.actionTrailingOverlap : 0)
+            .overlay(alignment: .trailing) {
+                actions
+                    .offset(x: Self.actionTrailingOverlap)
+                    .opacity(isRevealed ? 1 : 0.001)
+            }
 
-    @ViewBuilder private var toggleIcon: some View {
-        if showsProgress {
-            ProgressView()
-                .controlSize(.small)
-                .scaleEffect(0.7)
-        } else {
-            Image(systemName: isActive ? "stop.fill" : "play.fill")
-                .imageScale(.small)
-                .offset(x: isActive ? 0 : 1)
+            TunnelSwitch(name: tunnel.displayName, isActive: isActive, onToggle: onToggle)
+                .focused($focusedControl, equals: .toggle)
         }
+        .padding(.leading, RelayBarPopoverLayout.rowLeadingInset)
+        .padding(.trailing, RelayBarPopoverLayout.rowTrailingInset)
+        .frame(height: RelayBarPopoverLayout.rowHeight)
+        .contentShape(Rectangle())
+        .contextMenu { rowMenu }
+    }
+
+    private var secondLine: some View {
+        let detail = TunnelRowDetail(phase: phase, host: tunnel.sshHost, serviceLabel: browserLabel)
+        let fullSummary = tunnel.displaySummary(runtimePorts: runtimePorts)
+
+        return HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text(tunnel.compactDisplaySummary(runtimePorts: runtimePorts))
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(HouseColor.muted)
+                // Equal priority: a long mapping gives up its middle rather
+                // than squeezing the host or the status text down to nothing.
+                .truncationMode(.middle)
+                .help(fullSummary)
+                .accessibilityLabel(fullSummary)
+            Text(" · " + detail.text)
+                .font(.system(size: 11))
+                .foregroundStyle(color(for: detail.tone))
+                .truncationMode(.tail)
+                .help(detail.help)
+                .accessibilityLabel(detail.spokenText)
+        }
+        .lineLimit(1)
+    }
+
+    private var actions: some View {
+        HStack(spacing: Self.actionSpacing) {
+            if tunnel.unambiguousBrowserURL != nil {
+                Button(action: onOpen) {
+                    Image(systemName: "arrow.up.right")
+                }
+                .buttonStyle(PopoverIconButtonStyle.row())
+                .help(openButtonHelp)
+                .accessibilityLabel("Open \(tunnel.displayName) in browser")
+                .focused($focusedControl, equals: .open)
+            }
+
+            Menu {
+                rowMenu
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .popoverIconMenu()
+            .help("More actions for \(tunnel.displayName)")
+            .accessibilityLabel("More actions for \(tunnel.displayName)")
+            .focused($focusedControl, equals: .menu)
+        }
+    }
+
+    private var actionsWidth: CGFloat {
+        let size = RelayBarPopoverLayout.rowIconButtonSize
+        return tunnel.unambiguousBrowserURL == nil ? size : size * 2 + Self.actionSpacing
+    }
+
+    @ViewBuilder
+    private var rowMenu: some View {
+        ForEach(Array(tunnel.rules.enumerated()), id: \.element.id) { index, rule in
+            Menu(ruleMenuTitle(rule, index: index)) {
+                if rule.localBrowserURL != nil {
+                    Button("Open in Browser", systemImage: "safari") {
+                        onOpenRule(rule.id)
+                    }
+                }
+
+                if let endpoint = rule.copyableListenEndpoint(
+                    runtimePort: runtimePorts[rule.id]
+                ) {
+                    Button("Copy \(copyLabel(for: rule))", systemImage: "doc.on.doc") {
+                        copy(endpoint)
+                    }
+                } else if rule.listen.tcp?.port == 0 {
+                    Button("Allocated port available while running") {}
+                        .disabled(true)
+                }
+
+                if
+                    rule.kind == .remoteDynamic,
+                    let policy = tunnel.reverseSOCKSPolicy
+                {
+                    Button("Destinations: \(policy.displayText)") {}
+                        .disabled(true)
+                }
+
+                // Offered from the rule's shape alone. Probing the
+                // filesystem here would put a stat in a body that
+                // re-evaluates on every phase change.
+                if let path = rule.createdLocalSocketPath {
+                    Button("Reveal Local Socket", systemImage: "finder") {
+                        revealSocket(at: path)
+                    }
+                }
+            }
+        }
+        Divider()
+        Menu("Move to Group") {
+            Button {
+                onMoveToGroup(nil)
+            } label: {
+                groupChoiceLabel(
+                    "Ungrouped",
+                    isSelected: tunnel.groupTag == nil
+                )
+            }
+            ForEach(availableGroups, id: \.self) { group in
+                Button {
+                    onMoveToGroup(group)
+                } label: {
+                    groupChoiceLabel(
+                        group,
+                        isSelected: isCurrentGroup(group)
+                    )
+                }
+            }
+            Divider()
+            Button("New Group…") {
+                isNamingNewGroup = true
+            }
+        }
+        Button("Edit", systemImage: "pencil", action: onEdit)
+        Divider()
+        Button("Delete", systemImage: "trash", role: .destructive, action: onDelete)
+    }
+
+    /// Under the pointer, or drawn so for a snapshot.
+    private var isHighlighted: Bool {
+        #if DEBUG
+        if previewHoveredTunnel == tunnel.id { return true }
+        #endif
+        return isHovered
+    }
+
+    private var isRevealed: Bool {
+        isHighlighted || focusedControl != nil
     }
 
     private var isActive: Bool {
         phase.isLifecycleActive
     }
 
-    private var showsProgress: Bool {
-        switch phase {
-        case .starting, .retrying:
-            return true
-        case .stopped, .running, .failed:
-            return false
-        }
-    }
-
-    private var isFailure: Bool {
-        if case .failed = phase { return true }
-        return false
-    }
-
-    private var statusColor: Color {
-        switch phase {
-        case .running: return .green
-        case .starting, .retrying: return .orange
-        case .failed: return .red
-        case .stopped: return Color.secondary.opacity(0.45)
+    private func color(for tone: TunnelRowDetail.Tone) -> Color {
+        switch tone {
+        case .secondary: HouseColor.muted
+        case .warning: HouseColor.warning
+        case .failure: HouseColor.failure
         }
     }
 
@@ -514,18 +671,6 @@ private struct TunnelRow: View {
             return "Open in browser when connected"
         case .stopped, .failed:
             return "Start tunnel and open in browser"
-        }
-    }
-
-    private var errorOrHost: String {
-        switch phase {
-        case .failed(let message):
-            return message
-        case .retrying(_, _, let delay, let message):
-            return "Retrying in \(max(1, Int(ceil(delay))))s · \(message)"
-        case .stopped, .starting, .running:
-            guard let browserLabel else { return "via \(tunnel.sshHost)" }
-            return "via \(tunnel.sshHost) · \(browserLabel.caption)"
         }
     }
 
@@ -587,7 +732,73 @@ private struct TunnelRow: View {
     }
 }
 
+/// A row's status, told apart by shape as well as colour.
+private struct TunnelStatusGlyph: View {
+    @HouseTracking private var house
+    let phase: TunnelPhase
+
+    var body: some View {
+        Group {
+            switch phase {
+            case .stopped:
+                Circle()
+                    .strokeBorder(HouseColor.faint, lineWidth: 1.5)
+                    .frame(width: 8, height: 8)
+            case .running:
+                Circle()
+                    .fill(HouseColor.running)
+                    .frame(width: 8, height: 8)
+            case .starting:
+                ProgressArc(color: HouseColor.muted)
+            case .retrying:
+                ProgressArc(color: HouseColor.retrying)
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 10))
+                    .foregroundStyle(HouseColor.failure)
+            }
+        }
+        .frame(width: RelayBarPopoverLayout.statusColumnWidth, height: RelayBarPopoverLayout.statusColumnWidth)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(statusName)
+    }
+
+    private var statusName: String {
+        switch phase {
+        case .stopped: "Stopped"
+        case .starting: "Starting"
+        case .retrying: "Retrying"
+        case .running: "Running"
+        case .failed: "Failed"
+        }
+    }
+}
+
+/// An open ring that turns while the tunnel connects; still under Reduce Motion.
+private struct ProgressArc: View {
+    let color: Color
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isTurning = false
+
+    var body: some View {
+        Circle()
+            .inset(by: 1)
+            .trim(from: 0, to: 0.75)
+            .stroke(color, style: StrokeStyle(lineWidth: 2, lineCap: .round))
+            // The gap faces the trailing side at rest.
+            .rotationEffect(.degrees(45 + (isTurning ? 360 : 0)))
+            .animation(
+                isTurning ? .linear(duration: 1).repeatForever(autoreverses: false) : nil,
+                value: isTurning
+            )
+            .frame(width: 10, height: 10)
+            .onAppear { isTurning = !reduceMotion }
+            .onChange(of: reduceMotion) { isTurning = !$0 }
+    }
+}
+
 private struct TunnelGroupHeader: View {
+    @HouseTracking private var house
     let name: String
     let availableGroups: [String]
     let availability: TunnelGroupActionAvailability
@@ -617,11 +828,14 @@ private struct TunnelGroupHeader: View {
                         isRenaming = false
                     }
                 )
+                .padding(.leading, RelayBarPopoverLayout.rowLeadingInset)
+                .padding(.trailing, RelayBarPopoverLayout.rowTrailingInset)
+                .padding(.vertical, 4)
             } else {
-                HStack(spacing: 8) {
+                HStack(spacing: 6) {
                     Text(name)
-                        .font(.subheadline.weight(.medium))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(HouseColor.muted)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .layoutPriority(1)
@@ -629,23 +843,41 @@ private struct TunnelGroupHeader: View {
 
                     Spacer(minLength: 0)
 
-                    groupLifecycleControls
-
                     Menu {
                         groupMenuActions
                     } label: {
                         Image(systemName: "ellipsis")
                     }
-                    .popoverIconMenu()
+                    .popoverIconMenu(style: .row(tint: HouseColor.muted))
                     .opacity(isHovered || isMenuFocused ? 1 : 0.001)
                     .focused($isMenuFocused)
                     .accessibilityLabel("\(name) group actions")
+
+                    let action = availability.primaryAction
+                    Button {
+                        switch action {
+                        case .startAll: onStartAll()
+                        case .stopAll: onStopAll()
+                        }
+                    } label: {
+                        Text(action.title)
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(Color(nsColor: RelayBarPopoverPalette.accentText))
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .fixedSize()
+                    .disabled(!availability.isPrimaryActionAvailable)
+                    .help(action.label(forGroup: name))
+                    .accessibilityLabel(action.label(forGroup: name))
                 }
-                // Matches the row card's inset so the controls line up
-                // with the rows' button columns.
-                .padding(.horizontal, 12)
+                .padding(.leading, RelayBarPopoverLayout.rowLeadingInset)
+                .padding(.trailing, RelayBarPopoverLayout.rowTrailingInset)
+                .frame(height: RelayBarPopoverLayout.groupHeaderHeight)
                 .contentShape(Rectangle())
                 .onHover { isHovered = $0 }
+                .clearingHoverWhenWindowResignsKey($isHovered)
                 .contextMenu {
                     groupMenuActions
                 }
@@ -654,35 +886,19 @@ private struct TunnelGroupHeader: View {
     }
 
     @ViewBuilder
-    private var groupLifecycleControls: some View {
-        HStack(spacing: 8) {
-            Button {
-                onStartAll()
-            } label: {
-                Image(systemName: "play.fill")
-                    .imageScale(.small)
-                    .offset(x: 1)
-            }
-            .disabled(!availability.canStartAll)
-            .help("Start all tunnels in \(name)")
-            .accessibilityLabel("Start all tunnels in \(name)")
-
-            Button {
-                onStopAll()
-            } label: {
-                Image(systemName: "stop.fill")
-                    .imageScale(.small)
-            }
-            .disabled(!availability.canStopAll)
-            .help("Stop all tunnels in \(name)")
-            .accessibilityLabel("Stop all tunnels in \(name)")
-        }
-        .buttonStyle(PopoverIconButtonStyle())
-        .accessibilityElement(children: .contain)
-    }
-
-    @ViewBuilder
     private var groupMenuActions: some View {
+        // The header shows only one of these; a group with some members
+        // running and some stopped still needs both.
+        Button("Start All", systemImage: "play.fill") {
+            onStartAll()
+        }
+        .disabled(!availability.canStartAll)
+        .accessibilityLabel("Start all tunnels in \(name)")
+        Button("Stop All", systemImage: "stop.fill") {
+            onStopAll()
+        }
+        .disabled(!availability.canStopAll)
+        .accessibilityLabel("Stop all tunnels in \(name)")
         Button("Restart All", systemImage: "arrow.clockwise") {
             onRestartAll()
         }
@@ -704,6 +920,16 @@ struct TunnelGroupActionAvailability: Equatable {
 
     var canRestartAll: Bool { canStopAll }
 
+    /// Stop All while any member is starting, retrying or running; otherwise Start All.
+    var primaryAction: TunnelGroupPrimaryAction { canStopAll ? .stopAll : .startAll }
+
+    var isPrimaryActionAvailable: Bool {
+        switch primaryAction {
+        case .startAll: canStartAll
+        case .stopAll: canStopAll
+        }
+    }
+
     init(phases: [TunnelPhase]) {
         canStartAll = phases.contains { !$0.isLifecycleActive }
         canStopAll = phases.contains(where: \.isLifecycleActive)
@@ -711,6 +937,7 @@ struct TunnelGroupActionAvailability: Equatable {
 }
 
 private struct InlineGroupNameEditor: View {
+    @HouseTracking private var house
     let placeholder: String
     let availableGroups: [String]
     let commitAccessibilityLabel: String
@@ -768,7 +995,7 @@ private struct InlineGroupNameEditor: View {
             if let validationMessage {
                 Text(validationMessage)
                     .font(.subheadline)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(HouseColor.failure)
             }
         }
         .onAppear {
@@ -793,26 +1020,5 @@ private struct InlineGroupNameEditor: View {
     private func cancel() {
         validationMessage = nil
         onCancel()
-    }
-}
-
-private struct AppMark: View {
-    let size: CGFloat
-
-    var body: some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: size * 0.29, style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color(red: 0.16, green: 0.50, blue: 0.98), Color(red: 0.16, green: 0.72, blue: 0.82)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-            Image(systemName: "arrow.left.arrow.right")
-                .font(.system(size: size * 0.43, weight: .bold))
-                .foregroundStyle(.white)
-        }
-        .frame(width: size, height: size)
     }
 }

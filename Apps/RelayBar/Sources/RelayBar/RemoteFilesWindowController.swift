@@ -1,5 +1,6 @@
 import AppKit
 import Combine
+import HouseStyle
 import SwiftUI
 
 enum RemoteFilesWindowSizing {

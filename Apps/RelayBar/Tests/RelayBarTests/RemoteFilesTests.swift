@@ -1,6 +1,7 @@
 import MarkdownRendering
 import AppKit
 import AVFoundation
+import CompositionFixtures
 import Darwin
 import SwiftUI
 import XCTest
@@ -5922,8 +5923,14 @@ final class RemoteFilesModelTests: XCTestCase {
         try await waitUntil { model.upload?.phase == .cancelled }
     }
 
+    /// Keys reach the page only through the app's key window, so this runs only when asked for. Even then the window
+    /// stays off screen and behind everything, and the test process cannot activate.
     func testMarkdownPreviewKeepsTheWindowKeysWhetherOrNotItHasTheFocus() async throws {
-        _ = NSApplication.shared
+        try XCTSkipUnless(
+            ProcessInfo.processInfo.environment["RELAYBAR_KEY_WINDOW_TESTS"] == "1",
+            "Set RELAYBAR_KEY_WINDOW_TESTS=1 to run tests that need a key window."
+        )
+        QuietWindow.prepareTestProcess()
         let (model, service) = makeDevboxModel(deletionUndoDelay: 60)
         let entries = ["FIRST.md", "SECOND.md", "THIRD.md"].map { makeFileEntry(name: $0) }
         service.listings["/srv/app"] = entries
@@ -5946,16 +5953,13 @@ final class RemoteFilesModelTests: XCTestCase {
         model.preview(entries[1])
         try await waitUntil(timeout: 5) { showing(entries[1]) }
 
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 600),
-            styleMask: [.titled, .resizable],
-            backing: .buffered,
-            defer: false
-        )
+        let window = QuietWindow(size: NSSize(width: 900, height: 600), styleMask: [.titled, .resizable])
         window.contentView = NSHostingView(
             rootView: RemoteFilesView(model: model, previewSidebarVisible: false)
         )
-        window.makeKeyAndOrderFront(nil)
+        window.allowsKey = true
+        window.orderInOffscreen()
+        window.makeKey()
         defer {
             window.orderOut(nil)
             window.contentView = nil

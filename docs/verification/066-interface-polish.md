@@ -1,6 +1,6 @@
 # Task 066 — interface polish
 
-Date: 2026-11-16. Implemented and committed locally; the owner has not yet reviewed the result. No push, version change or installation occurred.
+Date: 2026-11-16. Implemented and committed locally; the owner has not yet reviewed the result. The design-pass commit did not push, change versions or install apps. Both apps were subsequently notarized and installed at the owner's request; see [local installation evidence](066-local-notarized-install.md).
 
 ## What changed
 

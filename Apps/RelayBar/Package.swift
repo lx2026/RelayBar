@@ -19,7 +19,8 @@ let package = Package(
             dependencies: [
                 .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"),
                 .product(name: "AssetGrouping", package: "AppComposition"),
-                .product(name: "MarkdownRendering", package: "AppComposition")
+                .product(name: "MarkdownRendering", package: "AppComposition"),
+                .product(name: "HouseStyle", package: "AppComposition")
             ],
             path: "Sources/RelayBar",
             resources: [
@@ -31,7 +32,7 @@ let package = Package(
         ),
         .testTarget(
             name: "RelayBarTests",
-            dependencies: ["RelayBar", .product(name: "CompositionFixtures", package: "AppComposition"), .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition")],
+            dependencies: ["RelayBar", .product(name: "CompositionFixtures", package: "AppComposition"), .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition"), .product(name: "HouseStyle", package: "AppComposition")],
             path: "Tests/RelayBarTests",
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency")

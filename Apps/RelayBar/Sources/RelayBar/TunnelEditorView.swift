@@ -1,6 +1,8 @@
+import HouseStyle
 import SwiftUI
 
 struct TunnelEditorView: View {
+    @HouseTracking private var house
     let tunnel: Tunnel?
     let availableGroups: [String]
     let onCancel: () -> Void
@@ -73,7 +75,7 @@ struct TunnelEditorView: View {
     var body: some View {
         VStack(spacing: 0) {
             editorHeader
-            Divider()
+            HouseDivider()
 
             PopoverScrollContainer {
                 VStack(alignment: .leading, spacing: 16) {
@@ -86,7 +88,7 @@ struct TunnelEditorView: View {
                 }
             }
 
-            Divider()
+            HouseDivider()
             actionBar
         }
         .onAppear {
@@ -95,7 +97,7 @@ struct TunnelEditorView: View {
     }
 
     private var editorHeader: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 4) {
             Button(action: onCancel) {
                 Image(systemName: "chevron.left")
             }
@@ -103,11 +105,12 @@ struct TunnelEditorView: View {
             .accessibilityLabel("Back")
 
             Text(tunnel == nil ? "New Profile" : "Edit Profile")
-                .font(.title3.weight(.semibold))
-            Spacer()
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, RelayBarPopoverLayout.contentInset)
-        .frame(minHeight: RelayBarPopoverLayout.headerHeight)
+        .padding(.horizontal, RelayBarPopoverLayout.headerButtonInset)
+        .frame(height: RelayBarPopoverLayout.headerHeight)
     }
 
     private var quickImport: some View {
@@ -136,11 +139,11 @@ struct TunnelEditorView: View {
             if let importError {
                 Label(importError, systemImage: "exclamationmark.circle.fill")
                     .font(.subheadline)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(HouseColor.failure)
             } else {
                 Text("Paste a forwarding-only SSH command. All -L, -D, and -R rules are imported.")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HouseColor.muted)
             }
         }
         .padding(12)
@@ -184,7 +187,7 @@ struct TunnelEditorView: View {
                     systemImage: "checkmark.circle"
                 )
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(HouseColor.muted)
             }
         }
     }
@@ -231,7 +234,7 @@ struct TunnelEditorView: View {
                     systemImage: "exclamationmark.circle"
                 )
                 .font(.subheadline)
-                .foregroundStyle(.red)
+                .foregroundStyle(HouseColor.failure)
             }
         }
     }
@@ -255,7 +258,7 @@ struct TunnelEditorView: View {
                         .frame(minHeight: 56)
                         .overlay(
                             RoundedRectangle(cornerRadius: 5)
-                                .stroke(Color.secondary.opacity(0.25))
+                                .stroke(HouseColor.line)
                         )
                 }
             }
@@ -264,12 +267,12 @@ struct TunnelEditorView: View {
                 "Remote SOCKS lets clients on the SSH-server side open TCP connections from this Mac’s network position."
             )
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(HouseColor.muted)
         }
         .padding(12)
         .background(
             RoundedRectangle(cornerRadius: RelayBarPopoverLayout.cardCornerRadius, style: .continuous)
-                .fill(Color.orange.opacity(0.07))
+                .fill(HouseColor.retrying.opacity(0.07))
         )
     }
 
@@ -292,7 +295,7 @@ struct TunnelEditorView: View {
                     "RelayBar never replaces an existing file, directory, symlink, or unowned socket."
                 )
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(HouseColor.muted)
             }
             .padding(.top, 8)
         }
@@ -308,7 +311,7 @@ struct TunnelEditorView: View {
                     systemImage: "exclamationmark.triangle.fill"
                 )
                 .font(.subheadline.weight(.medium))
-                .foregroundStyle(.orange)
+                .foregroundStyle(HouseColor.warning)
             }
         }
 
@@ -318,7 +321,7 @@ struct TunnelEditorView: View {
                 systemImage: "network"
             )
             .font(.subheadline)
-            .foregroundStyle(.secondary)
+            .foregroundStyle(HouseColor.muted)
         }
 
         if hasReverseSOCKS, reversePolicyChoice == .unspecified {
@@ -327,7 +330,7 @@ struct TunnelEditorView: View {
                 systemImage: "exclamationmark.circle.fill"
             )
             .font(.subheadline)
-            .foregroundStyle(.red)
+            .foregroundStyle(HouseColor.failure)
         }
     }
 
@@ -336,7 +339,7 @@ struct TunnelEditorView: View {
             if let validationMessage {
                 Label(validationMessage, systemImage: "exclamationmark.circle")
                     .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HouseColor.muted)
                     .fixedSize(horizontal: false, vertical: true)
                     .accessibilityLabel("Cannot save: \(validationMessage)")
             }
@@ -515,6 +518,7 @@ struct TunnelEditorView: View {
 }
 
 private struct GroupSelectionControl: View {
+    @HouseTracking private var house
     @Binding var selection: String?
     @Binding var hasPendingName: Bool
     let availableGroups: [String]
@@ -553,7 +557,7 @@ private struct GroupSelectionControl: View {
                     if let validationMessage {
                         Text(validationMessage)
                             .font(.subheadline)
-                            .foregroundStyle(.red)
+                            .foregroundStyle(HouseColor.failure)
                     }
                 }
                 .onAppear {
@@ -642,6 +646,7 @@ private enum GroupPickerChoice: Hashable {
 }
 
 private struct ForwardingRuleEditor: View {
+    @HouseTracking private var house
     @Binding var draft: ForwardingRuleDraft
     let position: Int
     let count: Int
@@ -677,17 +682,17 @@ private struct ForwardingRuleEditor: View {
                 .help("Duplicate rule")
                 .accessibilityLabel("Duplicate rule \(position)")
 
-                Divider()
+                HouseDivider()
                     .frame(height: 16)
 
                 Button(role: .destructive, action: onDelete) {
                     Image(systemName: "trash")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(HouseColor.failure)
                 }
                 .help("Delete rule")
                 .accessibilityLabel("Delete rule \(position)")
             }
-            .buttonStyle(PopoverIconButtonStyle())
+            .buttonStyle(RuleToolbarButtonStyle())
 
             Picker("Type", selection: $draft.kind) {
                 ForEach(ForwardingRuleKind.allCases, id: \.self) { kind in
@@ -736,7 +741,7 @@ private struct ForwardingRuleEditor: View {
                         : "Remote SOCKS clients connect here; destinations open from this Mac."
                 )
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(HouseColor.muted)
             }
         }
         .padding(12)
@@ -929,6 +934,7 @@ private enum ReversePolicyChoice: String, CaseIterable {
 }
 
 private struct EditorField<Content: View>: View {
+    @HouseTracking private var house
     let label: String
     let hint: String?
     @ViewBuilder let content: Content
@@ -941,12 +947,35 @@ private struct EditorField<Content: View>: View {
                 if let hint {
                     Text("· \(hint)")
                         .font(.subheadline)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(HouseColor.muted)
                 }
             }
             content
                 .textFieldStyle(.roundedBorder)
                 .font(.callout)
+        }
+    }
+}
+
+/// The circular buttons above each rule card.
+private struct RuleToolbarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        StyledLabel(configuration: configuration)
+    }
+
+    private struct StyledLabel: View {
+        @HouseTracking private var house
+        let configuration: Configuration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(HouseColor.ink.opacity(isEnabled ? 0.8 : 0.3))
+                .frame(width: 28, height: 28)
+                .background(Circle().fill(HouseColor.fill))
+                .contentShape(Circle())
+                .opacity(configuration.isPressed ? 0.7 : 1)
         }
     }
 }

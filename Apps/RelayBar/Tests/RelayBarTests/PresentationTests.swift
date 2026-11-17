@@ -25,7 +25,7 @@ final class PresentationTests: XCTestCase {
         let exposed = ForwardingRule(
             kind: .localDynamic, listen: .tcp(bindAddress: "0.0.0.0", port: 1080)
         )
-        XCTAssertEqual(exposed.compactDisplaySummary(runtimePort: nil), "0.0.0.0:1080 → SOCKS via server")
+        XCTAssertEqual(exposed.compactDisplaySummary(runtimePort: nil), "0.0.0.0:1080 → SOCKS")
     }
 
     func testRuleValidationExplainsMissingAndInvalidPorts() {

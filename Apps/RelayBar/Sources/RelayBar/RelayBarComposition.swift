@@ -3,6 +3,7 @@ import BridgeProtocol
 import Combine
 import Composition
 import CompositionUI
+import HouseStyle
 import PreviewSupport
 
 /// The services RelayBar's features exchange. A key is a type, so a feature can only name what exists.
@@ -193,6 +194,8 @@ final class RelayBarComposition: ObservableObject {
     private let unavailableUpdates = UpdateModel(service: UnavailableUpdateService())
     /// Made the first time the Plugins window is shown; closed and released when the app stops.
     private(set) var pluginsWindow: RelayPluginsWindowController?
+    /// Made the first time Settings opens; closed and released when the app stops.
+    private(set) var settingsWindow: RelaySettingsWindowController?
     /// The catalog as decided at launch, when Open in Frame's default was set from whether Frame was installed.
     let plugins: [PluginDescriptor]
     let framePlugin: PluginDescriptor
@@ -258,6 +261,12 @@ final class RelayBarComposition: ObservableObject {
             change.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         }
         runtime.$statuses.sink { [weak self] statuses in self?.statusesChanged(statuses) }.store(in: &observations)
+        // Paper Appearance is drawn by the shell, not run as a feature: the saved choice applies before the first
+        // window, and each later choice applies at once.
+        let saved = preferences.peek()?.plugins ?? preferences.value.plugins
+        HousePalette.apply(PaperAppearance.form(saved))
+        preferences.$value.dropFirst().map { PaperAppearance.form($0.plugins) }.removeDuplicates()
+            .sink { HousePalette.apply($0) }.store(in: &observations)
     }
 
     /// The whole tree, decided in one place from what the user chose and what is open.
@@ -314,6 +323,8 @@ final class RelayBarComposition: ObservableObject {
         remoteFilesOpen = false
         pluginsWindow?.close()
         pluginsWindow = nil
+        settingsWindow?.close()
+        settingsWindow = nil
         let unfinished = await runtime.shutdown(deadline: .seconds(20))
         for status in unfinished { NSLog("RelayBar: %@ did not finish unloading: %@", status.id, "\(status.phase)") }
     }
@@ -379,6 +390,13 @@ final class RelayBarComposition: ObservableObject {
         pluginsWindow?.show()
     }
 
+    /// Shows the Settings window, creating it the first time; a second request focuses it.
+    func showSettings() {
+        guard !stopping, environment.showsWindows else { return }
+        if settingsWindow == nil { settingsWindow = RelaySettingsWindowController(composition: self) }
+        settingsWindow?.show()
+    }
+
     // MARK: Settings
 
     private func update(_ change: (inout RelayBarPreferences) throws -> Void) async throws {
@@ -393,7 +411,10 @@ final class RelayBarComposition: ObservableObject {
         try await update { $0.automaticallyChecksForUpdates = enabled }
     }
 
-    func isPluginEnabled(_ plugin: PluginDescriptor) -> Bool { preferences.value.plugins.isEnabled(plugin) }
+    /// Before the document has loaded, the saved choice is read directly, as Paper Appearance is.
+    func isPluginEnabled(_ plugin: PluginDescriptor) -> Bool {
+        (preferences.peek() ?? preferences.value).plugins.isEnabled(plugin)
+    }
 
     /// Open in Frame's default can differ at the next launch, so its choice is pinned even when it matches today's.
     func setPlugin(_ plugin: PluginDescriptor, enabled: Bool) async throws {

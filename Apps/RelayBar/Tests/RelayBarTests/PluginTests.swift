@@ -3,6 +3,7 @@ import Combine
 import Composition
 import CompositionUI
 import Foundation
+import HouseStyle
 import Network
 import os
 import XCTest
@@ -39,7 +40,7 @@ final class PluginTests: XCTestCase {
     }
 
     func testSwitchingAPluginChangesOnlyItsFeatureAndTheChoiceSurvivesARestart() async throws {
-        XCTAssertEqual(RelayPlugins.all(frameInstalled: false).map(\.id), ["recovery", "services", "frame"])
+        XCTAssertEqual(RelayPlugins.all(frameInstalled: false).map(\.id), ["recovery", "services", "frame", "paper"])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("RelayPluginSwitch-\(UUID())")
         let url = root.appendingPathComponent("preferences.json")
         let (defaults, suite) = makeIsolatedDefaults()
@@ -74,6 +75,50 @@ final class PluginTests: XCTestCase {
         await reopened.start()
         XCTAssertNil(reopened.runtime.status("recovery"))
         XCTAssertEqual(reopened.runtime.status("services")?.isActive, true)
+        await reopened.stop()
+    }
+
+    // MARK: Paper Appearance
+
+    /// On by default; switching it changes what every token draws at once, tells open windows to redraw, reloads
+    /// no feature, and is stored like any other choice, so the next launch starts in the chosen form.
+    func testPaperAppearanceSwitchesThePaletteAtOnceAndTheChoiceSurvivesARestart() async throws {
+        defer { HousePalette.apply(.paper) }
+        HousePalette.apply(.standard)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("RelayPaper-\(UUID())")
+        let url = root.appendingPathComponent("preferences.json")
+        let (defaults, suite) = makeIsolatedDefaults()
+        defer {
+            defaults.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        let app = makeApp(defaults: defaults, preferencesURL: url)
+        XCTAssertEqual(HousePalette.form, .paper, "on by default, applied before anything is shown")
+        await app.start()
+        XCTAssertTrue(app.isPluginEnabled(RelayPlugins.paperAppearance))
+        XCTAssertTrue(app.plugins.contains(RelayPlugins.paperAppearance))
+        let ids = app.runtime.statuses.map(\.id)
+        let light = try XCTUnwrap(NSAppearance(named: .aqua))
+        func popover() -> NSColor { HousePalette.paper.nsColor.usingColorSpace(.sRGB, in: light) }
+
+        let redraw = expectation(forNotification: HousePalette.didChangeNotification, object: nil)
+        try await app.setPlugin(RelayPlugins.paperAppearance, enabled: false)
+        await fulfillment(of: [redraw], timeout: 1)
+        XCTAssertEqual(HousePalette.form, .standard)
+        XCTAssertEqual(popover(), NSColor.windowBackgroundColor.usingColorSpace(.sRGB, in: light))
+        XCTAssertEqual(app.runtime.statuses.map(\.id), ids, "no feature comes or goes")
+        let stored = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertTrue(stored.contains(#""paper" : false"#), stored)
+        await app.stop()
+
+        HousePalette.apply(.paper)
+        let reopened = makeApp(defaults: defaults, preferencesURL: url)
+        XCTAssertEqual(HousePalette.form, .standard, "the stored choice applies before the first window")
+        await reopened.start()
+        XCTAssertFalse(reopened.isPluginEnabled(RelayPlugins.paperAppearance))
+        try await reopened.setPlugin(RelayPlugins.paperAppearance, enabled: true)
+        XCTAssertEqual(HousePalette.form, .paper)
+        XCTAssertEqual(popover(), HousePalette.paper.resolved(in: .paper, appearance: light))
         await reopened.stop()
     }
 
@@ -620,8 +665,8 @@ final class PluginTests: XCTestCase {
             let (defaults, suite) = makeIsolatedDefaults()
             defer { defaults.removePersistentDomain(forName: suite) }
             let app = makeApp(defaults: defaults, frameInstalled: installed)
-            XCTAssertEqual(app.plugins.map(\.id), ["recovery", "services", "frame"])
-            XCTAssertEqual(app.plugins.last, app.framePlugin)
+            XCTAssertEqual(app.plugins.map(\.id), ["recovery", "services", "frame", "paper"])
+            XCTAssertEqual(app.plugins.first { $0.id == "frame" }, app.framePlugin)
             XCTAssertEqual(app.framePlugin.isOnByDefault, installed)
             await app.start()
             try await app.setRemoteFilesOpen(true)
@@ -1014,5 +1059,13 @@ private final class ProbeHTTPServer: @unchecked Sendable {
 
     private static func path(of request: String) -> String {
         request.split(separator: " ", maxSplits: 2).dropFirst().first.map(String.init) ?? ""
+    }
+}
+
+private extension NSColor {
+    func usingColorSpace(_ space: NSColorSpace, in appearance: NSAppearance) -> NSColor {
+        var result = self
+        appearance.performAsCurrentDrawingAppearance { result = usingColorSpace(space) ?? self }
+        return result
     }
 }

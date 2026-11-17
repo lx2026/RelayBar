@@ -38,6 +38,20 @@ struct ApplicationMetadata: Equatable {
         }
     }
 
+    /// The line under the app name in Settings, which shows the name itself.
+    var versionLine: String {
+        switch (version, build) {
+        case let (.some(version), .some(build)):
+            "Version \(version) (\(build))"
+        case let (.some(version), .none):
+            "Version \(version)"
+        case let (.none, .some(build)):
+            "Build \(build)"
+        case (.none, .none):
+            "Version unavailable"
+        }
+    }
+
     var accessibilityLabel: String {
         switch (version, build) {
         case let (.some(version), .some(build)):
