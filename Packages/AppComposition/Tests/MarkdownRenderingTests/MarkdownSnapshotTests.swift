@@ -1,4 +1,5 @@
 import AppKit
+import CompositionFixtures
 import WebKit
 import XCTest
 @testable import MarkdownRendering
@@ -7,10 +8,6 @@ import XCTest
 /// MARKDOWN_SNAPSHOT_DIR is set; MARKDOWN_SNAPSHOT_SOURCES may name a folder of other
 /// `.md` files to render instead, and MARKDOWN_SNAPSHOT_PALETTE a CSS override.
 /// A window taller than the screen, so a whole document fits in one snapshot.
-private final class UnconstrainedWindow: NSWindow {
-    override func constrainFrameRect(_ frameRect: NSRect, to screen: NSScreen?) -> NSRect { frameRect }
-}
-
 final class MarkdownSnapshotTests: XCTestCase {
     static let ordinary = """
     # Sampler run 14 — notes
@@ -107,7 +104,7 @@ final class MarkdownSnapshotTests: XCTestCase {
         guard let sources = environment["MARKDOWN_PERF_SOURCES"], let output = environment["MARKDOWN_PERF_OUT"] else {
             throw XCTSkip("Set MARKDOWN_PERF_SOURCES and MARKDOWN_PERF_OUT to measure.")
         }
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         let clock = ContinuousClock()
         func milliseconds(_ duration: Duration) -> String {
             String(format: "%.0fms", (Double(duration.components.seconds) + Double(duration.components.attoseconds) / 1e18) * 1_000)
@@ -116,9 +113,9 @@ final class MarkdownSnapshotTests: XCTestCase {
         configuration.websiteDataStore = .nonPersistent()
         configuration.defaultWebpagePreferences.allowsContentJavaScript = false
         let view = WKWebView(frame: NSRect(x: 0, y: 0, width: 820, height: 700), configuration: configuration)
-        let window = NSWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+        let window = QuietWindow(size: view.frame.size, styleMask: [.titled])
         window.contentView = view
-        window.orderBack(nil)
+        window.orderInOffscreen()
         func load(_ html: String, marker: String) async throws -> Double {
             view.loadHTMLString("<!doctype html><meta charset=\"utf-8\">" + html, baseURL: nil)
             for _ in 0..<20_000 {
@@ -151,7 +148,7 @@ final class MarkdownSnapshotTests: XCTestCase {
     @MainActor func testCaptureReferenceDocuments() async throws {
         let environment = ProcessInfo.processInfo.environment
         guard let output = environment["MARKDOWN_SNAPSHOT_DIR"] else { throw XCTSkip("Set MARKDOWN_SNAPSHOT_DIR to capture snapshots.") }
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         var documents = [("ordinary", Self.ordinary), ("extended", Self.extended)]
         if let sources = environment["MARKDOWN_SNAPSHOT_SOURCES"] {
             documents = try FileManager.default.contentsOfDirectory(atPath: sources).filter { $0.hasSuffix(".md") }.sorted().map {
@@ -168,10 +165,10 @@ final class MarkdownSnapshotTests: XCTestCase {
                 configuration.websiteDataStore = .nonPersistent()
                 configuration.defaultWebpagePreferences.allowsContentJavaScript = false
                 let view = WKWebView(frame: NSRect(x: 0, y: 0, width: width, height: 900), configuration: configuration)
-                let window = UnconstrainedWindow(contentRect: view.frame, styleMask: [.titled], backing: .buffered, defer: false)
+                let window = QuietWindow(size: view.frame.size, styleMask: [.titled])
                 window.appearance = NSAppearance(named: appearance)
                 window.contentView = view
-                window.orderBack(nil)
+                window.orderInOffscreen()
                 view.loadHTMLString(html, baseURL: nil)
                 var height: CGFloat = 0
                 for _ in 0..<400 {

@@ -1,10 +1,12 @@
 import AppKit
 import Composition
+import HouseStyle
 import SwiftUI
 
 /// The Plugins window: the plugin switches, the live feature map and an inspector for the selected feature.
 public struct PluginComposerView: View {
     @ObservedObject private var composer: PluginComposer
+    @HouseTracking private var house
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Shows a composer.
@@ -16,13 +18,18 @@ public struct PluginComposerView: View {
         HStack(spacing: 0) {
             PluginList(composer: composer)
                 .frame(width: 248)
-            Divider()
+                .background(HouseColor.panel)
+            HouseDivider()
             FeatureMap(composer: composer, animation: reduceMotion ? nil : .easeInOut(duration: 0.2))
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Divider()
+                .background(HouseColor.paper)
+            HouseDivider()
             Inspector(composer: composer)
                 .frame(width: 220)
+                .frame(maxHeight: .infinity)
+                .background(HouseColor.panel)
         }
+        .foregroundStyle(HouseColor.ink)
         .frame(minWidth: 900, minHeight: 540)
     }
 }
@@ -31,6 +38,7 @@ public struct PluginComposerView: View {
 
 private struct PluginList: View {
     @ObservedObject var composer: PluginComposer
+    @HouseTracking private var house
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -39,7 +47,7 @@ private struct PluginList: View {
                     .font(.system(size: 13, weight: .semibold))
                 Text("Switch optional features on or off. The map shows what each one needs.")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HouseColor.muted)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
@@ -62,6 +70,7 @@ private struct PluginList: View {
 private struct PluginRow: View {
     @ObservedObject var composer: PluginComposer
     let plugin: PluginDescriptor
+    @HouseTracking private var house
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -95,8 +104,8 @@ private struct PluginRow: View {
                 selecting(
                     Text(plugin.summary)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(3)
+                        .foregroundStyle(HouseColor.muted)
+                        .lineLimit(4)
                         .fixedSize(horizontal: false, vertical: true)
                 )
                 if let node = composer.trouble(of: plugin) {
@@ -108,7 +117,12 @@ private struct PluginRow: View {
         }
         .padding(8)
         .accessibilityElement(children: .contain)
-        .accessibilityAction(named: Text("Show on Map")) { composer.reveal(plugin) }
+        .accessibilityActions {
+            // A plugin that contributes no feature has nothing on the map to show.
+            if !plugin.features.isEmpty {
+                Button("Show on Map") { composer.reveal(plugin) }
+            }
+        }
     }
 
     /// The icon, title and summary select the plugin's first feature. The switch sits beside them, never inside.
@@ -199,6 +213,7 @@ private struct PlacedFrame: LayoutValueKey {
 private struct MapCanvas: View {
     @ObservedObject var composer: PluginComposer
     let animation: Animation?
+    @HouseTracking private var house
 
     var body: some View {
         let graph = composer.graph
@@ -253,9 +268,9 @@ private struct Link: Identifiable {
     /// without a live value is only dashed at rest and turns orange when someone asks about it.
     var color: Color {
         guard isFocused else {
-            return Color.secondary.opacity(0.2)
+            return HouseColor.muted.opacity(0.2)
         }
-        return isSatisfied ? Color.accentColor : Color(nsColor: .systemOrange)
+        return isSatisfied ? Color.accentColor : HouseColor.retrying
     }
 
     var stroke: StrokeStyle {
@@ -305,15 +320,16 @@ private struct EdgeCurve: Shape {
 
 private struct ContainerOutline: View {
     let name: String
+    @HouseTracking private var house
 
     var body: some View {
         RoundedRectangle(cornerRadius: 12)
-            .strokeBorder(Color.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            .strokeBorder(HouseColor.muted.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [4, 3]))
             .overlay(alignment: .topLeading) {
                 Text(name.uppercased())
                     .font(.system(size: 11))
                     .tracking(0.6)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HouseColor.muted)
                     .padding(.leading, FeatureMapLayout.containerPadding)
                     .padding(.top, 8)
             }
@@ -327,6 +343,7 @@ private struct MapNode: View {
     let node: FeatureGraph.Node
     let isPlugin: Bool
     let isSelected: Bool
+    @HouseTracking private var house
 
     var body: some View {
         let shape = RoundedRectangle(cornerRadius: 8)
@@ -341,12 +358,12 @@ private struct MapNode: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .background(
             ZStack {
-                shape.fill(Color(nsColor: .controlBackgroundColor))
+                shape.fill(HouseColor.card)
                 shape.fill(Color.accentColor.opacity(isPlugin ? 0.08 : 0))
             }
         )
         .overlay(
-            shape.strokeBorder(isPlugin ? Color.accentColor : Color(nsColor: .separatorColor), lineWidth: isPlugin ? 1.5 : 1)
+            shape.strokeBorder(isPlugin ? Color.accentColor : HouseColor.line, lineWidth: isPlugin ? 1.5 : 1)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 11)
@@ -367,6 +384,8 @@ private struct MapNode: View {
 }
 
 private struct Legend: View {
+    @HouseTracking private var house
+
     var body: some View {
         HStack(spacing: 14) {
             ForEach(PhaseKind.allCases, id: \.self) { kind in
@@ -374,7 +393,7 @@ private struct Legend: View {
                     StatusMark(kind: kind)
                     Text(kind.word)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(HouseColor.muted)
                 }
             }
         }
@@ -387,31 +406,32 @@ private struct Legend: View {
 /// A distinct shape per state, so colour is never the only signal.
 struct StatusMark: View {
     let kind: PhaseKind
+    @HouseTracking private var house
 
     var body: some View {
         Group {
             switch kind {
             case .running:
                 Circle()
-                    .fill(Color(nsColor: .systemGreen))
+                    .fill(HouseColor.running)
                     .frame(width: 8, height: 8)
             case .waiting:
                 Circle()
-                    .strokeBorder(Color.secondary, lineWidth: 1.25)
+                    .strokeBorder(HouseColor.muted, lineWidth: 1.25)
                     .frame(width: 8, height: 8)
             case .changing:
                 Circle()
-                    .strokeBorder(Color.secondary, lineWidth: 1.25)
-                    .background(HalfDisc().fill(Color.secondary))
+                    .strokeBorder(HouseColor.muted, lineWidth: 1.25)
+                    .background(HalfDisc().fill(HouseColor.muted))
                     .frame(width: 8, height: 8)
             case .failed:
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(Color(nsColor: .systemRed))
+                    .foregroundStyle(HouseColor.failure)
             case .stuck:
                 Image(systemName: "clock.badge.exclamationmark")
                     .font(.system(size: 9.5))
-                    .foregroundStyle(Color(nsColor: .systemOrange))
+                    .foregroundStyle(HouseColor.retrying)
             }
         }
         .frame(width: 12, height: 12)
@@ -436,6 +456,7 @@ private struct HalfDisc: Shape {
 
 private struct Inspector: View {
     @ObservedObject var composer: PluginComposer
+    @HouseTracking private var house
 
     var body: some View {
         if let node = composer.node(composer.selection) {
@@ -447,7 +468,7 @@ private struct Inspector: View {
         } else {
             Text("Select a feature to see what it needs and offers.")
                 .font(.system(size: 12))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(HouseColor.muted)
                 .multilineTextAlignment(.center)
                 .padding(24)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -470,7 +491,7 @@ private struct Inspector: View {
                 if let reason = node.phase.reason {
                     Text(reason)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(HouseColor.muted)
                         .textSelection(.enabled)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -492,7 +513,7 @@ private struct Inspector: View {
                     if dependents.isEmpty {
                         Text("Nothing else depends on this.")
                             .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(HouseColor.muted)
                     } else {
                         SectionTitle(text: "Turning this off also unloads")
                         ForEach(dependents, id: \.self) { id in
@@ -515,6 +536,7 @@ private struct InspectorLine: Hashable {
 private struct InspectorSection: View {
     let title: String
     let lines: [InspectorLine]
+    @HouseTracking private var house
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -522,7 +544,7 @@ private struct InspectorSection: View {
             if lines.isEmpty {
                 Text("Nothing")
                     .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(HouseColor.muted)
             }
             ForEach(lines, id: \.self) { line in
                 VStack(alignment: .leading, spacing: 1) {
@@ -530,7 +552,7 @@ private struct InspectorSection: View {
                         .font(.system(size: 12))
                     Text(line.detail)
                         .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(HouseColor.muted)
                 }
                 .textSelection(.enabled)
             }
@@ -540,10 +562,11 @@ private struct InspectorSection: View {
 
 private struct SectionTitle: View {
     let text: String
+    @HouseTracking private var house
 
     var body: some View {
         Text(text)
             .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(.secondary)
+            .foregroundStyle(HouseColor.muted)
     }
 }

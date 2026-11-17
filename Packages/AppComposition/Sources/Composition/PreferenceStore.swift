@@ -45,6 +45,17 @@ public final class PreferenceStore<Value: Codable & Equatable>: ObservableObject
         isLoaded = true
     }
 
+    /// What `load` would publish, read without loading: the loaded value, the saved document, or nil when there is no
+    /// usable saved document yet. Lets an app honour a choice before its first window, ahead of loading.
+    public func peek() -> Value? {
+        if isLoaded { return value }
+        guard let url, let data = try? Data(contentsOf: url),
+              (try? JSONDecoder().decode(Header.self, from: data))?.version == version,
+              let saved = try? JSONDecoder().decode(Envelope.self, from: data).preferences,
+              (try? validate(saved)) != nil else { return nil }
+        return saved
+    }
+
     public func update(_ change: (inout Value) throws -> Void) throws {
         guard isLoaded else { throw CompositionError("Preferences are not loaded.") }
         var next = value

@@ -18,6 +18,7 @@ Concise specifications for the behavior currently implemented by RelayBar. Frame
 ## Shared contracts
 
 - [Composition and previews](shared/composition.md)
+- [House style](shared/house-style.md)
 - [Data and state](shared/data-and-state.md)
 - [Security boundaries](shared/security-boundaries.md)
 

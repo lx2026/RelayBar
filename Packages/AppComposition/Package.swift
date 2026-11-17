@@ -10,7 +10,8 @@ let package = Package(
         .library(name: "CompositionFixtures", targets: ["CompositionFixtures"]),
         .library(name: "BridgeProtocol", targets: ["BridgeProtocol"]),
         .library(name: "AssetGrouping", targets: ["AssetGrouping"]),
-        .library(name: "MarkdownRendering", targets: ["MarkdownRendering"])
+        .library(name: "MarkdownRendering", targets: ["MarkdownRendering"]),
+        .library(name: "HouseStyle", targets: ["HouseStyle"])
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-cmark", exact: "0.8.0"),
@@ -19,7 +20,8 @@ let package = Package(
     ],
     targets: [
         .target(name: "Composition"),
-        .target(name: "CompositionUI", dependencies: ["Composition"]),
+        .target(name: "CompositionUI", dependencies: ["Composition", "HouseStyle"]),
+        .target(name: "HouseStyle", dependencies: ["Composition"]),
         .target(name: "PreviewSupport", dependencies: ["Composition"]),
         .target(name: "CompositionFixtures", dependencies: ["Composition"]),
         .target(name: "BridgeProtocol"),
@@ -30,7 +32,7 @@ let package = Package(
             .product(name: "Highlighter", package: "HighlighterSwift"),
             .product(name: "SwiftMath", package: "SwiftMath")
         ]),
-        .testTarget(name: "CompositionTests", dependencies: ["Composition", "CompositionUI", "CompositionFixtures", "PreviewSupport", "BridgeProtocol", "AssetGrouping"]),
-        .testTarget(name: "MarkdownRenderingTests", dependencies: ["MarkdownRendering"])
+        .testTarget(name: "CompositionTests", dependencies: ["Composition", "CompositionUI", "CompositionFixtures", "PreviewSupport", "BridgeProtocol", "AssetGrouping", "HouseStyle"]),
+        .testTarget(name: "MarkdownRenderingTests", dependencies: ["MarkdownRendering", "CompositionFixtures"])
     ]
 )
