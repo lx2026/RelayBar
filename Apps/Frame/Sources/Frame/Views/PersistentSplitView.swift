@@ -2,40 +2,38 @@ import AppKit
 import FrameKit
 import SwiftUI
 
-/// Native splitters provide resize cursors and saved pane sizes.
-struct PersistentSplitView<First: View, Second: View>: NSViewControllerRepresentable {
-  let name: String
-  let vertical: Bool
-  let minimumFirst: CGFloat
-  let minimumSecond: CGFloat
+/// The library and reader columns. A native splitter gives the resize cursor and remembers the library's width.
+struct ColumnSplitView<First: View, Second: View>: NSViewControllerRepresentable {
+  static var autosaveName: String { "Frame.Workspace.Sidebar.v2" }
+  static var minimumFirst: CGFloat { 200 }
+  static var maximumFirst: CGFloat { 420 }
+  static var defaultFirst: CGFloat { 260 }
   let first: First
   let second: Second
 
   func makeNSViewController(context: Context) -> SplitController {
     let controller = SplitController()
-    controller.splitView = PreviewSplitView()
-    controller.splitView.isVertical = vertical
+    controller.splitView = ColumnDividerView()
+    controller.splitView.isVertical = true
     controller.splitView.dividerStyle = .thin
-    let isSidebar = name.contains("Sidebar")
-    let isInfo = name.contains("Info")
-    controller.splitView.autosaveName = isSidebar ? name + ".v2" : name
-    controller.splitView.setAccessibilityLabel(vertical ? "Preview panel width" : "Preview image height")
+    controller.splitView.autosaveName = Self.autosaveName
+    controller.splitView.setAccessibilityLabel("Folders width")
     let firstHost = NSHostingController(rootView: styled(first))
     let secondHost = NSHostingController(rootView: styled(second))
     firstHost.sizingOptions = []
     secondHost.sizingOptions = []
-    firstHost.view.setFrameSize(NSSize(width: isSidebar ? 260 : 640, height: 320))
-    secondHost.view.setFrameSize(NSSize(width: isInfo ? 300 : 480, height: 300))
+    firstHost.view.setFrameSize(NSSize(width: Self.defaultFirst, height: 600))
+    secondHost.view.setFrameSize(NSSize(width: 1_020, height: 600))
     let firstItem = NSSplitViewItem(viewController: firstHost)
     let secondItem = NSSplitViewItem(viewController: secondHost)
-    firstItem.minimumThickness = minimumFirst
-    secondItem.minimumThickness = minimumSecond
-    firstItem.preferredThicknessFraction = name.contains("Sidebar") ? 0.20 : name.contains("Info") ? 0.75 : vertical ? 0.56 : 0.53
-    secondItem.preferredThicknessFraction = 1 - firstItem.preferredThicknessFraction
+    firstItem.minimumThickness = Self.minimumFirst
+    firstItem.maximumThickness = Self.maximumFirst
+    secondItem.minimumThickness = 480
+    firstItem.preferredThicknessFraction = 0.2
+    secondItem.preferredThicknessFraction = 0.8
     // Stay below AppKit's divider-drag priority (490), or dragging is blocked.
-    // Window growth belongs to the preview; the sidebar keeps its chosen width.
-    if isSidebar { firstItem.holdingPriority = NSLayoutConstraint.Priority(260) }
-    else { secondItem.holdingPriority = NSLayoutConstraint.Priority(260) }
+    // Window growth belongs to the reader; the library keeps its chosen width.
+    firstItem.holdingPriority = NSLayoutConstraint.Priority(260)
     controller.addSplitViewItem(firstItem)
     controller.addSplitViewItem(secondItem)
     return controller
@@ -44,38 +42,32 @@ struct PersistentSplitView<First: View, Second: View>: NSViewControllerRepresent
   func updateNSViewController(_ controller: SplitController, context: Context) {
     (controller.splitViewItems[0].viewController as? NSHostingController<AnyView>)?.rootView = styled(first)
     (controller.splitViewItems[1].viewController as? NSHostingController<AnyView>)?.rootView = styled(second)
-    if controller.splitViewItems[0].minimumThickness != minimumFirst {
-      controller.splitViewItems[0].minimumThickness = minimumFirst
-    }
-    if controller.splitViewItems[1].minimumThickness != minimumSecond {
-      controller.splitViewItems[1].minimumThickness = minimumSecond
-    }
   }
 
   private func styled<Content: View>(_ content: Content) -> AnyView {
     AnyView(content.frame(maxWidth: .infinity, maxHeight: .infinity)
-      .foregroundStyle(FramePalette.ink).tint(FramePalette.ink).background(FramePalette.paper))
+      .foregroundStyle(FramePalette.ink).tint(FramePalette.ink).ignoresSafeArea())
   }
 }
 
 final class SplitController: NSSplitViewController {
   override func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect,
                           forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
-    return proposedEffectiveRect.insetBy(dx: splitView.isVertical ? -4 : 0, dy: splitView.isVertical ? 0 : -4)
+    proposedEffectiveRect.insetBy(dx: -ColumnDividerView.grabOutset, dy: 0)
   }
 }
 
-/// A quiet but grabbable divider: thin rules are otherwise difficult to discover.
-final class PreviewSplitView: NSSplitView {
+/// A hairline between the columns with a comfortable invisible handle on either side of it.
+final class ColumnDividerView: NSSplitView {
+  static let grabOutset: CGFloat = 4
   private var dragOffset: CGFloat?
-  override var dividerThickness: CGFloat { 6 }
+  override var dividerThickness: CGFloat { 1 }
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   private var handleRect: NSRect {
     guard let first = arrangedSubviews.first else { return .zero }
-    return isVertical
-      ? NSRect(x: first.frame.maxX, y: bounds.minY, width: dividerThickness, height: bounds.height)
-      : NSRect(x: bounds.minX, y: first.frame.maxY, width: bounds.width, height: dividerThickness)
+    return NSRect(x: first.frame.maxX - Self.grabOutset, y: bounds.minY,
+                  width: dividerThickness + Self.grabOutset * 2, height: bounds.height)
   }
 
   override func hitTest(_ point: NSPoint) -> NSView? {
@@ -89,13 +81,14 @@ final class PreviewSplitView: NSSplitView {
   override func mouseDown(with event: NSEvent) {
     let point = convert(event.locationInWindow, from: nil)
     guard handleRect.contains(point) else { super.mouseDown(with: event); return }
-    dragOffset = isVertical ? point.x - handleRect.minX : point.y - handleRect.minY
+    dragOffset = point.x - (handleRect.minX + Self.grabOutset)
   }
 
   override func mouseDragged(with event: NSEvent) {
     guard let dragOffset else { super.mouseDragged(with: event); return }
     let point = convert(event.locationInWindow, from: nil)
-    setPosition((isVertical ? point.x : point.y) - dragOffset, ofDividerAt: 0)
+    setPosition(point.x - dragOffset, ofDividerAt: 0)
+    window?.invalidateCursorRects(for: self)
   }
 
   override func mouseUp(with event: NSEvent) {
@@ -104,16 +97,13 @@ final class PreviewSplitView: NSSplitView {
 
   override func resetCursorRects() {
     super.resetCursorRects()
-    addCursorRect(handleRect, cursor: isVertical ? .resizeLeftRight : .resizeUpDown)
+    addCursorRect(handleRect, cursor: .resizeLeftRight)
   }
 
   override func drawDivider(in rect: NSRect) {
     FrameColors.panel.setFill()
     rect.fill()
-    NSColor.secondaryLabelColor.withAlphaComponent(0.5).setFill()
-    let grip = isVertical
-      ? NSRect(x: rect.midX - 1, y: rect.midY - 14, width: 2, height: 28)
-      : NSRect(x: rect.midX - 14, y: rect.midY - 1, width: 28, height: 2)
-    NSBezierPath(roundedRect: grip, xRadius: 1, yRadius: 1).fill()
+    FrameColors.line.setFill()
+    rect.fill(using: .sourceOver)
   }
 }

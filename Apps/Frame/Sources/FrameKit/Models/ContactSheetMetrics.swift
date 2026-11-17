@@ -4,11 +4,18 @@ import Foundation
 public struct ContactSheetMetrics: Equatable, Sendable {
   public static let thumbnailRange = 100.0...360.0
   public static let defaultThumbnailWidth = 160.0
-  public static let inset = 16.0
-  public static let columnGap = 12.0
-  public static let rowGap = 16.0
+  /// The grid's leading and trailing inset.
+  public static let inset = 28.0
+  public static let topInset = 8.0
+  public static let bottomInset = 16.0
+  public static let columnGap = 16.0
+  public static let rowGap = 18.0
+  /// A tile's well is landscape, about 3:4 of its width; the caption row sits 6 points below it.
+  public static let wellRatio = 0.733
+  public static let captionHeight = 22.0
   public let width: Double
-  public var height: Double { width + 24 }
+  public var wellHeight: Double { (width * Self.wellRatio).rounded() }
+  public var height: Double { wellHeight + Self.captionHeight }
   public let columns: Int
 
   public static func normalizedWidth(_ value: Double) -> Double {
@@ -32,7 +39,7 @@ public struct ContactSheetMetrics: Equatable, Sendable {
 
   public func thumbnailPixels(scale: Double) -> Int {
     let scale = scale.isFinite ? min(3, max(1, scale)) : 2
-    return min(1_152, max(128, Int(ceil((width - 6) * scale / 128)) * 128))
+    return min(1_152, max(128, Int(ceil((width - 16) * scale / 128)) * 128))
   }
 
   public static func previewPixels(width: Double, height: Double, scale: Double) -> Int {

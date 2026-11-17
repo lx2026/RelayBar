@@ -11,6 +11,11 @@ struct FrameApp: App {
   private let modelContainer: ModelContainer
 
   init() {
+    // Frame's window always uses the overlay scroller. Native scroll views force it themselves; WebKit has no
+    // per-view style and draws the document's scroll bars from this preference, so the app sets it for itself.
+    var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+    arguments["AppleShowScrollBars"] = "WhenScrolling"
+    UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
     RemoteSessionStorage.start()
     let preferencesURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
       .appendingPathComponent(Bundle.main.bundleIdentifier ?? "com.lx2026.Frame", isDirectory: true)
@@ -26,7 +31,7 @@ struct FrameApp: App {
     _store = StateObject(wrappedValue: LibraryStore(previews: FrameComposition(preferencesURL: preferencesURL, connectAutomatically: true)))
 #endif
     do {
-      modelContainer = try ModelContainer(for: LibraryRootRecord.self, FavoriteRecord.self)
+      modelContainer = try FrameCatalogStore.open()
     } catch {
       fatalError("Could not create Frame catalog: \(error)")
     }
@@ -173,7 +178,7 @@ private struct FrameCommands: Commands {
         .keyboardShortcut("r", modifiers: .command)
         .disabled(!store.canRefresh)
       if store.previews.isPluginEnabled(FramePlugins.promptSearch) {
-        Button("Search Prompts") { store.focusSearch() }
+        Button("Search Prompts", action: store.revealSearch)
           .keyboardShortcut("f", modifiers: .command)
           .disabled(!store.isSearchAvailable)
       }

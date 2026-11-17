@@ -4,6 +4,7 @@ import AppKit
 import Combine
 import Composition
 import Foundation
+import HouseStyle
 import MarkdownRendering
 import UniformTypeIdentifiers
 import WebKit
@@ -14,6 +15,11 @@ import WebKit
   @Published public private(set) var loading = false
   @Published public private(set) var canGoBack = false
   @Published public private(set) var canGoForward = false
+  /// Shows Markdown and HTML as their own text instead of rendered. Holds for the renderer's life.
+  @Published public private(set) var showsSource = false
+  /// The second- and third-level headings of the Markdown page on show, and the one being read.
+  @Published public private(set) var outline: [DocumentHeading] = []
+  @Published public private(set) var activeHeading: Int?
   public private(set) var webView: WKWebView!
   public var onNavigate: ((String) -> Void)?
   /// Receives a code block's text from its Copy link; replaceable so tests leave the real pasteboard alone.
@@ -41,6 +47,7 @@ import WebKit
   private var work = EffectScope()
   private var retirement: Task<Void, Never>?
   private var active = false
+  private var paperObservation: AnyCancellable?
 
   public init(client: (any RemoteAssetServing)? = nil) {
     self.client = client
@@ -56,13 +63,33 @@ import WebKit
     document.addEventListener('securitypolicyviolation',()=>window.webkit.messageHandlers.resourceBlocked.postMessage('blocked'));
     document.addEventListener('DOMContentLoaded',()=>{const used=new Set();document.querySelectorAll('article h1,article h2,article h3,article h4').forEach(h=>{if(!h.id){let s=h.textContent.toLowerCase().replace(/[^\\p{L}\\p{N} _-]/gu,'').replace(/ +/g,'-'),id=s,n=1;while(used.has(id))id=s+'-'+n++;used.add(id);h.id=id;}});});
     """, injectionTime: .atDocumentStart, forMainFrameOnly: true))
+    // The outline is read by Frame's own script in an isolated world; the page's scripts cannot see it or its
+    // message handler, and the page's script and content policies are unchanged.
+    config.userContentController.add(WeakDocumentMessage(self), contentWorld: .defaultClient, name: Self.outlineMessage)
+    config.userContentController.addUserScript(WKUserScript(source: Self.outlineScript, injectionTime: .atDocumentEnd,
+                                                            forMainFrameOnly: true, in: .defaultClient))
     webView = WKWebView(frame: .zero, configuration: config)
     webView.navigationDelegate = self; webView.uiDelegate = self
     webView.setValue(false, forKey: "drawsBackground")
     webView.allowsBackForwardNavigationGestures = false
+    paperObservation = NotificationCenter.default.publisher(for: HousePalette.didChangeNotification)
+      .sink { [weak self] _ in self?.followPaper() }
+  }
+
+  /// A page on show keeps the reader column's paper when the form changes, and a page that finishes loading takes the
+  /// paper of the form in use then, even if it was made before a change; a page that brings its own colours is left
+  /// alone.
+  private func followPaper() {
+    let style = DocumentHTML.paperStyle(.current).replacingOccurrences(of: "'", with: "\\'")
+    webView.evaluateJavaScript("""
+    (()=>{if(!getComputedStyle(document.documentElement).getPropertyValue('--frame-page'))return false;\
+    let s=document.getElementById('frame-paper');if(!s){s=document.createElement('style');s.id='frame-paper';\
+    (document.head||document.documentElement).appendChild(s)}s.textContent='\(style)';return true})()
+    """, in: nil, in: .defaultClient) { _ in }
   }
   public func stop() {
     active = false; generation = UUID(); loading = false
+    clearOutline()
     loadTask?.cancel(); loadTask = nil; pollTask?.cancel(); pollTask = nil
     for task in tasks.values { task.cancel() }; tasks.removeAll()
     webView.stopLoading()
@@ -127,6 +154,25 @@ import WebKit
       startPolling()
     }
   }
+  /// Switches between the rendered page and the file's own text, and shows the current document again.
+  public func setShowsSource(_ value: Bool) {
+    guard value != showsSource else { return }
+    showsSource = value
+    clearOutline()
+    guard active, path != nil else { return }
+    loadTask?.cancel()
+    loadTask = try? work.task { [weak self] in await self?.load(reset: false) }
+  }
+  /// Scrolls the Markdown page so the heading at `index` in `outline` is at the top.
+  public func scrollToHeading(_ index: Int) {
+    guard outline.indices.contains(index) else { return }
+    activeHeading = index
+    webView.evaluateJavaScript("window.frameOutlineGo && window.frameOutlineGo(\(index))", in: nil, in: .defaultClient) { _ in }
+  }
+  private func clearOutline() {
+    if !outline.isEmpty { outline = [] }
+    if activeHeading != nil { activeHeading = nil }
+  }
   public func back() { go(-1) }
   public func forward() { go(1) }
   private func go(_ offset: Int) {
@@ -181,12 +227,14 @@ import WebKit
     guard active, !Task.isCancelled, let source, let path else { return }
     let token = UUID(); generation = token
     loading = true
+    clearOutline()
     defer { if generation == token { loading = false } }
     do {
       if reset { try await source.begin() }
       let data = try await source.data(at: path, limit: documentLimit)
       guard !data.isEmpty else { throw BridgeError("File is empty. Retry after saving.") }
-      let html = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: host)
+      let html = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: host, source: showsSource,
+                                            paper: .current)
       guard generation == token, !Task.isCancelled else { return }
       prepared = (path, Data(html.utf8))
       for task in tasks.values { task.cancel() }; tasks.removeAll()
@@ -209,7 +257,7 @@ import WebKit
     do { path = try DocumentResources.normalized(url.path) }
     catch { urlSchemeTask.didFailWithError(error); return }
     let prepared = self.prepared
-    let parser = self.parser, referenceToken = host
+    let parser = self.parser, referenceToken = host, paper = DocumentPaper.current
     let documentLimit = self.documentLimit
     tasks[key] = try? work.task { [weak self] in
       do {
@@ -218,7 +266,10 @@ import WebKit
         if prepared?.0 == path { bytes = prepared!.1 }
         else {
           let data = try await source.data(at: path, limit: isDocument ? documentLimit : DocumentResources.resourceLimit)
-          if isDocument { bytes = Data(try await parser.page(data, extension: (path as NSString).pathExtension, referenceToken: referenceToken).utf8) }
+          if isDocument {
+            bytes = Data(try await parser.page(data, extension: (path as NSString).pathExtension, referenceToken: referenceToken,
+                                               paper: paper).utf8)
+          }
           else { bytes = data }
         }
         guard !Task.isCancelled, let self, tasks[key] != nil else { return }
@@ -285,13 +336,73 @@ import WebKit
       && ["md", "markdown"].contains(page?.pathExtension.lowercased() ?? "")
   }
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+    followPaper()
     if let pendingScroll { webView.evaluateJavaScript("window.scrollTo(0,\(pendingScroll))"); self.pendingScroll = nil }
   }
   public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { error = "Preview stopped. Retry." }
   public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+    if message.name == Self.outlineMessage { receiveOutline(message); return }
     guard message.name == "resourceBlocked", message.frameInfo.isMainFrame else { return }
     error = "Some page content is unavailable."
   }
+  /// Accepts the outline only from Frame's isolated world, for the rendered Markdown page on show.
+  private func receiveOutline(_ message: WKScriptMessage) {
+    guard message.world == .defaultClient, message.frameInfo.isMainFrame, showsMarkdown, !showsSource, let path,
+          message.frameInfo.request.url?.path == "/" + path,
+          let body = message.body as? [String: Any], let items = body["headings"] as? [[Any]] else { return }
+    let headings = items.prefix(Self.outlineLimit).compactMap { item -> DocumentHeading? in
+      guard item.count == 2, let level = (item[0] as? NSNumber)?.intValue, level == 2 || level == 3,
+            let title = item[1] as? String else { return nil }
+      return DocumentHeading(level: level, title: String(title.prefix(300)))
+    }
+    if headings != outline { outline = headings }
+    let index = (body["active"] as? NSNumber)?.intValue
+    let next = index.flatMap { headings.indices.contains($0) ? $0 : nil }
+    if next != activeHeading { activeHeading = next }
+  }
+  static let outlineMessage = "frameOutline"
+  static let outlineLimit = 300
+  /// Reports the article's h2 and h3 headings and the one being read: the last whose top has passed a quarter
+  /// of the way down the view, or at the end of the page the last one visible, or the one just chosen until
+  /// the reader scrolls again.
+  static let outlineScript = """
+  (() => {
+    const channel = window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.\(outlineMessage);
+    if (!channel) return;
+    let chosen = -1, queued = false, last = '';
+    const headings = () => Array.from(document.querySelectorAll('article.markdown h2, article.markdown h3')).slice(0, \(outlineLimit));
+    const report = () => {
+      queued = false;
+      const list = headings();
+      const line = innerHeight * 0.25;
+      let active = list.length ? 0 : -1;
+      list.forEach((h, i) => { if (h.getBoundingClientRect().top <= line) active = i; });
+      if (list.length && scrollY + innerHeight >= document.documentElement.scrollHeight - 4) {
+        list.forEach((h, i) => { if (h.getBoundingClientRect().top < innerHeight) active = Math.max(active, i); });
+      }
+      if (chosen >= 0 && chosen < list.length) active = chosen;
+      const items = list.map(h => [h.tagName === 'H3' ? 3 : 2, (h.textContent || '').trim()]);
+      const text = JSON.stringify([items, active]);
+      if (text !== last) { last = text; channel.postMessage({ headings: items, active }); }
+    };
+    // A timer rather than an animation frame, which WebKit holds back while the view is not on screen.
+    const schedule = () => { if (!queued) { queued = true; setTimeout(report, 60); } };
+    const release = () => { chosen = -1; };
+    addEventListener('scroll', schedule, { passive: true });
+    addEventListener('resize', schedule);
+    addEventListener('load', schedule);
+    for (const name of ['wheel', 'keydown', 'mousedown']) addEventListener(name, release, { passive: true, capture: true });
+    window.frameOutlineGo = (index) => {
+      const target = headings()[index];
+      if (!target) return false;
+      chosen = index;
+      scrollTo({ top: Math.max(0, target.getBoundingClientRect().top + scrollY - 16), behavior: 'auto' });
+      schedule();
+      return true;
+    };
+    schedule();
+  })();
+  """
 }
 
 @MainActor private final class WeakDocumentScheme: NSObject, WKURLSchemeHandler {
@@ -306,5 +417,15 @@ import WebKit
   init(_ owner: DocumentRenderer) { self.owner = owner }
   func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
     owner?.userContentController(userContentController, didReceive: message)
+  }
+}
+
+/// One entry of a Markdown page's outline.
+public struct DocumentHeading: Equatable, Sendable {
+  public let level: Int
+  public let title: String
+  public init(level: Int, title: String) {
+    self.level = level
+    self.title = title
   }
 }

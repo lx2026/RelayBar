@@ -34,3 +34,39 @@ public final class FavoriteRecord {
     "\(rootID.uuidString):\(relativePath)"
   }
 }
+
+/// The modification time a file had when it was last shown in Files mode, keyed like `FavoriteRecord`.
+/// `held` keeps the entry while Frame itself has moved the file away (Trash or Archive), so Undo and Restore
+/// bring the file back without a marker.
+@Model
+public final class OpenedFileRecord {
+  @Attribute(.unique) public var key: String
+  public var rootID: UUID
+  public var relativePath: String
+  public var openedAt: Date
+  public var held = false
+
+  public init(rootID: UUID, relativePath: String, openedAt: Date) {
+    self.key = FavoriteRecord.makeKey(rootID: rootID, relativePath: relativePath)
+    self.rootID = rootID
+    self.relativePath = relativePath
+    self.openedAt = openedAt
+  }
+}
+
+/// The newest modification time among a folder's files when a build that marks changed files first listed it.
+/// Files at or before it are never marked. Keyed like `FavoriteRecord`, with the folder's path.
+@Model
+public final class FolderBaselineRecord {
+  @Attribute(.unique) public var key: String
+  public var rootID: UUID
+  public var folderPath: String
+  public var baseline: Date
+
+  public init(rootID: UUID, folderPath: String, baseline: Date) {
+    self.key = FavoriteRecord.makeKey(rootID: rootID, relativePath: folderPath)
+    self.rootID = rootID
+    self.folderPath = folderPath
+    self.baseline = baseline
+  }
+}

@@ -104,7 +104,7 @@ final class PreviewPluginTests: XCTestCase {
     }
 
     func testDocumentLimitChecksActualBytesAndDisablingStopsRenderer() async throws {
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         let root = try root()
         try Data("# Larger than the configured limit".utf8).write(to: root.appendingPathComponent("notes.md"))
         var photo = try XCTUnwrap(FileScanner.scan(rootURL: root, rootID: UUID()).photos.first)

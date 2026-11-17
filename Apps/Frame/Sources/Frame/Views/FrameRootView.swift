@@ -1,40 +1,28 @@
 import FrameKit
+import HouseStyle
 import SwiftData
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// Two full-height columns: the library on the panel colour, the file or folder on the paper colour.
 struct FrameRootView: View {
   @ObservedObject var store: LibraryStore
   let modelContainer: ModelContainer
   @State private var dropTarget = false
+  @State private var isFullScreen = false
 
   var body: some View {
-    GeometryReader { geometry in
-      let showsRail = store.showsFolderOutline ?? true
-      VStack(spacing: 0) {
-        if store.activeRootID != nil {
-          FrameToolbar(store: store, showsRail: showsRail).frame(height: FrameMetrics.toolbarHeight)
-          Divider()
-        }
-        if showsRail && store.activeRootID != nil && !store.isFocusMode {
-          PersistentSplitView(name: "Frame.Workspace.Sidebar", vertical: true, minimumFirst: 180, minimumSecond: 480,
-            first: FolderSidebar(store: store), second: MainWorkspace(store: store))
-        } else {
-          MainWorkspace(store: store)
-        }
-        if store.activeRootID != nil && !store.rootUnavailable && store.remoteError == nil && !store.isFocusMode
-          && (store.viewMode == .contactSheet || store.selectedPhoto?.format.isMedia == true) {
-          Divider()
-          SelectionActionsBar(store: store)
-        }
-      }
-      .overlay(alignment: .bottom) {
-        if let notice = store.notice {
-          NoticeView(notice: notice, store: store).padding(.bottom, FrameMetrics.barHeight + 12)
-            .padding(.horizontal, FrameMetrics.inset)
-        }
+    Group {
+      if (store.showsFolderOutline ?? true) && !store.isFocusMode {
+        ColumnSplitView(first: LibraryColumn(store: store), second: ReaderColumn(store: store, leading: .none))
+      } else {
+        ReaderColumn(store: store, leading: store.isFocusMode ? .none : isFullScreen ? .controls : .windowControls)
       }
     }
+    .ignoresSafeArea()
+    .background(WindowChrome(isFullScreen: $isFullScreen))
+    // Leaving full screen by any means, the green button included, ends the full-screen viewer.
+    .onChange(of: isFullScreen) { _, value in store.fullScreenDidChange(value) }
     .environmentObject(store.previews)
     .foregroundStyle(FramePalette.ink)
     .background(FramePalette.paper)
@@ -75,7 +63,7 @@ struct FrameRootView: View {
                 Text(failure.reason).foregroundStyle(FramePalette.muted)
               }
             }
-          }.frame(maxWidth: .infinity, alignment: .leading)
+          }.frame(maxWidth: .infinity, alignment: .leading).overlayScroller()
         }
         HStack { Spacer(); Button("Done") { store.fileActionFailures = [] }.keyboardShortcut(.defaultAction) }
       }.font(.callout).padding(24).frame(width: 520, height: 360)
@@ -88,21 +76,38 @@ struct FrameRootView: View {
   }
 }
 
+/// The house palette for SwiftUI. A view that reads one of these in its body redraws when the form changes.
 enum FramePalette {
-  static let paper = Color(nsColor: FrameColors.paper)
-  static let panel = Color(nsColor: FrameColors.panel)
-  static let stage = Color(nsColor: FrameColors.stage)
-  static let ink = Color(nsColor: FrameColors.ink)
-  static let muted = Color(nsColor: FrameColors.muted)
-  static let amber = Color(nsColor: FrameColors.amber)
+  static var paper: Color { HouseColor.paper }
+  static var panel: Color { HouseColor.panel }
+  static var stage: Color { HouseColor.stage }
+  static var card: Color { HouseColor.card }
+  static var ink: Color { HouseColor.ink }
+  static var muted: Color { HouseColor.muted }
+  static var amber: Color { HouseColor.amber }
+  static var red: Color { HouseColor.red }
+  static var line: Color { HouseColor.line }
+  static var fill: Color { HouseColor.fill }
+  static var button: Color { HouseColor.button }
+  static var buttonText: Color { HouseColor.buttonText }
 }
 
-/// Shared sizes on a 4-point rhythm: every bar, header and panel uses the same inset and row height.
+/// Shared sizes on a 4-point rhythm: both columns' top rows, the footer and the controls share them.
 enum FrameMetrics {
   static let inset: CGFloat = 16
   static let barHeight: CGFloat = 44
-  static let toolbarHeight: CGFloat = 52
-  static let radius: CGFloat = 6
+  static let topRowHeight: CGFloat = 52
+  static let footerHeight: CGFloat = 40
+  static let radius: CGFloat = 7
+  /// The reader column's leading and trailing insets in its top row.
+  static let readerLeading: CGFloat = 28
+  static let readerTrailing: CGFloat = 14
+  /// Room the window controls take at the start of a top row: their inset, three 12-point lights 8 points
+  /// apart, and 10 points after them.
+  static let windowControlsWidth: CGFloat = 78
+  static let windowControlPitch: CGFloat = 20
+  static let railWidth: CGFloat = 240
+  static let outlineWidth: CGFloat = 200
 }
 
 /// The one emphasised action of a surface; `prominent: false` gives its neutral companion the same shape.
@@ -113,26 +118,79 @@ struct FilledButtonStyle: ButtonStyle {
     configuration.label
       .font(.callout.weight(.semibold))
       .padding(.horizontal, FrameMetrics.inset).frame(minHeight: 28)
-      .foregroundStyle(Color(nsColor: !enabled ? FrameColors.muted : prominent ? FrameColors.buttonText : FrameColors.ink))
-      .background(Color(nsColor: enabled && prominent ? FrameColors.button : FrameColors.panel),
+      .foregroundStyle(!enabled ? FramePalette.muted : prominent ? FramePalette.buttonText : FramePalette.ink)
+      .background(enabled && prominent ? FramePalette.button : FramePalette.panel,
                   in: RoundedRectangle(cornerRadius: FrameMetrics.radius))
       .opacity(configuration.isPressed ? 0.8 : 1)
   }
 }
 
-/// Borderless symbol buttons share one glyph size and one square hit area.
+/// Borderless symbol buttons: one glyph size, a 28-point square, a faint fill under the pointer and when on.
 struct IconButtonStyle: ButtonStyle {
   var size: CGFloat = 28
-  @Environment(\.isEnabled) private var enabled
+  var tint: Color = FramePalette.muted
+  var isOn = false
   func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .font(size < 28 ? .caption : .body).imageScale(size < 28 ? .medium : .large)
-      .frame(width: size, height: size).contentShape(Rectangle())
-      .opacity(!enabled ? 0.35 : configuration.isPressed ? 0.6 : 1)
+    IconButtonBody(configuration: configuration, size: size, tint: tint, isOn: isOn)
   }
 }
 
-/// The one treatment for section labels (Recent, Local, Generation, File).
+private struct IconButtonBody: View {
+  let configuration: ButtonStyleConfiguration
+  let size: CGFloat
+  let tint: Color
+  let isOn: Bool
+  @Environment(\.isEnabled) private var enabled
+  @State private var hovered = false
+  var body: some View {
+    let shape = RoundedRectangle(cornerRadius: FrameMetrics.radius, style: .continuous)
+    configuration.label
+      .font(.system(size: size < 28 ? 11 : 14)).imageScale(.medium)
+      .foregroundStyle(tint)
+      .frame(width: size, height: size)
+      .background(shape.fill(isOn || (enabled && (hovered || configuration.isPressed)) ? FramePalette.fill : .clear))
+      .contentShape(shape)
+      .opacity(!enabled ? 0.35 : configuration.isPressed ? 0.7 : 1)
+      .onHover { hovered = $0 }
+  }
+}
+
+/// A menu that looks like an icon button.
+struct IconMenu<Content: View>: View {
+  let systemImage: String
+  let label: String
+  @ViewBuilder var content: () -> Content
+  var body: some View {
+    Menu(content: content) {
+      Image(systemName: systemImage).font(.system(size: 14)).foregroundStyle(FramePalette.muted)
+    }
+    .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+    .frame(width: 28, height: 28)
+    .accessibilityLabel(label).help(label)
+  }
+}
+
+/// The kind of a file in capitals on a small ink chip.
+struct KindChip: View {
+  let text: String
+  var body: some View {
+    Text(text).font(.system(size: 9.5, weight: .bold)).tracking(0.3)
+      .foregroundStyle(FramePalette.paper)
+      .padding(.horizontal, 5).frame(height: 16)
+      .background(FramePalette.ink, in: RoundedRectangle(cornerRadius: 4))
+      .fixedSize()
+  }
+}
+
+/// A one-point rule in the line colour.
+struct Hairline: View {
+  var vertical = false
+  var body: some View {
+    FramePalette.line.frame(width: vertical ? 1 : nil, height: vertical ? nil : 1)
+  }
+}
+
+/// The one treatment for section labels (Recent, Local).
 struct SectionLabel: View {
   let title: String
   init(_ title: String) { self.title = title }
@@ -141,84 +199,80 @@ struct SectionLabel: View {
   }
 }
 
-private struct FrameToolbar: View {
+/// Files shows one file; Icons shows the folder as thumbnails.
+struct ModeSwitch: View {
   @ObservedObject var store: LibraryStore
-  let showsRail: Bool
-  private var path: String {
-    if store.isRemote { return store.remotePath }
-    let root = store.rootURL?.path ?? store.rootName
-    return root + (store.filter == .archive ? "  ›  Archive" : store.selectedFolderPath.isEmpty ? "" : "  ›  " + store.selectedFolderPath)
-  }
-  private var location: String {
-    if let photo = store.selectedPhoto, store.viewMode == .inspect {
-      return "\(store.rootName) / \(store.documentPath(photo))"
-    }
-    if store.isRemote { return "\(store.rootName) · \(store.remotePath)" }
-    return store.rootName + (store.filter == .archive ? "  ›  Archive" : store.selectedFolderPath.isEmpty ? "" : "  ›  " + store.selectedFolderPath)
-  }
-  /// Mirrors when the workspace shows a document in Preview, so its Back and Forward join this row.
-  private var showsDocumentNavigation: Bool {
-    store.viewMode == .inspect && store.selectedPhoto?.format.isDocument == true && !store.rootUnavailable
-      && !store.isReadingFolder && store.remoteError == nil && store.folderReadError == nil
-  }
   var body: some View {
-    HStack(spacing: 12) {
-      Button { store.showsFolderOutline = !showsRail } label: { Image(systemName: "sidebar.left") }
-        .accessibilityLabel(showsRail ? "Hide folders" : "Show folders")
-      Button("Open…", action: store.presentOpenChooser).buttonStyle(.bordered)
-      Divider().frame(height: 20)
-      if showsDocumentNavigation { DocumentNavigation(renderer: store.documentRenderer) }
-      Text(location)
-        .font(.callout).lineLimit(1).truncationMode(.middle).help(path).accessibilityLabel(path)
-      Spacer(minLength: 8)
-      if store.isSearchAvailable {
-        if let matches = store.searchMatchCount {
-          Text("\(matches) of \(store.folderFileCount)")
-            .font(.callout).foregroundStyle(FramePalette.muted).lineLimit(1)
+    // The labels go before the switch is squeezed, so it never truncates.
+    ViewThatFits(in: .horizontal) {
+      segments(titled: true)
+      segments(titled: false)
+    }
+  }
+  private func segments(titled: Bool) -> some View {
+    HStack(spacing: 2) {
+      segment("Files", systemImage: "list.bullet", mode: .inspect, titled: titled)
+      segment("Icons", systemImage: "square.grid.2x2", mode: .contactSheet, titled: titled)
+    }
+    .fixedSize()
+    .padding(2)
+    .background(FramePalette.fill, in: RoundedRectangle(cornerRadius: FrameMetrics.radius, style: .continuous))
+    .disabled(store.activeRootID == nil || store.isFileOperation)
+    .accessibilityElement(children: .contain).accessibilityLabel("View")
+  }
+  private func segment(_ title: String, systemImage: String, mode: FrameViewMode, titled: Bool) -> some View {
+    let isOn = store.viewMode == mode && store.activeRootID != nil
+    return Button { store.setViewMode(mode) } label: {
+      HStack(spacing: 4) {
+        Image(systemName: systemImage).font(.system(size: 11, weight: .medium))
+        if titled { Text(title).font(.system(size: 12, weight: isOn ? .medium : .regular)) }
+      }
+      .foregroundStyle(isOn ? FramePalette.ink : FramePalette.muted)
+      .padding(.horizontal, titled ? 8 : 9).frame(height: 24)
+      .background {
+        if isOn {
+          RoundedRectangle(cornerRadius: 5, style: .continuous).fill(FramePalette.card)
+            .shadow(color: .black.opacity(0.1), radius: 0.75, y: 1)
+            .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous).strokeBorder(FramePalette.line, lineWidth: 0.5))
         }
-        PromptSearchField(store: store)
-          .frame(minWidth: 140, idealWidth: 200, maxWidth: 200)
       }
-      if store.viewMode == .inspect { FileFilterMenu(store: store) }
-      Picker("Layout", selection: Binding(get: { store.viewMode }, set: store.setViewMode)) {
-        Text("Preview").tag(FrameViewMode.inspect)
-        Text("Grid").tag(FrameViewMode.contactSheet)
-      }.pickerStyle(.segmented).labelsHidden().frame(width: 142)
-      if store.viewMode == .contactSheet || store.isSelecting {
-        Button(store.isSelecting ? "Done" : "Select", action: store.toggleSelectMode)
-          .buttonStyle(.bordered).disabled(store.visiblePhotos.isEmpty)
-      }
-      if store.viewMode == .inspect {
-        Button(action: store.toggleInfo) { Image(systemName: "sidebar.right") }
-          .help("Info").accessibilityLabel("Info")
-      }
-      if store.isScanning { ProgressView().controlSize(.small) }
-      if store.viewMode == .inspect {
-        Button(action: store.toggleFullScreen) {
-          Image(systemName: "arrow.up.left.and.arrow.down.right")
-        }.help("Full screen (⌃⌘F)")
-          .accessibilityLabel("Full screen")
-      }
-      Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
-        .disabled(!store.canRefresh).help("Refresh folder (⌘R)").accessibilityLabel("Refresh folder")
-    }.buttonStyle(IconButtonStyle()).disabled(store.isFileOperation)
-      .padding(.horizontal, FrameMetrics.inset - 6) // The end icons' hit areas overhang; their glyphs sit on the inset.
-      .background(FramePalette.paper)
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .accessibilityLabel(title)
+    .accessibilityAddTraits(isOn ? .isSelected : [])
+    .help(mode == .inspect ? "Show one file" : "Show the folder as icons (G in viewer)")
   }
 }
 
-/// Prompt Search's field: the native search field, with its magnifying glass, a clear button while it has
-/// text, and Escape to clear it while it has focus. It lives in the toolbar, which is not rebuilt while
-/// someone types in it.
+/// Shows or hides the library column.
+struct SidebarButton: View {
+  @ObservedObject var store: LibraryStore
+  var body: some View {
+    let shows = store.showsFolderOutline ?? true
+    Button { store.showsFolderOutline = !shows } label: { Image(systemName: "sidebar.left") }
+      .buttonStyle(IconButtonStyle())
+      .accessibilityLabel(shows ? "Hide folders" : "Show folders")
+      .help(shows ? "Hide folders" : "Show folders")
+  }
+}
+
+/// Prompt Search's field: the native search field, with a clear button while it has text and Escape to clear it
+/// while it has focus. It sits above the tree, which is not rebuilt while someone types in it.
 struct PromptSearchField: NSViewRepresentable {
   @ObservedObject var store: LibraryStore
   func makeCoordinator() -> Coordinator { Coordinator(store: store) }
   func makeNSView(context: Context) -> NSSearchField {
     let field = NSSearchField()
     field.identifier = TypingGuard.searchFieldIdentifier
-    field.placeholderString = "Search prompts"
+    field.placeholderString = "Search"
     field.setAccessibilityLabel("Search prompts and notes")
     field.sendsSearchStringImmediately = true
+    field.isBezeled = false
+    field.isBordered = false
+    field.drawsBackground = false
+    field.focusRingType = .none
+    field.font = .systemFont(ofSize: 13)
     field.target = context.coordinator
     field.action = #selector(Coordinator.search(_:))
     return field

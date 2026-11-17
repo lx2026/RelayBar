@@ -150,6 +150,70 @@ final class FrameFavoritesFeature {
         }
         try model.save()
     }
+
+    // Opened times and folder baselines live beside the favourites, keyed the same way. A catalog made without
+    // their models (an older schema) simply has no markers.
+    private var tracksOpening: Bool {
+        let names = Set(library.context.container.schema.entities.map(\.name))
+        return names.contains("OpenedFileRecord") && names.contains("FolderBaselineRecord")
+    }
+    /// The library's folder baselines by folder path and the files' opened times by key, or nil without the models.
+    func changeState(rootID: UUID) throws -> (baselines: [String: Date], opened: [String: Date])? {
+        guard tracksOpening else { return nil }
+        let model = try model()
+        let baselines = try model.fetch(FetchDescriptor<FolderBaselineRecord>()).filter { $0.rootID == rootID }
+        let opened = try model.fetch(FetchDescriptor<OpenedFileRecord>()).filter { $0.rootID == rootID }
+        return (Dictionary(baselines.map { ($0.folderPath, $0.baseline) }, uniquingKeysWith: { first, _ in first }),
+                Dictionary(opened.map { ($0.key, $0.openedAt) }, uniquingKeysWith: { first, _ in first }))
+    }
+    /// Records a folder's baseline the first time it is listed; an existing one is kept. Returns the one in force.
+    func recordBaseline(rootID: UUID, folder: String, baseline: Date) throws -> Date? {
+        guard tracksOpening else { return nil }
+        let model = try model()
+        let key = FavoriteRecord.makeKey(rootID: rootID, relativePath: folder)
+        if let record = try model.fetch(FetchDescriptor<FolderBaselineRecord>()).first(where: { $0.key == key }) { return record.baseline }
+        model.insert(FolderBaselineRecord(rootID: rootID, folderPath: folder, baseline: baseline))
+        try model.save()
+        return baseline
+    }
+    func markOpened(rootID: UUID, relativePath: String, at date: Date) throws {
+        guard tracksOpening else { return }
+        let model = try model()
+        let key = FavoriteRecord.makeKey(rootID: rootID, relativePath: relativePath)
+        if let record = try model.fetch(FetchDescriptor<OpenedFileRecord>()).first(where: { $0.key == key }) {
+            record.openedAt = date; record.held = false
+        } else {
+            model.insert(OpenedFileRecord(rootID: rootID, relativePath: relativePath, openedAt: date))
+        }
+        try model.save()
+    }
+    /// Keeps these entries while Frame moves their files to the Trash or the Archive.
+    func holdOpened(keys: Set<String>) throws {
+        guard tracksOpening, !keys.isEmpty else { return }
+        let model = try model()
+        for record in try model.fetch(FetchDescriptor<OpenedFileRecord>()) where keys.contains(record.key) { record.held = true }
+        try model.save()
+    }
+    /// Drops the opened times of `folder`'s files that its listing no longer has, except those Frame moved away
+    /// itself; an entry whose file is listed again stops being held. Returns the keys dropped.
+    @discardableResult
+    func pruneOpened(rootID: UUID, folder: String, keeping paths: Set<String>) throws -> [String] {
+        guard tracksOpening else { return [] }
+        let model = try model()
+        let records = try model.fetch(FetchDescriptor<OpenedFileRecord>()).filter {
+            $0.rootID == rootID && ($0.relativePath as NSString).deletingLastPathComponent == folder
+        }
+        var dropped: [String] = []
+        for record in records {
+            if paths.contains(record.relativePath) {
+                if record.held { record.held = false }
+            } else if !record.held {
+                dropped.append(record.key); model.delete(record)
+            }
+        }
+        if model.hasChanges { try model.save() }
+        return dropped
+    }
 }
 
 @MainActor

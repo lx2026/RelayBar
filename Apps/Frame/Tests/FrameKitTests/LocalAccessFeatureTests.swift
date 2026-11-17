@@ -88,7 +88,7 @@ final class LocalAccessFeatureTests: XCTestCase {
     }
 
     func testPausedPlayerAndDocumentKeepAccessUntilTheirSessionsClose() async throws {
-        _ = NSApplication.shared
+        QuietWindow.prepareTestProcess()
         let root = try folder(), recorder = ScopeRecorder()
         let fixture = Bundle.module.resourceURL!.appendingPathComponent("Fixtures/landscape.mp4")
         try FileManager.default.copyItem(at: fixture, to: root.appendingPathComponent("movie.mp4"))

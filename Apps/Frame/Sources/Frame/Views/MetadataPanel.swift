@@ -2,128 +2,126 @@ import AppKit
 import FrameKit
 import SwiftUI
 
-struct MetadataPanel: View {
+/// The details beside an image or video: generation data, the sidecar files, then the kind and size.
+/// It has no background or border of its own.
+struct DetailsRail: View {
   let photo: PhotoItem
   @ObservedObject var store: LibraryStore
+  @State private var fileExpanded = false
   @State private var embeddedExpanded = false
   private var sidecar: SidecarSummary { SidecarSummary(text: store.metadata.sidecarText) }
   private var hasEmbeddedGeneration: Bool {
     store.metadata.prompt != nil || store.metadata.negativePrompt != nil || !store.metadata.aiGeneration.isEmpty
   }
   var body: some View {
-    ScrollView {
-      VStack(spacing: 0) {
+    ScrollView(.vertical) {
+      VStack(alignment: .leading, spacing: 0) {
         if photo.sidecar != nil, sidecar.hasGeneration {
-          MetadataSectionView(title: hasEmbeddedGeneration ? "Generation · JSON" : "Generation", rows: sidecar.rows,
+          GenerationSection(title: hasEmbeddedGeneration ? "Generation · JSON" : "Generation", rows: sidecar.rows,
             prompt: sidecar.prompt, negativePrompt: sidecar.negativePrompt)
-          Divider()
         }
         if hasEmbeddedGeneration {
-          MetadataSectionView(title: sidecar.hasGeneration ? "Generation · Embedded" : "Generation", rows: store.metadata.aiGeneration,
+          GenerationSection(title: sidecar.hasGeneration ? "Generation · Embedded" : "Generation", rows: store.metadata.aiGeneration,
             prompt: store.metadata.prompt, negativePrompt: store.metadata.negativePrompt)
-          Divider()
         }
-        MetadataSectionView(title: "File", rows: identityRows)
         if !store.metadata.capture.isEmpty {
-          Divider()
-          MetadataSectionView(title: photo.format.isVideo ? "Video" : "Capture", rows: store.metadata.capture)
+          RailHeader(title: photo.format.isVideo ? "Video" : "Capture")
+          ValueGrid(rows: store.metadata.capture)
         }
-        ForEach(photo.companions, id: \.relativePath) { companion in
-          Divider()
-          SidecarSection(name: companion.url.lastPathComponent,
-            text: store.metadata.companions.first { $0.name == companion.url.lastPathComponent }?.text)
-            .id(companion.contentID)
+        let companions = store.companionItems(of: photo)
+        if !companions.isEmpty {
+          RailHeader(title: "Sidecar")
+          VStack(spacing: 6) {
+            ForEach(companions) { companion in
+              SidecarRow(item: companion) { store.openCompanion(companion) }
+            }
+          }.padding(.bottom, 4)
+        }
+        summary
+        if !otherIdentityRows.isEmpty {
+          RailDisclosure(title: "File details", isExpanded: $fileExpanded) { ValueGrid(rows: otherIdentityRows) }
         }
         if !store.metadata.embedded.isEmpty {
-          Divider()
-          DisclosureGroup("All metadata (\(store.metadata.embedded.count))", isExpanded: $embeddedExpanded) {
-            MetadataSectionView(title: nil, rows: store.metadata.embedded)
-          }.font(.subheadline).padding(.horizontal, FrameMetrics.inset).padding(.vertical, 12)
+          RailDisclosure(title: "All metadata (\(store.metadata.embedded.count))", isExpanded: $embeddedExpanded) {
+            ValueGrid(rows: store.metadata.embedded)
+          }
         }
       }
-    }.background(FramePalette.paper).id(photo.id)
-  }
-  private var identityRows: [MetadataRow] {
-    var rows = store.metadata.identity
-    if !rows.contains(where: { $0.label == "Path" }) {
-      rows.append(MetadataRow(label: "Path", value: photo.relativePath))
+      .padding(.top, 10).padding(.bottom, 24)
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .overlayScroller()
     }
+    .scrollIndicators(.automatic)
+    .id(photo.id)
+  }
+
+  /// The muted lines that close the rail: the kind with the pixel size, then when the file last changed.
+  private var summary: some View {
+    let dimensions = row("Dimensions")
+    let changed = photo.modifiedAt.map(FrameFormat.relative.string(from:)) ?? row("Remote modified")
+    return VStack(alignment: .leading, spacing: 0) {
+      Text(photo.kindDescription + (dimensions.map { " · " + $0 } ?? ""))
+      if let changed { Text(changed) }
+    }
+    .font(.system(size: 11.5)).lineSpacing(2).foregroundStyle(FramePalette.muted)
+    .textSelection(.enabled)
+    .padding(.top, 16)
+    .help(photo.relativePath)
+  }
+  private func row(_ label: String) -> String? { store.metadata.identity.first { $0.label == label }?.value }
+  /// Identity rows the summary does not already give.
+  private var otherIdentityRows: [MetadataRow] {
+    var rows = store.metadata.identity.filter { !["Type", "Dimensions", "Modified"].contains($0.label) }
+    if !rows.contains(where: { $0.label == "Path" }) { rows.append(MetadataRow(label: "Path", value: photo.relativePath)) }
     return rows
   }
 }
 
-private struct SidecarSection: View {
-  let name: String
-  let text: String?
-  @State private var expanded = false
+enum FrameFormat {
+  /// "Today at 10:42", or a date for anything older than yesterday.
+  static let relative: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateStyle = .medium
+    formatter.timeStyle = .short
+    formatter.doesRelativeDateFormatting = true
+    return formatter
+  }()
+}
+
+private struct RailHeader<Accessory: View>: View {
+  let title: String
+  @ViewBuilder var accessory: () -> Accessory
   var body: some View {
-    DisclosureGroup(isExpanded: $expanded) {
-      Text(text ?? "No text preview.").font(.system(.subheadline, design: .monospaced))
-        .textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading).padding(.top, 8)
-    } label: {
-      Text(name).font(.subheadline).lineLimit(1).truncationMode(.middle)
-    }.padding(.horizontal, FrameMetrics.inset).padding(.vertical, 12)
+    HStack {
+      Text(title).font(.system(size: 11, weight: .semibold)).foregroundStyle(FramePalette.muted)
+      Spacer(minLength: 0)
+      accessory()
+    }
+    .frame(height: 20).padding(.bottom, 6)
   }
 }
 
-private struct MetadataSectionView: View {
-  let title: String?
+extension RailHeader where Accessory == EmptyView {
+  init(title: String) { self.init(title: title) { EmptyView() } }
+}
+
+private struct GenerationSection: View {
+  let title: String
   let rows: [MetadataRow]
   var prompt: String?
   var negativePrompt: String?
-
-  init(
-    title: String?,
-    rows: [MetadataRow],
-    prompt: String? = nil,
-    negativePrompt: String? = nil
-  ) {
-    self.title = title
-    self.rows = rows
-    self.prompt = prompt
-    self.negativePrompt = negativePrompt
-  }
-
   var body: some View {
-    VStack(alignment: .leading, spacing: 8) {
-      if let title {
-        HStack {
-          SectionLabel(title)
-          Spacer()
-          if title.hasPrefix("Generation") {
-            Button(action: copySection) { Image(systemName: "doc.on.doc") }
-              .buttonStyle(IconButtonStyle(size: 20)).foregroundStyle(FramePalette.muted).help("Copy generation metadata")
-              .accessibilityLabel("Copy \(title)")
-          }
-        }.frame(height: 20)
+    VStack(alignment: .leading, spacing: 0) {
+      RailHeader(title: title) {
+        Button(action: copySection) { Image(systemName: "doc.on.doc").font(.system(size: 11)) }
+          .buttonStyle(.plain).foregroundStyle(FramePalette.muted)
+          .help("Copy generation metadata").accessibilityLabel("Copy \(title)")
       }
-
-      if let prompt, !prompt.isEmpty {
-        PromptBlock(label: "Prompt", value: prompt)
-      }
-      if let negativePrompt, !negativePrompt.isEmpty {
-        PromptBlock(label: "Negative", value: negativePrompt)
-      }
-
-      Grid(alignment: .topLeading, horizontalSpacing: 12, verticalSpacing: 8) {
-        ForEach(rows) { row in
-          GridRow {
-            Text(row.label)
-              .foregroundStyle(FramePalette.muted)
-              .frame(width: 88, alignment: .leading)
-            Text(row.value)
-              .textSelection(.enabled)
-              .frame(maxWidth: .infinity, alignment: .leading)
-          }
-        }
-      }
-      .font(.callout)
+      if let prompt, !prompt.isEmpty { PromptBlock(label: "Prompt", value: prompt) }
+      if let negativePrompt, !negativePrompt.isEmpty { PromptBlock(label: "Negative", value: negativePrompt) }
+      ValueGrid(rows: rows)
     }
-    .padding(.horizontal, title == nil ? 0 : FrameMetrics.inset)
-    .padding(.vertical, title == nil ? 4 : 12)
-    .frame(maxWidth: .infinity, alignment: .leading)
   }
-
   private func copySection() {
     var parts: [String] = []
     if let prompt { parts.append("Prompt: \(prompt)") }
@@ -138,19 +136,77 @@ private struct MetadataSectionView: View {
 private struct PromptBlock: View {
   let label: String
   let value: String
-
   var body: some View {
-    VStack(alignment: .leading, spacing: 4) {
-      Text(label)
-        .font(.subheadline.weight(.semibold))
-        .foregroundStyle(FramePalette.muted)
-      Text(value)
-        .font(.callout)
-        .lineSpacing(2)
-        .textSelection(.enabled)
+    VStack(alignment: .leading, spacing: 1) {
+      Text(label).font(.system(size: 11)).foregroundStyle(FramePalette.muted)
+      Text(value).font(.system(size: 12.5)).lineSpacing(2).textSelection(.enabled)
+        .fixedSize(horizontal: false, vertical: true)
     }
-    .padding(8)
+    .padding(.vertical, 8).padding(.horizontal, 10)
     .frame(maxWidth: .infinity, alignment: .leading)
-    .background(FramePalette.panel, in: RoundedRectangle(cornerRadius: FrameMetrics.radius))
+    .background(FramePalette.fill, in: RoundedRectangle(cornerRadius: FrameMetrics.radius, style: .continuous))
+    .padding(.bottom, 6)
+  }
+}
+
+/// Label and value pairs in two columns, the labels muted.
+private struct ValueGrid: View {
+  let rows: [MetadataRow]
+  var body: some View {
+    if !rows.isEmpty {
+      Grid(alignment: .topLeading, horizontalSpacing: 0, verticalSpacing: 6) {
+        ForEach(rows) { row in
+          GridRow {
+            Text(row.label).foregroundStyle(FramePalette.muted).frame(width: 74, alignment: .leading)
+            Text(row.value).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+              .fixedSize(horizontal: false, vertical: true)
+          }
+        }
+      }
+      .font(.system(size: 12.5))
+      .padding(.horizontal, 2).padding(.top, 4).padding(.bottom, 12)
+    }
+  }
+}
+
+/// One sidecar file; choosing it opens the file in Files mode.
+private struct SidecarRow: View {
+  let item: PhotoItem
+  let open: () -> Void
+  @State private var hovered = false
+  var body: some View {
+    Button(action: open) {
+      HStack(spacing: 8) {
+        KindChip(text: item.kindChip)
+        Text(item.name).font(.system(size: 12.5)).lineLimit(1).truncationMode(.middle)
+          .frame(maxWidth: .infinity, alignment: .leading)
+        Image(systemName: "chevron.right").font(.system(size: 9, weight: .semibold)).foregroundStyle(FramePalette.muted)
+      }
+      .padding(.leading, 10).padding(.trailing, 8).frame(height: 32)
+      .background(FramePalette.fill.opacity(hovered ? 1.6 : 1), in: RoundedRectangle(cornerRadius: FrameMetrics.radius, style: .continuous))
+      .contentShape(Rectangle())
+    }
+    .buttonStyle(.plain)
+    .onHover { hovered = $0 }
+    .help("Open \(item.name)")
+    .accessibilityLabel("Open sidecar \(item.name)")
+  }
+}
+
+private struct RailDisclosure<Content: View>: View {
+  let title: String
+  @Binding var isExpanded: Bool
+  @ViewBuilder var content: () -> Content
+  var body: some View {
+    VStack(alignment: .leading, spacing: 6) {
+      Button { isExpanded.toggle() } label: {
+        HStack(spacing: 4) {
+          Image(systemName: isExpanded ? "chevron.down" : "chevron.right").font(.system(size: 8, weight: .semibold))
+          Text(title).font(.system(size: 11, weight: .semibold))
+        }.foregroundStyle(FramePalette.muted).contentShape(Rectangle())
+      }.buttonStyle(.plain)
+      if isExpanded { content() }
+    }
+    .padding(.top, 12)
   }
 }

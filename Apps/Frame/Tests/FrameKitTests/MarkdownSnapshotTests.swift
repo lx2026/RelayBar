@@ -13,16 +13,16 @@ final class MarkdownSnapshotTests: XCTestCase {
     }
     let directory = URL(fileURLWithPath: path, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let folder = Bundle.module.resourceURL!.appendingPathComponent("Fixtures/markdown")
     let width: CGFloat = 820
     for name in ["ordinary", "extended"] {
       for (label, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
         let renderer = DocumentRenderer()
-        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 900), styleMask: [.titled], backing: .buffered, defer: false)
+        let window = QuietWindow(size: NSSize(width: width, height: 900), styleMask: [.titled])
         window.appearance = NSAppearance(named: appearance)
         window.contentView = renderer.webView
-        window.orderBack(nil)
+        window.orderInOffscreen()
         renderer.show(path: name + ".md", location: .local(folder))
         var height: CGFloat = 0
         for _ in 0..<400 {

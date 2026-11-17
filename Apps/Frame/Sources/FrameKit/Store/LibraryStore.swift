@@ -34,11 +34,49 @@ public final class LibraryStore: ObservableObject {
   @Published public private(set) var localFolders: LocalFolderIndex?
   @Published public private(set) var documentRevision = 0
   @Published public var showsDocumentInfo = false
+  /// A Markdown file's details are its "On this page" outline, shown until Hide Details.
+  @Published public var showsDocumentOutline = true
   @Published public private(set) var showsMediaInfo = true
-  public var showsInfo: Bool { selectedPhoto?.format.isDocument == true ? showsDocumentInfo : showsMediaInfo }
+  public var showsInfo: Bool {
+    guard let photo = selectedPhoto else { return showsMediaInfo }
+    if photo.format == .markdown { return showsDocumentOutline }
+    return photo.format.isDocument ? showsDocumentInfo : showsMediaInfo
+  }
   public func toggleInfo() {
-    if selectedPhoto?.format.isDocument == true { showsDocumentInfo.toggle() }
+    if selectedPhoto?.format == .markdown { showsDocumentOutline.toggle() }
+    else if selectedPhoto?.format.isDocument == true { showsDocumentInfo.toggle() }
     else { enqueuePreference { $0.showsMediaInfo.toggle() } }
+  }
+  /// Rendered or Source for Markdown and HTML. Starts as Rendered and holds while the app runs.
+  public var showsDocumentSource: Bool { documentRenderer.showsSource }
+  public func setShowsDocumentSource(_ value: Bool) {
+    guard !isClosing else { return }
+    documentRenderer.setShowsSource(value)
+  }
+  /// Each listed folder's baseline by path, and the modification time each file had when it was last shown in
+  /// Files mode, keyed like favourites.
+  @Published public private(set) var folderBaselines: [String: Date] = [:]
+  @Published public private(set) var openedTimes: [String: Date] = [:]
+  /// True while the catalog can keep baselines and opened times.
+  private var tracksChanges = false
+  /// True for a file modified after its folder's baseline and after it was last shown in Files mode.
+  public func isChanged(_ photo: PhotoItem) -> Bool {
+    guard photo.archiveID == nil, photo.rootID == activeRootID else { return false }
+    return ChangeTracking.isChanged(modified: ChangeTracking.modificationDate(of: photo),
+      baseline: folderBaselines[photo.folderRelativePath], opened: openedTimes[photo.favoriteID])
+  }
+  /// The view that displays a file in Files mode reports it here; only that counts as opening it.
+  public func noteDisplayed(_ photo: PhotoItem) {
+    guard !isClosing, viewMode == .inspect, photo.id == selectionID, !selectionMissing, !rootUnavailable,
+          isChanged(photo), let modified = ChangeTracking.modificationDate(of: photo),
+          let feature = previews.library.favorites, feature.isActive else { return }
+    do { try feature.markOpened(rootID: photo.rootID, relativePath: photo.relativePath, at: modified) } catch { return }
+    openedTimes[photo.favoriteID] = modified
+  }
+  /// "N selected" when the file actions will act on more, or other, than one file.
+  public var selectionCountLabel: String? {
+    let count = actionPhotos.count
+    return isSelecting || count != 1 ? "\(count) selected" : nil
   }
   private var localTreeSubscription: AnyCancellable?
   private var missingPreview: PhotoItem?
@@ -71,6 +109,8 @@ public final class LibraryStore: ObservableObject {
   @Published public private(set) var selectedFolderPath = "" { didSet { scopeChanged() } }
   @Published public private(set) var filter: PhotoFilter = .all { didSet { scopeChanged() } }
   @Published public private(set) var fileTypeFilter: FileTypeFilter = .all { didSet { scopeChanged() } }
+  /// Companion files are folded into the file they describe unless this is on.
+  @Published public private(set) var showsSidecarFiles = false { didSet { scopeChanged() } }
   @Published public private(set) var folderIsSelected = false
   @Published public private(set) var selectionID: PhotoItem.ID?
   @Published public private(set) var batchSelection = MediaSelection()
@@ -113,7 +153,7 @@ public final class LibraryStore: ObservableObject {
   public var documentRenderer: DocumentRenderer { previews.documentRenderer }
   private var previewObservation: AnyCancellable?
   public var gridScrollPositions: [String: Double] = [:]
-  public var gridScopeKey: String { "\(activeRootID?.uuidString ?? "")|\(selectedFolderPath)|\(filter.rawValue)|\(fileTypeFilter.rawValue)|\(includesSubfolders)" }
+  public var gridScopeKey: String { "\(activeRootID?.uuidString ?? "")|\(selectedFolderPath)|\(filter.rawValue)|\(fileTypeFilter.rawValue)|\(includesSubfolders)|\(showsSidecarFiles)" }
 
   private var started = false
   private var featureObservations: Set<AnyCancellable> = []
@@ -261,7 +301,7 @@ public final class LibraryStore: ObservableObject {
   private var searchScope: [PhotoItem] {
     PhotoQuery.visiblePhotos(in: photos, folderRelativePath: selectedFolderPath,
                              filter: filter, favorites: favorites, includeSubfolders: includesSubfolders,
-                             fileType: fileTypeFilter)
+                             fileType: fileTypeFilter, includeCompanions: showsSidecarFiles)
   }
   public var selectedPhoto: PhotoItem? {
     guard let selectionID else { return nil }
@@ -324,6 +364,109 @@ public final class LibraryStore: ObservableObject {
   }
   public var canOpenSelectedInDefaultApp: Bool {
     hasAvailableSelection && (!isRemote || (hasRemoteAuthority && previews.media.canResolveOriginal))
+  }
+  /// Opens the selected file, downloading a remote one first, in the app macOS assigns to it.
+  public func openSelectedInDefaultApp() {
+    guard canOpenSelectedInDefaultApp, let photo = selectedPhoto else { return }
+    _ = try? presentation.task { [self] in
+      do {
+        let file = photo.remote == nil ? photo : try await previews.media.resolveOriginal(photo)
+        guard !isClosing else { return }
+        NSWorkspace.shared.open(file.url)
+      } catch { if !isClosing { errorMessage = error.localizedDescription } }
+    }
+  }
+  /// The files the tree lists in a folder: companions are folded into their owner unless Show Sidecar Files is on.
+  public func treeFiles(in path: String) -> [PhotoItem] {
+    let all = files(in: path)
+    return showsSidecarFiles ? all : all.filter { $0.companionOwnerID == nil }
+  }
+  /// An asset's companion files, in its own order, made from its own companion list so they do not depend on
+  /// the folder still being cached. A listed item is used when there is one.
+  public func companionItems(of photo: PhotoItem) -> [PhotoItem] {
+    guard !photo.companions.isEmpty else { return [] }
+    let listed = Dictionary(files(in: photo.folderRelativePath).map { ($0.relativePath, $0) }, uniquingKeysWith: { first, _ in first })
+    return photo.companions.map { companion in
+      if let item = listed[companion.relativePath] { return item }
+      var item = FileScanner.item(companion, rootID: photo.rootID,
+                                  format: .browsing(pathExtension: (companion.relativePath as NSString).pathExtension))
+      item.companionOwnerID = photo.id
+      if let remote = photo.remote, let entry = remote.companions.first(where: { $0.path == companion.relativePath }) {
+        item.remote = RemoteAssetReference(source: remote.source, listingID: remote.listingID, entry: entry)
+      }
+      return item
+    }
+  }
+  /// Shows a companion file in Files mode. Companions are listed again so it stays in reach of Previous and Next.
+  public func openCompanion(_ item: PhotoItem) {
+    guard !isClosing, !isFileOperation else { return }
+    showFile(item)
+  }
+  public func setShowsSidecarFiles(_ value: Bool) {
+    guard !isClosing, !isFileOperation, value != showsSidecarFiles else { return }
+    let owner = value ? nil : selectedPhoto?.companionOwnerID.flatMap { id in photos.first { $0.id == id } }
+    showsSidecarFiles = value
+    // A sidecar on show gives way to the file it describes rather than to the folder's first file.
+    if let owner, visiblePhotos.contains(where: { $0.id == owner.id }) {
+      batchSelection.preview(owner.id, keepingSelection: isSelecting)
+      preview(owner)
+    }
+    ensureValidSelection(reload: false)
+  }
+  /// The folder a selection in the tree shows: selecting a file opens it in Files mode.
+  public func showFile(_ photo: PhotoItem) {
+    guard !isClosing, !isFileOperation else { return }
+    if viewMode != .inspect {
+      viewMode = .inspect
+      rememberLayout()
+      isFocusMode = false
+    }
+    selectFile(photo)
+  }
+  /// Subfolders of the folder on show, as Icons mode lists them before its files.
+  public var subfolders: [FolderTile] {
+    guard filter != .archive else { return [] }
+    if let remoteFolders {
+      return (remoteFolders.nodes[selectedFolderPath]?.children ?? [])
+        .map { FolderTile(path: $0, name: ($0 as NSString).lastPathComponent) }
+    }
+    return (localFolders?.results[selectedFolderPath]?.rootFolder.children ?? rootFolderChildren(selectedFolderPath))
+      .map { FolderTile(path: $0.relativePath, name: $0.name) }
+  }
+  private func rootFolderChildren(_ path: String) -> [FolderNode] {
+    func find(_ node: FolderNode) -> FolderNode? {
+      node.relativePath == path ? node : node.children.lazy.compactMap(find).first
+    }
+    return rootFolder.flatMap(find)?.children ?? []
+  }
+  /// The folder tiles Icons mode shows first: only while Subfolders is off and nothing narrows the files.
+  public var gridFolders: [FolderTile] {
+    guard !includesSubfolders, !hasFileFilters, searchQuery.isEmpty else { return [] }
+    return subfolders
+  }
+  /// How many files of each kind the folder holds after its favourite filter, before the kind filter.
+  public var kindCounts: [FileTypeFilter: Int] {
+    if let kindCountsCache { return kindCountsCache }
+    let scope = PhotoQuery.visiblePhotos(in: photos, folderRelativePath: selectedFolderPath, filter: filter,
+      favorites: favorites, includeSubfolders: includesSubfolders, includeCompanions: showsSidecarFiles)
+    var counts: [FileTypeFilter: Int] = [:]
+    for photo in scope {
+      for kind in FileTypeFilter.allCases where kind.includes(photo.format) { counts[kind, default: 0] += 1 }
+    }
+    kindCountsCache = counts
+    return counts
+  }
+  /// The counts above and the folder's file count, kept until the folder, its filters or its files change.
+  private var kindCountsCache: [FileTypeFilter: Int]?
+  private var folderFileCountCache: Int?
+  /// The name of the folder on show.
+  public var shownFolderName: String {
+    if filter == .archive { return "Archive" }
+    if isRemote {
+      let root = remoteFolders?.rootPath ?? remotePath
+      return selectedFolderPath == root && root == "/" ? rootName : (selectedFolderPath as NSString).lastPathComponent
+    }
+    return selectedFolderPath.isEmpty ? rootName : (selectedFolderPath as NSString).lastPathComponent
   }
   public var folderChoices: [FolderNode] {
     func flatten(_ node: FolderNode) -> [FolderNode] { node.children.flatMap { [$0] + flatten($0) } }
@@ -428,7 +571,11 @@ public final class LibraryStore: ObservableObject {
       do { tree = try feature.makeIndex(source: source, path: path) }
       catch { remoteError = error.localizedDescription; return }
       remoteFolders = tree
-      remoteTreeSubscription = tree.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+      remoteTreeSubscription = tree.objectWillChange.sink { [weak self] _ in
+        self?.objectWillChange.send()
+        // Folders the tree lists as they are expanded get their baselines once the change has landed.
+        DispatchQueue.main.async { self?.recordRemoteBaselines() }
+      }
       remoteIncludesSubfolders = false
     }
     guard let tree = remoteFolders else { return }
@@ -443,16 +590,19 @@ public final class LibraryStore: ObservableObject {
     if browseFolder && filter == .archive { filter = .all }
     await settlePreferences()
     guard scanGeneration == token, !isClosing, feature.isActive else { return }
-    viewMode = browseFolder ? .contactSheet : previews.preferences.value.layout(for: rootID)
+    // Choosing a folder keeps the current mode; opening a location uses the one remembered for it.
+    viewMode = browseFolder ? viewMode : previews.preferences.value.layout(for: rootID)
     folderIsSelected = focus.isEmpty
     isFocusMode = false; isScanning = true
     loadFavorites(rootID: rootID)
+    loadChangeState(rootID: rootID)
     let task = Task { try await tree.load(path) }
     remoteTask = task
     do {
       let result = try await task.value
       guard scanGeneration == token, !Task.isCancelled else { return }
       photos = result.files; rootFolder = result.rootFolder; isScanning = false
+      recordListing(folder: path, files: result.files)
       let focused = photos.filter { focus.contains($0.name) || $0.companions.contains { focus.contains($0.url.lastPathComponent) } }
       selectionID = focused.first?.id ?? previousID
       batchSelection.update(ids: focused.isEmpty ? previousBatch : Set(focused.map(\.id)), currentID: selectionID)
@@ -579,7 +729,6 @@ public final class LibraryStore: ObservableObject {
     showsOpenChooser = false
     selectedFolderPath = relativePath
     folderIsSelected = true
-    viewMode = .contactSheet
     isFocusMode = false
     batchSelection.replace(with: nil)
     selectionID = nil
@@ -608,6 +757,7 @@ public final class LibraryStore: ObservableObject {
     }
     if filter == .archive && photo.archiveID == nil { filter = .all }
     if !fileTypeFilter.includes(photo.format) { fileTypeFilter = .all }
+    if photo.companionOwnerID != nil, !showsSidecarFiles { showsSidecarFiles = true }
     if (filter == .favorites && !isFavorite(photo)) || (filter == .notFavorited && isFavorite(photo)) { filter = .all }
     selectedFolderPath = photo.folderRelativePath
     if isRemote { remotePath = photo.folderRelativePath }
@@ -656,7 +806,7 @@ public final class LibraryStore: ObservableObject {
     guard !isFileOperation, mode != viewMode else { return }
     viewMode = mode; rememberLayout(); isFocusMode = false
     if let photo = selectedPhoto { prepareSelection(photo) }
-    if mode == .contactSheet, !isRemote, includesSubfolders { refresh() }
+    if mode == .contactSheet, !isRemote, includesSubfolders { rescanLocal() }
   }
   private func installDirectory(_ path: String, _ result: ScanResult) {
     guard !isFileOperation else { return }
@@ -670,6 +820,7 @@ public final class LibraryStore: ObservableObject {
         if old.contentID != updated.contentID { prepareSelection(updated) }
       } else { missingPreview = old; selectionMissing = true }
     }
+    recordListing(folder: path, files: result.files)
   }
   public func setFilter(_ newFilter: PhotoFilter) {
     guard !isClosing, !isFileOperation, availableFilters.contains(newFilter) else { return }
@@ -708,8 +859,12 @@ public final class LibraryStore: ObservableObject {
     fileTypeFilter != .all || (filter != .all && filter != .archive)
   }
   public var folderFileCount: Int {
-    PhotoQuery.visiblePhotos(in: photos, folderRelativePath: selectedFolderPath,
-      filter: filter == .archive ? .archive : .all, favorites: [], includeSubfolders: includesSubfolders).count
+    if let folderFileCountCache { return folderFileCountCache }
+    let count = PhotoQuery.visiblePhotos(in: photos, folderRelativePath: selectedFolderPath,
+      filter: filter == .archive ? .archive : .all, favorites: [], includeSubfolders: includesSubfolders,
+      includeCompanions: showsSidecarFiles).count
+    folderFileCountCache = count
+    return count
   }
   public var isReadingFolder: Bool {
     isScanning || (remoteFolders?.loading.contains(selectedFolderPath) ?? localFolders?.loading.contains(selectedFolderPath) ?? false)
@@ -883,16 +1038,71 @@ public final class LibraryStore: ObservableObject {
     } else if isFocusMode { isFocusMode = false }
     else if viewMode == .inspect { toggleContactSheet() }
   }
+  /// The window entered or left full screen, by any means; leaving it ends the full-screen viewer.
+  public func fullScreenDidChange(_ isFullScreen: Bool) {
+    if !isFullScreen, isFocusMode { isFocusMode = false }
+  }
+  /// Brings the search field into view, leaving the full-screen viewer and showing the folders column, then
+  /// gives it the focus once it exists.
+  public func revealSearch() {
+    guard isSearchAvailable else { return }
+    let hidden = isFocusMode || showsFolderOutline == false
+    if isFocusMode {
+      if let window = NSApp?.keyWindow, window.styleMask.contains(.fullScreen) { window.toggleFullScreen(nil) }
+      isFocusMode = false
+    }
+    if showsFolderOutline == false { showsFolderOutline = true }
+    guard hidden else { focusSearch(); return }
+    // A field made after a request does not answer it, so the request waits for the column to be drawn.
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in self?.focusSearch() }
+  }
   public func toggleFullScreen() {
     guard canInspect, let window = NSApp?.keyWindow else { return }
     if window.styleMask.contains(.fullScreen) {
       isFocusMode = false
     } else {
       if viewMode == .contactSheet, let selectedPhoto { inspect(selectedPhoto) }
-      isFocusMode = true
+      beginFocusMode(watching: window)
     }
     window.toggleFullScreen(nil)
   }
+  /// The full-screen viewer lasts only while its window is full screen: it ends when the window leaves full
+  /// screen however that happens, closes, or has not entered full screen within `focusEntryTimeout`.
+  func beginFocusMode(watching window: NSWindow) {
+    endFocusWatch()
+    isFocusMode = true
+    let token = UUID()
+    focusToken = token
+    let center = NotificationCenter.default
+    let end: @Sendable (Notification) -> Void = { [weak self] _ in
+      MainActor.assumeIsolated { self?.endFocusMode(token) }
+    }
+    focusObservers.append(center.addObserver(forName: NSWindow.didExitFullScreenNotification, object: window, queue: nil, using: end))
+    focusObservers.append(center.addObserver(forName: NSWindow.willCloseNotification, object: window, queue: nil, using: end))
+    focusObservers.append(center.addObserver(forName: NSWindow.didEnterFullScreenNotification, object: window, queue: nil) { [weak self] _ in
+      MainActor.assumeIsolated { if self?.focusToken == token { self?.focusEntered = true } }
+    })
+    focusEntered = window.styleMask.contains(.fullScreen)
+    DispatchQueue.main.asyncAfter(deadline: .now() + focusEntryTimeout) { [weak self, weak window] in
+      guard let self, focusToken == token, !focusEntered, window?.styleMask.contains(.fullScreen) != true else { return }
+      endFocusMode(token)
+    }
+  }
+  private func endFocusMode(_ token: UUID) {
+    guard focusToken == token else { return }
+    isFocusMode = false
+    endFocusWatch()
+  }
+  private func endFocusWatch() {
+    focusObservers.forEach(NotificationCenter.default.removeObserver)
+    focusObservers = []
+    focusToken = nil
+  }
+  private var focusObservers: [NSObjectProtocol] = []
+  private var focusToken: UUID?
+  private var focusEntered = false
+  /// How long the window may take to enter full screen before the viewer gives up; tests shorten it.
+  var focusEntryTimeout: TimeInterval = 3
   public func togglePlayback() {
     guard hasAvailableSelection, viewMode == .inspect, selectedPhoto?.format.isVideo == true else { return }
     if playback.player == nil, let photo = selectedPhoto, photo.remote != nil, !playback.isPreparing {
@@ -940,6 +1150,7 @@ public final class LibraryStore: ObservableObject {
     let source = remoteSource, tree = remoteFolders
     let oldOrder = visiblePhotos.map(\.id), oldCurrent = selectionID
     cancelRemoteScan()
+    if action != "restore" { holdOpened(targets) }
     beginFileOperation(action == "delete" ? "Deleting" : action == "restore" ? "Restoring" : "Archiving", total: targets.count, stopsPlayback: true)
     let result: RemoteMutationResult
     do {
@@ -1005,7 +1216,13 @@ public final class LibraryStore: ObservableObject {
       }
       return
     }
-    guard canRefresh, let rootURL, let activeRootID else { return }
+    rescanLocal()
+  }
+
+  /// Scans the whole local folder again, as Icons mode needs with Subfolders on whatever kind of file is selected.
+  private func rescanLocal() {
+    let requestedGeneration = scanGeneration
+    guard !isClosing, !isRemote, canRefresh, let rootURL, let activeRootID else { return }
     let selection = selectionID
     _ = try? presentation.task { [self] in
       guard !isClosing, scanGeneration == requestedGeneration else { return }
@@ -1043,6 +1260,7 @@ public final class LibraryStore: ObservableObject {
     let targets = actionPhotos
     let oldItems = visiblePhotos
     let oldCurrent = selectionID
+    holdOpened(targets)
     beginFileOperation("Moving to Trash", total: targets.count, stopsPlayback: true)
     let result: TrashBatchResult
     do { result = try await feature.move(targets, root: rootURL, rootID: activeRootID) { [weak self] in self?.setOperationProgress($0) } }
@@ -1073,6 +1291,7 @@ public final class LibraryStore: ObservableObject {
     guard canArchive, let rootURL, let activeRootID, let feature = previews.files.archive else { return }
     let targets = actionPhotos
     let restoring = filter == .archive
+    if !restoring { holdOpened(targets) }
     beginFileOperation(restoring ? "Restoring Archive" : "Archiving", total: targets.count, stopsPlayback: true)
     let result: ArchiveBatchResult
     do { result = try await feature.apply(targets, root: rootURL, restoring: restoring) { [weak self] in self?.setOperationProgress($0) } }
@@ -1235,6 +1454,7 @@ public final class LibraryStore: ObservableObject {
     rootFolder = nil
     clearSelection()
     loadFavorites(rootID: record.id)
+    loadChangeState(rootID: record.id)
     let tree: LocalFolderIndex
     do { tree = try scanning.makeIndex(root: rootURL!, rootID: record.id) }
     catch { errorMessage = error.localizedDescription; return }
@@ -1268,6 +1488,7 @@ public final class LibraryStore: ObservableObject {
       rootFolder = result.rootFolder
       rootUnavailable = false
       isScanning = false
+      recordBaselines(scanned: result.files)
       if !selectedFolderPath.isEmpty, !containsFolder(selectedFolderPath, in: result.rootFolder) { selectedFolderPath = "" }
       selectionID = preserveSelection
       ensureValidSelection(reload: true)
@@ -1335,6 +1556,7 @@ public final class LibraryStore: ObservableObject {
     isFocusMode = false
     viewMode = .inspect
     loadFavorites(rootID: record.id)
+    folderBaselines = [:]; openedTimes = [:]; tracksChanges = false
   }
   private func showNotice(_ message: String, action: String? = nil) {
     guard !isClosing else { return }
@@ -1350,6 +1572,51 @@ public final class LibraryStore: ObservableObject {
     guard let feature = previews.library.favorites, feature.isActive else { favorites = []; return }
     do { favorites = try feature.favorites(rootID: rootID) }
     catch { errorMessage = "Could not load favorites: \(error.localizedDescription)" }
+  }
+  private func loadChangeState(rootID: UUID) {
+    folderBaselines = [:]; openedTimes = [:]; tracksChanges = false
+    guard let feature = previews.library.favorites, feature.isActive,
+          let state = try? feature.changeState(rootID: rootID) else { return }
+    folderBaselines = state.baselines; openedTimes = state.opened; tracksChanges = true
+  }
+  /// A folder's first listing sets its baseline from the files in it.
+  private func recordBaseline(folder: String, files: [PhotoItem]) {
+    guard tracksChanges, folderBaselines[folder] == nil, let rootID = activeRootID,
+          let feature = previews.library.favorites, feature.isActive,
+          let baseline = try? feature.recordBaseline(rootID: rootID, folder: folder, baseline: ChangeTracking.baseline(of: files)) else { return }
+    folderBaselines[folder] = baseline
+  }
+  /// One folder's own listing: its baseline the first time, and its opened times for files it no longer has.
+  /// Only this listing can tell that one of its files is gone; Frame's own moves are kept for Undo and Restore.
+  private func recordListing(folder: String, files: [PhotoItem]) {
+    let listed = files.filter { $0.archiveID == nil && $0.folderRelativePath == folder }
+    recordBaseline(folder: folder, files: listed)
+    guard let rootID = activeRootID, !openedTimes.isEmpty, let feature = previews.library.favorites, feature.isActive,
+          let dropped = try? feature.pruneOpened(rootID: rootID, folder: folder, keeping: Set(listed.map(\.relativePath))) else { return }
+    for key in dropped { openedTimes.removeValue(forKey: key) }
+  }
+  /// A whole-library scan sets baselines for folders not listed before. It never drops opened times: it skips
+  /// package contents the tree shows, so absence from it proves nothing.
+  private func recordBaselines(scanned files: [PhotoItem]) {
+    guard tracksChanges else { return }
+    let folders = Dictionary(grouping: files.filter { $0.archiveID == nil }, by: \.folderRelativePath)
+    for (folder, items) in folders where folderBaselines[folder] == nil { recordBaseline(folder: folder, files: items) }
+  }
+  private func recordRemoteBaselines() {
+    guard tracksChanges, !isClosing, let tree = remoteFolders else { return }
+    for (path, node) in tree.nodes where node.isLoaded && folderBaselines[path] == nil {
+      // A folder whose listing has left the cache is skipped rather than given an empty baseline.
+      let files = tree.files(at: path)
+      if !files.isEmpty { recordBaseline(folder: path, files: files) }
+    }
+  }
+  /// Keeps the opened times of files Frame is about to move to the Trash or the Archive.
+  private func holdOpened(_ targets: [PhotoItem]) {
+    guard tracksChanges, let feature = previews.library.favorites, feature.isActive else { return }
+    let keys = Set(targets.flatMap { photo in
+      [photo.favoriteID] + photo.companions.map { FavoriteRecord.makeKey(rootID: photo.rootID, relativePath: $0.relativePath) }
+    }).intersection(openedTimes.keys)
+    try? feature.holdOpened(keys: keys)
   }
   private func record(_ id: UUID) -> LibraryRootInfo? { try? previews.library.catalog?.record(id) }
   private func reloadRecents() {
@@ -1367,7 +1634,7 @@ public final class LibraryStore: ObservableObject {
   }
   /// The folder, its filters or its files changed: the list is recomputed and an active search runs again.
   private func scopeChanged() {
-    visibleCache = nil
+    visibleCache = nil; kindCountsCache = nil; folderFileCountCache = nil
     guard !searchQuery.isEmpty else { return }
     scheduleSearch()
   }
@@ -1426,6 +1693,7 @@ public final class LibraryStore: ObservableObject {
   private func favoritesBecameAvailable() {
     guard !isClosing, let activeRootID else { return }
     loadFavorites(rootID: activeRootID)
+    if !rootUnavailable { loadChangeState(rootID: activeRootID) }
   }
   private func scanningBecameAvailable() {
     guard !isClosing, !isRemote, !rootUnavailable, let rootURL, let activeRootID,

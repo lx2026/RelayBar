@@ -7,7 +7,8 @@ public enum PhotoQuery {
     filter: PhotoFilter,
     favorites: Set<PhotoItem.ID>,
     includeSubfolders: Bool = true,
-    fileType: FileTypeFilter = .all
+    fileType: FileTypeFilter = .all,
+    includeCompanions: Bool = true
   ) -> [PhotoItem] {
     photos.filter { photo in
       let inFolder: Bool
@@ -23,7 +24,8 @@ public enum PhotoQuery {
       let favorite = favorites.contains(photo.favoriteID)
       let passesFavorite = (filter != .favorites || favorite) && (filter != .notFavorited || !favorite)
       let passesArchive = (filter == .archive) == (photo.archiveID != nil)
-      return inFolder && passesFavorite && passesArchive && fileType.includes(photo.format)
+      let passesCompanion = includeCompanions || photo.companionOwnerID == nil
+      return inFolder && passesFavorite && passesArchive && passesCompanion && fileType.includes(photo.format)
     }
   }
 }

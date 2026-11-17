@@ -1,4 +1,5 @@
 import Composition
+import HouseStyle
 
 /// Frame's optional features, declared in one place. A plugin's nodes are part of the tree only while it is on.
 public enum FramePlugins {
@@ -12,6 +13,9 @@ public enum FramePlugins {
         features: ["prompt-search", "remote/prompt-search"]
     )
 
+    /// The palette's form, shared with RelayBar.
+    public static let paperAppearance = PaperAppearance.plugin
+
     /// The catalog, in the order the Plugins window lists it.
-    public static let all = [promptSearch]
+    public static let all = [promptSearch, paperAppearance]
 }

@@ -29,7 +29,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("style.css").path))
     XCTAssertTrue(FileManager.default.fileExists(atPath: root.appendingPathComponent("result.md").path))
   }
-  func testMarkdownAndBoundedText() throws {
+  @MainActor func testMarkdownAndBoundedText() throws {
     let html = DocumentHTML.markdown("# Heading\n\n| A | B |\n|---|---|\n| 1 | 2 |\n\n- [x] Done\n\n```swift\nlet x = 1\n```\n\n![Photo](images/a.png)\n\n<script>alert(1)</script>", referenceToken: "frame-test")
     for token in ["<h1>", "<table>", "type=\"checkbox\"", "<span class=\"language\">swift</span>", "<img src=\"images/a.png\"", "href=\"relaybar-copy://block/frame-test/"] {
       XCTAssertTrue(html.contains(token), token)
@@ -43,7 +43,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertThrowsError(try DocumentHTML.page(Data([0, 1, 2]), extension: "bin", referenceToken: "frame-test"))
     XCTAssertThrowsError(try DocumentHTML.page(Data(repeating: 65, count: DocumentResources.documentLimit + 1), extension: "md", referenceToken: "frame-test"))
   }
-  func testMarkdownAboveTwoMebibytesSkipsEnrichmentAndStaysSafe() throws {
+  @MainActor func testMarkdownAboveTwoMebibytesSkipsEnrichmentAndStaysSafe() throws {
     let head = "---\ntitle: Large\n---\n\n# Large\n\n```swift\nlet a = 1\n```\n\n<script>window.ran = true</script>\n\n<img src=\"x\" onerror=\"window.ran = true\">\n\n"
     let small = try DocumentHTML.page(Data(head.utf8), extension: "md", referenceToken: "frame-test")
     XCTAssertTrue(small.contains("Properties"), "a small document keeps the Obsidian pass")
@@ -88,7 +88,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTFail("WebKit condition failed: \(script); \(renderer.error ?? "no error")")
   }
   @MainActor func testRealWebKitLocalScriptsFetchMarkdownAndSecurity() async throws {
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let root = try root()
     let online = try await HTMLHTTPFixture(files: [
       "/online.js": "window.onlineScript=true",
@@ -102,7 +102,7 @@ final class DocumentPreviewTests: XCTestCase {
     try Data("<link rel='stylesheet' href='style.css'><h1>Report</h1><input id='input'><input id='slider' type='range' oninput='window.slide=this.value'><script src='app.js'></script>".utf8).write(to: root.appendingPathComponent("report.html"))
     try Data("# Notes\n\n[Report](report.html)".utf8).write(to: root.appendingPathComponent("notes.md"))
     let renderer = DocumentRenderer()
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+    let window = QuietWindow(size: NSSize(width: 900, height: 700), styleMask: [.titled])
     window.contentView = renderer.webView
     XCTAssertTrue(DocumentFocus.ownsKeys(renderer.webView))
     let input = NSTextView(); renderer.webView.addSubview(input)
@@ -136,14 +136,14 @@ final class DocumentPreviewTests: XCTestCase {
     renderer.back()
     try await waitFor(renderer, "window.result === 42")
   }
-  @MainActor private func markdownWindow(_ renderer: DocumentRenderer) -> NSWindow {
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+  @MainActor private func markdownWindow(_ renderer: DocumentRenderer) -> QuietWindow {
+    let window = QuietWindow(size: NSSize(width: 900, height: 700), styleMask: [.titled])
     window.appearance = NSAppearance(named: .aqua)
     window.contentView = renderer.webView
     return window
   }
   @MainActor func testRealWebKitMarkdownIsStaticAndKeepsImagesLinksAndPalette() async throws {
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let root = try root()
     try FileManager.default.createDirectory(at: root.appendingPathComponent("images"), withIntermediateDirectories: true)
     try FileManager.default.copyItem(at: Bundle.module.resourceURL!.appendingPathComponent("Fixtures/markdown/diagram.png"), to: root.appendingPathComponent("images/diagram.png"))
@@ -174,9 +174,9 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertTrue(literal?.contains("<script>window.ran = true</script>") == true, literal ?? "")
     XCTAssertTrue(literal?.contains("onmouseover=\"window.handled = true\"") == true, literal ?? "")
     let colours = try await renderer.webView.evaluateJavaScript("[getComputedStyle(document.body).backgroundColor, getComputedStyle(document.querySelector('a[href=\"next.md\"]')).color].join(' ')") as? String
-    XCTAssertEqual(colours, "rgb(250, 250, 248) rgb(60, 106, 66)")
+    XCTAssertEqual(colours, "rgb(248, 248, 246) rgb(60, 106, 66)")
     window.appearance = NSAppearance(named: .darkAqua)
-    try await waitFor(renderer, "getComputedStyle(document.body).backgroundColor === 'rgb(32, 34, 31)' && getComputedStyle(document.querySelector('a[href=\"next.md\"]')).color === 'rgb(162, 198, 162)'")
+    try await waitFor(renderer, "getComputedStyle(document.body).backgroundColor === 'rgb(36, 37, 38)' && getComputedStyle(document.querySelector('a[href=\"next.md\"]')).color === 'rgb(162, 198, 162)'")
     _ = try await renderer.webView.evaluateJavaScript("document.querySelector('a[href=\"next.md\"]').click(); true")
     try await waitFor(renderer, "document.querySelector('h1')?.textContent === 'Next'")
     XCTAssertTrue(renderer.canGoBack)
@@ -185,7 +185,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertNil(renderer.error)
   }
   @MainActor func testRealWebKitCopyDeliversTheBlockTextAndIgnoresForgedLinks() async throws {
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let root = try root()
     let swift = "let greeting = \"<hello>\"\n\tif a && b { print(greeting) }"
     try Data("# Copy\n\n```swift\n\(swift)\n```\n\n```\nplain <b> & more\n```\n\n[Forged](relaybar-copy://block/forged-token/MA)\n".utf8)
@@ -239,7 +239,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertEqual(copied.last, "plain <b> & more")
   }
   @MainActor func testRealWebKitLargeMarkdownRendersPlainAndInert() async throws {
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let root = try root()
     let head = "---\ntitle: Large\n---\n\n# Large\n\n<script>window.ran = true</script>\n\n<img src=\"x\" onerror=\"window.ran = true\">\n\n```swift\nlet a = 1\n```\n\n"
     let source = head + String(repeating: String(repeating: "filler ", count: 150) + "\n\n", count: MarkdownRenderer.maximumEnrichedByteCount / 1_050 + 1)
@@ -261,7 +261,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertEqual(copied, ["let a = 1"])
   }
   @MainActor func testRemoteWebKitFetchesOnlyRequestedResourcesAndRefreshesChangedBytes() async throws {
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let root = try root(), fixture = DocumentBridgeFixture(root: root)
     let client = RelayRemoteClient(transport: { try await fixture.send($0) }, cacheRoot: root.appendingPathComponent("cache"), sharedRoot: { root })
     let source = BridgeSource(id: String(repeating: "d", count: 64), name: "Documents")
@@ -270,7 +270,7 @@ final class DocumentPreviewTests: XCTestCase {
     let before = await fixture.fetches
     XCTAssertTrue(before.isEmpty)
     let renderer = DocumentRenderer(client: client)
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+    let window = QuietWindow(size: NSSize(width: 900, height: 700), styleMask: [.titled])
     window.contentView = renderer.webView
     defer { renderer.stop(); window.contentView = nil }
     renderer.show(path: "report.html", location: .remote(source, "/project"))
@@ -298,7 +298,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertEqual(retained, 99)
   }
   @MainActor func testComposedRemoteDocumentFreezesWithoutAuthorityAndReloadsAfterReconnect() async throws {
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let root = try root(), fixture = DocumentBridgeFixture(root: root)
     let link = FrameRemoteLink(transport: { try await fixture.send($0) }, sharedRoot: { root })
     let features = FrameComposition(link: link)
@@ -307,7 +307,7 @@ final class DocumentPreviewTests: XCTestCase {
     let listing = try await features.client.list(source: source, path: "/project")
     let photo = try XCTUnwrap(listing.files.first { $0.name == "report.html" })
     let renderer = features.documentRenderer
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+    let window = QuietWindow(size: NSSize(width: 900, height: 700), styleMask: [.titled])
     window.contentView = renderer.webView
     defer { window.contentView = nil }
     features.showDocument(photo, path: "report.html", location: .remote(source, "/project"))
@@ -358,7 +358,7 @@ final class DocumentPreviewTests: XCTestCase {
     store.localFolders?.stop()
   }
   @MainActor func testTenThousandEntriesAndTwoHundredRendererSwitches() async throws {
-    _ = NSApplication.shared
+    QuietWindow.prepareTestProcess()
     let root = try root()
     for index in 0..<10_000 {
       let html = index % 2 == 0
@@ -370,7 +370,7 @@ final class DocumentPreviewTests: XCTestCase {
     XCTAssertEqual(scan.files.count, 10_000)
     XCTAssertLessThan(listingTime, .seconds(5))
     let renderer = DocumentRenderer()
-    let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 700), styleMask: [.titled], backing: .buffered, defer: false)
+    let window = QuietWindow(size: NSSize(width: 900, height: 700), styleMask: [.titled])
     window.contentView = renderer.webView
     defer { renderer.stop(); window.contentView = nil }
     let webView = renderer.webView

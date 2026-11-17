@@ -1,6 +1,7 @@
 import AppKit
 import Combine
 import Composition
+import HouseStyle
 import PreviewSupport
 import SwiftData
 
@@ -247,6 +248,12 @@ public final class FrameComposition: ObservableObject {
                        transfers.objectWillChange, files.objectWillChange] {
             change.sink { [weak self] _ in self?.objectWillChange.send() }.store(in: &observations)
         }
+        // Paper Appearance is drawn by the shell, not run as a feature: the saved choice applies before the first
+        // window, and each later choice applies at once.
+        let saved = preferences.store.peek()?.plugins ?? preferences.store.value.plugins
+        HousePalette.apply(PaperAppearance.form(saved))
+        preferences.store.$value.dropFirst().map { PaperAppearance.form($0.plugins) }.removeDuplicates()
+            .sink { HousePalette.apply($0) }.store(in: &observations)
         runtime.$statuses.sink { [weak self] in self?.report($0) }.store(in: &observations)
     }
 
@@ -439,8 +446,10 @@ public final class FrameComposition: ObservableObject {
     }
 
     /// Whether a plugin is on, after the user's override of its default.
+    /// Before the document has loaded, the saved choice is read directly, so a Plugins window shown first agrees with
+    /// the colours Paper Appearance already applied.
     public func isPluginEnabled(_ plugin: PluginDescriptor) -> Bool {
-        preferences.store.value.plugins.isEnabled(plugin)
+        (preferences.store.peek() ?? preferences.store.value).plugins.isEnabled(plugin)
     }
 
     /// Stores the choice, then applies the tree: the plugin's features load or unload and nothing else reloads.

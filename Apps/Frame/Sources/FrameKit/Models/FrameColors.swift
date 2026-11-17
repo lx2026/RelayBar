@@ -1,23 +1,22 @@
 import AppKit
+import HouseStyle
 
-/// Every text/surface pair resolves together, including live appearance changes.
+/// Frame's names for the shared house palette. Each colour follows the active form and the drawing appearance.
 public enum FrameColors {
-  public static let paper = adaptive(0xf8f8f6, 0x242526)
-  public static let panel = adaptive(0xf0f0ed, 0x292a2b)
-  public static let stage = adaptive(0xe4e5e1, 0x17191a)
-  public static let ink = adaptive(0x252823, 0xeeefeb)
-  public static let muted = adaptive(0x585d54, 0xb5b9b0)
-  public static let selected = adaptive(0xd4d7cf, 0x3d403b)
-  public static let amber = adaptive(0x805000, 0xf1bd62)
-  public static let button = adaptive(0x30352d, 0xe2e6dc)
-  public static let buttonText = adaptive(0xffffff, 0x252823)
-
-  private static func adaptive(_ light: UInt32, _ dark: UInt32) -> NSColor {
-    NSColor(name: nil) { appearance in
-      let value = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
-      return NSColor(srgbRed: CGFloat((value >> 16) & 255) / 255,
-                     green: CGFloat((value >> 8) & 255) / 255,
-                     blue: CGFloat(value & 255) / 255, alpha: 1)
-    }
-  }
+  public static var paper: NSColor { HousePalette.paper.nsColor }
+  public static var panel: NSColor { HousePalette.panel.nsColor }
+  public static var stage: NSColor { HousePalette.stage.nsColor }
+  public static var card: NSColor { HousePalette.card.nsColor }
+  public static var ink: NSColor { HousePalette.ink.nsColor }
+  public static var muted: NSColor { HousePalette.muted.nsColor }
+  public static var faint: NSColor { HousePalette.faint.nsColor }
+  public static var selected: NSColor { HousePalette.selected.nsColor }
+  public static var amber: NSColor { HousePalette.amber.nsColor }
+  public static var red: NSColor { HousePalette.red.nsColor }
+  public static var button: NSColor { HousePalette.button.nsColor }
+  public static var buttonText: NSColor { HousePalette.buttonText.nsColor }
+  /// Hairlines between columns and above footers.
+  public static var line: NSColor { HousePalette.line.nsColor }
+  /// The quiet fill behind fields, segmented controls and blocks.
+  public static var fill: NSColor { HousePalette.fill.nsColor }
 }

@@ -14,15 +14,16 @@ let package = Package(
     targets: [
         .target(name: "FrameKit", dependencies: [
             .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"),
-            .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition")
+            .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition"),
+            .product(name: "HouseStyle", package: "AppComposition")
         ]),
         .executableTarget(
             name: "Frame",
-            dependencies: ["FrameKit", .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition")]
+            dependencies: ["FrameKit", .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "HouseStyle", package: "AppComposition")]
         ),
         .testTarget(
             name: "FrameKitTests",
-            dependencies: ["FrameKit", .product(name: "CompositionFixtures", package: "AppComposition"), .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition")],
+            dependencies: ["FrameKit", .product(name: "CompositionFixtures", package: "AppComposition"), .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition"), .product(name: "HouseStyle", package: "AppComposition")],
             resources: [.copy("Fixtures")]
         )
     ],
