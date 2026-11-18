@@ -9,9 +9,9 @@ Each token has two forms. **Paper** is Frame's warm palette, light and dark. **S
 | Token | Role | Paper (light / dark) | Standard |
 | --- | --- | --- | --- |
 | paper | main surface: Frame's reader and grid, the popover, Remote Files content, the Plugins map | `#f8f8f6` / `#242526` | window background |
-| panel | sidebars, side columns, the Settings window | `#f0f0ed` / `#292a2b` | under-page background |
+| panel | sidebars, side columns, the Settings window | `#f0f0ed` / `#292a2b` | under-page background where it is close to the window colour (contrast 1.25:1 or less), as on current macOS; otherwise the window background, as in light appearance on macOS 13 to 15, where the under-page colour is a mid grey |
 | stage | the well behind a picture or preview | `#e4e5e1` / `#17191a` | under-page background |
-| card | Settings boxes, rule cards, tiles, map nodes | `#ffffff` / `#343637` | control background in light; in dark the under-page colour lifted 6% towards the label colour, so a box stays lighter than its panel |
+| card | Settings boxes, rule cards, tiles, map nodes | `#ffffff` / `#343637` | control background in light; in dark the standard panel colour lifted 6% towards the label colour, so a box stays lighter than its panel |
 | selected | an unfocused selection | `#d4d7cf` / `#3d403b` | unemphasized selected content background |
 | ink | primary text | `#252823` / `#eeefeb` | label |
 | muted | secondary text | `#585d54` / `#b5b9b0` | halfway between the secondary label and label colours, because the secondary label colour alone falls below 4.5:1 on a light window |
@@ -23,8 +23,8 @@ Each token has two forms. **Paper** is Frame's warm palette, light and dark. **S
 | button, buttonText | a prominent button and its text | `#30352d`, `#ffffff` / `#e2e6dc`, `#252823` | label, window background |
 | running | a running tunnel or feature | `#28a745` / `#32d158` | system green |
 | retrying | the retrying arc, a stuck feature | `#f08c00` / `#ff9f0a` | system orange |
-| warning | orange status text | `#a34e00` / `#ffb340` | system orange, 45% towards black in light |
-| failure | red status text, the failure triangle | `#c92a1e` / `#ff736b` | system red, 30% towards black in light and 25% towards white in dark |
+| warning | orange status text | `#a34e00` / `#ffb340` | system orange, 45% towards black in light; then further, in 5% steps, until it keeps 4.6:1 on the standard paper, panel and card, plain and under the fill |
+| failure | red status text, the failure triangle | `#c92a1e` / `#ff736b` | system red, 30% towards black in light and 25% towards white in dark; then further, in 5% steps, until it keeps 4.6:1 on the standard paper, panel and card, plain and under the fill |
 
 macOS's own orange and red are too light for small text, so the standard form moves them as shown; that also keeps them readable on a highlighted row over the grey window of macOS 13 to 15. The paper dark failure red is a shade lighter than the popover's earlier `#ff6b62`, which fell just short of 4.5:1 on a dark card.
 

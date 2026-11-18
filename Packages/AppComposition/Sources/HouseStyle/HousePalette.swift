@@ -58,14 +58,43 @@ public final class HouseToken: @unchecked Sendable {
         return "rgba(\(channels.map(String.init).joined(separator: ",")),\(String(format: "%.3g", color.alphaComponent)))"
     }
 
-    /// A system colour moved towards black in light appearance and towards white in dark, for small text.
-    static func readable(_ color: NSColor, in appearance: NSAppearance, darken: CGFloat, lighten: CGFloat) -> NSColor {
+    /// A system colour for small text: moved towards black in light appearance and towards white in dark by at least
+    /// the given amount, then further in small steps until it keeps 4.5:1 on every one of `grounds`, plain and under
+    /// `fill`. The system's window colours differ between versions of macOS, so a fixed amount is not enough.
+    static func readable(_ color: NSColor, in appearance: NSAppearance, darken: CGFloat, lighten: CGFloat,
+                         on grounds: [NSColor], under fill: NSColor) -> NSColor {
         let base = components(of: color, in: appearance)
         let dark = isDark(appearance)
-        let target: CGFloat = dark ? 1 : 0, amount = dark ? lighten : darken
-        func move(_ value: CGFloat) -> CGFloat { value + (target - value) * amount }
-        return NSColor(srgbRed: move(base.redComponent), green: move(base.greenComponent), blue: move(base.blueComponent),
-                       alpha: base.alphaComponent)
+        let target: CGFloat = dark ? 1 : 0
+        let surfaces = grounds + grounds.map { over(fill, $0) }
+        var amount = dark ? lighten : darken
+        while true {
+            func move(_ value: CGFloat) -> CGFloat { value + (target - value) * amount }
+            let moved = NSColor(srgbRed: move(base.redComponent), green: move(base.greenComponent),
+                                blue: move(base.blueComponent), alpha: base.alphaComponent)
+            if amount >= 1 || surfaces.allSatisfy({ contrast(over(moved, $0), $0) >= 4.6 }) { return moved }
+            amount = min(1, amount + 0.05)
+        }
+    }
+
+    /// `top` drawn over an opaque `bottom`, both in sRGB.
+    static func over(_ top: NSColor, _ bottom: NSColor) -> NSColor {
+        let a = top.alphaComponent
+        func mix(_ t: CGFloat, _ b: CGFloat) -> CGFloat { t * a + b * (1 - a) }
+        return NSColor(srgbRed: mix(top.redComponent, bottom.redComponent), green: mix(top.greenComponent, bottom.greenComponent),
+                       blue: mix(top.blueComponent, bottom.blueComponent), alpha: 1)
+    }
+
+    /// The WCAG contrast ratio of two opaque sRGB colours.
+    static func contrast(_ a: NSColor, _ b: NSColor) -> CGFloat {
+        func luminance(_ color: NSColor) -> CGFloat {
+            func linear(_ value: CGFloat) -> CGFloat {
+                value <= 0.040_45 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(color.redComponent) + 0.7152 * linear(color.greenComponent) + 0.0722 * linear(color.blueComponent)
+        }
+        let x = luminance(a), y = luminance(b)
+        return (max(x, y) + 0.05) / (min(x, y) + 0.05)
     }
 
     static func isDark(_ appearance: NSAppearance) -> Bool {
@@ -94,15 +123,15 @@ public enum HousePalette {
     /// The main surface: Frame's reader and grid, RelayBar's popover, the Remote Files content and the Plugins map.
     public static let paper = HouseToken("paper", light: 0xf8f8f6, dark: 0x242526) { _ in .windowBackgroundColor }
     /// Sidebars and side panels, and the Settings window behind its boxes.
-    public static let panel = HouseToken("panel", light: 0xf0f0ed, dark: 0x292a2b) { _ in .underPageBackgroundColor }
+    public static let panel = HouseToken("panel", light: 0xf0f0ed, dark: 0x292a2b) { standardPanel($0) }
     /// The well behind a picture or a preview.
     public static let stage = HouseToken("stage", light: 0xe4e5e1, dark: 0x17191a) { _ in .underPageBackgroundColor }
     /// A raised card: Settings boxes, the profile editor's rule cards, tiles and map nodes. In the standard form it is
-    /// the control background in light appearance; in dark, where that matches the window, it is the under-page
+    /// the control background in light appearance; in dark, where that matches the window, it is the panel
     /// colour lifted a little towards the label colour, so a box still stands out from the panel behind it.
     public static let card = HouseToken("card", light: 0xffffff, dark: 0x343637) { appearance in
         guard HouseToken.isDark(appearance) else { return .controlBackgroundColor }
-        let base = HouseToken.components(of: .underPageBackgroundColor, in: appearance)
+        let base = standardPanel(appearance)
         let label = HouseToken.components(of: .labelColor, in: appearance)
         let lift = 0.06 * label.alphaComponent
         func mix(_ a: CGFloat, _ b: CGFloat) -> CGFloat { a + (b - a) * lift }
@@ -157,15 +186,32 @@ public enum HousePalette {
     /// The arc of a tunnel that waits to retry, and a stuck feature's mark.
     public static let retrying = HouseToken("retrying", light: 0xf08c00, dark: 0xff9f0a) { _ in .systemOrange }
     /// Orange status text. In the standard form, macOS's orange darkened in light appearance, where it is too light
-    /// for small text.
+    /// for small text, and as much further as this version of macOS needs.
     public static let warning = HouseToken("warning", light: 0xa34e00, dark: 0xffb340) { appearance in
-        HouseToken.readable(.systemOrange, in: appearance, darken: 0.45, lighten: 0)
+        standardStatus(.systemOrange, appearance, darken: 0.45, lighten: 0)
     }
     /// Red status text and the failure mark. The paper dark value is a shade lighter than the popover's earlier red,
     /// which fell just short of 4.5:1 on a card. In the standard form, macOS's red darkened in light appearance and
-    /// lightened in dark.
+    /// lightened in dark, and as much further as this version of macOS needs.
     public static let failure = HouseToken("failure", light: 0xc92a1e, dark: 0xff736b) { appearance in
-        HouseToken.readable(.systemRed, in: appearance, darken: 0.3, lighten: 0.25)
+        standardStatus(.systemRed, appearance, darken: 0.3, lighten: 0.25)
+    }
+
+    /// The standard panel. On current macOS the under-page colour is a quiet variation of the window and is used as
+    /// it is. On macOS 13 to 15 it is a mid grey in light appearance, too dark for a sidebar and for the text on it,
+    /// so there the panel is the window colour.
+    private static func standardPanel(_ appearance: NSAppearance) -> NSColor {
+        let window = HouseToken.components(of: .windowBackgroundColor, in: appearance)
+        let underPage = HouseToken.components(of: .underPageBackgroundColor, in: appearance)
+        return HouseToken.contrast(window, underPage) <= 1.25 ? underPage : window
+    }
+
+    /// Standard status text, readable on the standard paper, panel and card, plain and under the fill.
+    private static func standardStatus(_ color: NSColor, _ appearance: NSAppearance, darken: CGFloat, lighten: CGFloat) -> NSColor {
+        let grounds = [HouseToken.components(of: .windowBackgroundColor, in: appearance), standardPanel(appearance),
+                       card.resolved(in: .standard, appearance: appearance)]
+        return HouseToken.readable(color, in: appearance, darken: darken, lighten: lighten, on: grounds,
+                                   under: fill.resolved(in: .standard, appearance: appearance))
     }
 
     /// Every token, for tests and listings.

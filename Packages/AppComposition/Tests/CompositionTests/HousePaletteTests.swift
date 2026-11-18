@@ -95,13 +95,20 @@ final class HousePaletteTests: XCTestCase {
         XCTAssertEqual(HousePalette.ink.css(in: .paper, dark: false), "#252823")
         XCTAssertEqual(HousePalette.line.css(in: .paper, dark: false), "rgba(37,40,35,0.12)")
         XCTAssertEqual(HousePalette.running.css(in: .paper, dark: true), "#32d158")
-        for (token, system) in [(HousePalette.paper, NSColor.windowBackgroundColor), (HousePalette.panel, .underPageBackgroundColor),
+        for (token, system) in [(HousePalette.paper, NSColor.windowBackgroundColor),
                                 (HousePalette.ink, .labelColor), (HousePalette.line, .separatorColor),
                                 (HousePalette.running, .systemGreen)] {
             for appearance in [light, dark] {
                 XCTAssertEqual(components(token.resolved(in: .standard, appearance: appearance)),
                                components(resolve(system, appearance)), token.name)
             }
+        }
+        // The standard panel is the under-page colour where that is a quiet variation of the window, as on current
+        // macOS, and the window colour where it is not: macOS 13 to 15 in light appearance.
+        for appearance in [light, dark] {
+            let window = resolve(.windowBackgroundColor, appearance), underPage = resolve(.underPageBackgroundColor, appearance)
+            XCTAssertEqual(components(HousePalette.panel.resolved(in: .standard, appearance: appearance)),
+                           components(ratio(window, underPage) <= 1.25 ? underPage : window))
         }
         // A standard card is the control background in light, and lighter than the panel behind it in dark.
         XCTAssertEqual(components(HousePalette.card.resolved(in: .standard, appearance: light)),
@@ -124,6 +131,29 @@ final class HousePaletteTests: XCTestCase {
         XCTAssertGreaterThan(luminance(HousePalette.failure, dark), luminance(.systemRed, dark))
         XCTAssertEqual(HousePalette.warning.css(in: .paper, dark: false), "#a34e00")
         XCTAssertEqual(HousePalette.failure.css(in: .paper, dark: true), "#ff736b")
+    }
+
+    /// The grey windows of macOS 13 to 15 are darker in light appearance and lighter in dark than today's, so the
+    /// fixed amounts are not enough there; the status colours must move further on their own.
+    func testStandardStatusTextStaysReadableOnTheWindowsOfOlderMacOS() {
+        func grey(_ value: CGFloat, alpha: CGFloat = 1) -> NSColor { NSColor(srgbRed: value, green: value, blue: value, alpha: alpha) }
+        let orange = NSColor(srgbRed: 1, green: 0.584, blue: 0, alpha: 1), red = NSColor(srgbRed: 1, green: 0.271, blue: 0.227, alpha: 1)
+        let cases: [(NSAppearance.Name, [NSColor], NSColor)] = [
+            (.aqua, [grey(0.925), grey(1)], grey(0, alpha: 0.07 * 0.85)),
+            (.darkAqua, [grey(0.196), grey(0.157), grey(0.21)], grey(1, alpha: 0.07 * 0.85))
+        ]
+        for (name, grounds, fill) in cases {
+            let appearance = NSAppearance(named: name)!
+            for (label, color, darken, lighten) in [("warning", orange, 0.45, 0.0), ("failure", red, 0.3, 0.25)] {
+                let text = HouseToken.readable(color, in: appearance, darken: darken, lighten: lighten, on: grounds, under: fill)
+                for ground in grounds + grounds.map({ over(fill, $0) }) {
+                    XCTAssertGreaterThanOrEqual(ratio(text, ground), 4.5, "\(label), \(name.rawValue)")
+                }
+            }
+        }
+        // A colour that is already readable is left at the amount asked for.
+        let kept = HouseToken.readable(grey(0.5), in: NSAppearance(named: .aqua)!, darken: 0.9, lighten: 0, on: [grey(1)], under: grey(0, alpha: 0))
+        XCTAssertEqual(components(kept), components(grey(0.05)))
     }
 
     // MARK: Switching

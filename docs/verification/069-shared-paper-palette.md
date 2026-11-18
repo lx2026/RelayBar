@@ -85,3 +85,13 @@ The checks it asked for:
 ## Installed builds
 
 RelayBar 2.0.0 (25) and Frame 2.0.0 (19) were notarized and installed locally on 2026-11-17 from commit `3d140fa` with only their build numbers raised. Earlier installed builds (RelayBar 23 and 24, Frame 17) do not have the palette or the Paper Appearance plugin. The installation evidence is under [Task 067](067-switchboard-popover-settings-window-icon.md#local-installation-build-25) and [Task 068](068-frame-reader-layout.md#local-installation-build-19). RelayBar's Release executable weak-links `libswiftObservation` with a minimum OS of 13.0; it has not been launched on macOS 13.
+
+## After the first CI run
+
+The pull request's first CI run, on macOS 15, failed four contrast assertions in `HousePaletteTests`, all in the standard form. On macOS 13 to 15 the under-page background is a mid grey in light appearance and the window is lighter in dark than on the Mac the palette was developed on, so the standard panel was too dark for a sidebar and the fixed darkening of the status colours was not enough (orange and red text on the panel measured 2.4:1). The paper form was not affected.
+
+- The standard panel is now the under-page colour only where it is within 1.25:1 of the window colour, and the window colour otherwise; the standard dark card is lifted from that panel.
+- Standard warning and failure text start from the same amounts as before and move further, in 5% steps, until they keep 4.6:1 on the standard paper, panel and card, plain and under the fill.
+- `testStandardStatusTextStaysReadableOnTheWindowsOfOlderMacOS` checks this against fixed greys like those of macOS 15, so it is covered on any Mac; the panel rule is asserted in the values test.
+
+On current macOS nothing changes: the under-page colour is still used and the status colours already passed. Builds 25 and 19 were made before this fix.
