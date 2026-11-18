@@ -28,10 +28,28 @@ elif name == "codesign":
     app = pathlib.Path(args[-1])
     identifier = plistlib.loads((app / "Contents/Info.plist").read_bytes())["CFBundleIdentifier"]
     team = (app / "Contents/fixture-team").read_text()
-    satisfied = f'=anchor apple generic and identifier "{identifier}" and certificate leaf[subject.OU] = "{team}"'
-    # Like codesign, check a requirement only when one is given.
-    if any(arg.startswith("-R=") and arg != "-R=" + satisfied for arg in args):
-        sys.exit(f"{app}: test-requirement: code failed to satisfy specified code requirement(s)")
+    satisfied = f'anchor apple generic and identifier "{identifier}" and certificate leaf[subject.OU] = "{team}"'
+    # Parse -R as codesign's getopt does: "-R x", "-Rx" (so "-R=x" gives "=x") or "--test-requirement[=]x".
+    # An argument starting with "=" is literal requirement text; check a requirement only when one is given.
+    index = 0
+    while index < len(args):
+        option, requirement = args[index], None
+        if option in ("-R", "--test-requirement"):
+            index += 1
+            requirement = args[index]
+        elif option.startswith("--test-requirement="):
+            requirement = option.split("=", 1)[1]
+        elif option.startswith("-R"):
+            requirement = option[2:]
+        index += 1
+        if requirement is None:
+            continue
+        if not requirement.startswith("="):
+            sys.exit("error: invalid or corrupted code requirement(s)")
+        if requirement[1:].startswith("="):
+            sys.exit("Requirement syntax error(s):\nline 1:1: unexpected token: =")
+        if requirement[1:] != satisfied:
+            sys.exit(f"{app}: test-requirement: code failed to satisfy specified code requirement(s)")
 elif name == "cp":
     target = pathlib.Path(args[-1]).resolve()
     if os.environ.get("FAIL_FEED_COPY") and target.parent == (root / "docs").resolve():
@@ -149,8 +167,9 @@ class UpdateAppcastTests(unittest.TestCase):
         self.assertEqual(len(extracted), 1, "Every check reads the same clean extraction")
         self.assertTrue(extracted.pop().endswith("/extracted/RelayBar.app"))
         codesign = next(call for call in calls if call[0] == "codesign")
-        self.assertIn('-R==anchor apple generic and identifier "fixture.RelayBar" and '
-                      'certificate leaf[subject.OU] = "ABCDE12345"', codesign)
+        requirement = codesign[codesign.index("-R") + 1]
+        self.assertEqual(requirement, '=anchor apple generic and identifier "fixture.RelayBar" and '
+                                      'certificate leaf[subject.OU] = "ABCDE12345"')
         feed_checks = [call for call in calls if call[:2] == ["sign_update", "--account"] and len(call) == 5]
         self.assertEqual(len(feed_checks), 1)
         self.assertNotEqual(feed_checks[0][-1], str(self.feed), "The staged feed is verified, not the repository's")

@@ -7,6 +7,9 @@ final class BridgePathValidationTests: XCTestCase {
         let mark = "\u{0301}"
         XCTAssertFalse(FrameBridgeEnvironment.validName("a/\(mark)b"))
         XCTAssertFalse(FrameBridgeEnvironment.validName("/\(mark)"))
+        // The only `..` here ends at a slash that a combining mark follows, so a split by Character never sees it.
+        XCTAssertFalse(FrameBridgeEnvironment.validPath("/library/../\(mark)outside"))
+        XCTAssertFalse(FrameBridgeEnvironment.validPath("/library/./\(mark)file"))
         XCTAssertFalse(FrameBridgeEnvironment.validPath("/library/..\(mark)/../outside"))
         XCTAssertFalse(FrameBridgeEnvironment.validPath("/library/x/\(mark)/../../outside"))
         XCTAssertFalse(FrameBridgeEnvironment.validPath("/library/./file"))

@@ -60,7 +60,7 @@ cp "$ARCHIVE" "$STAGED_ARCHIVE"
 # The requirement is the one the bridge applies to RelayBar: its identifier and team.
 ditto -x -k "$STAGED_ARCHIVE" "$RELAYBAR_TEMP/extracted"
 codesign --verify --deep --strict \
-  -R="=anchor apple generic and identifier \"$BUNDLE_ID\" and certificate leaf[subject.OU] = \"$TEAM\"" \
+  -R "=anchor apple generic and identifier \"$BUNDLE_ID\" and certificate leaf[subject.OU] = \"$TEAM\"" \
   "$EXTRACTED_APP"
 xcrun stapler validate "$EXTRACTED_APP"
 spctl --assess --type execute --verbose=4 "$EXTRACTED_APP"
