@@ -144,6 +144,22 @@ final class RemoteTests: XCTestCase {
     await client.clear()
     XCTAssertFalse(FileManager.default.fileExists(atPath: a.url.path))
   }
+  func testFileWhoseNameStartsWithACombiningMarkDownloads() async throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("FrameRemoteTest-\(UUID())")
+    defer { try? FileManager.default.removeItem(at: root) }
+    // The mark fuses with the slash before it into one Swift character, but the name is ordinary to the file system.
+    let name = "\u{301}accent.png", job = UUID(), folder = "FrameTransfers-\(UUID())/\(job)"
+    try FileManager.default.createDirectory(at: root.appendingPathComponent(folder), withIntermediateDirectories: true)
+    try Data("accent-bytes".utf8).write(to: root.appendingPathComponent(folder + "/" + name))
+    let transfer = FixtureTransport(entries: [entry(name)], job: job, path: folder + "/" + name)
+    let client = RelayRemoteClient(transport: { try await transfer.send($0) }, cacheRoot: root.appendingPathComponent("private"), sharedRoot: { root })
+    let listed = try await client.list(source: source, path: "/photos").photos
+    let photo = try XCTUnwrap(listed.first)
+    let local: PhotoItem
+    do { local = try await client.resolve(photo) } catch { XCTFail("Download failed: \(error)"); return }
+    XCTAssertEqual(try Data(contentsOf: local.url), Data("accent-bytes".utf8))
+    await client.clear()
+  }
   func testCancelledPendingListReleasesBrokerJob() async throws {
     let transport = PendingTransport()
     let client = RelayRemoteClient(transport: { await transport.send($0) })

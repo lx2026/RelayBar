@@ -22,11 +22,17 @@ public struct FileIdentity: Equatable, Sendable {
     device = info.st_dev; inode = info.st_ino; size = info.st_size
     seconds = info.st_mtimespec.tv_sec; nanoseconds = info.st_mtimespec.tv_nsec
   }
-  /// The item at `url` now, without following a final symbolic link; nil when there is none.
-  public static func at(_ url: URL) -> FileIdentity? {
+  /// The item at `url` now, without following a final symbolic link; nil only when there is none. A look-up that
+  /// fails for any other reason throws, so it is never taken for absence.
+  public static func at(_ url: URL) throws -> FileIdentity? {
     var info = stat()
-    let found = url.withUnsafeFileSystemRepresentation { path in path.map { lstat($0, &info) == 0 } ?? false }
-    return found ? FileIdentity(info) : nil
+    let code = url.withUnsafeFileSystemRepresentation { path -> Int32 in
+      guard let path else { return EINVAL }
+      return lstat(path, &info) == 0 ? 0 : errno
+    }
+    if code == ENOENT { return nil }
+    guard code == 0 else { throw NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: [NSFilePathErrorKey: url.path]) }
+    return FileIdentity(info)
   }
 }
 
@@ -61,7 +67,8 @@ public struct ExportDestination: Sendable {
   /// A file created between the person's click and this look cannot be told apart from one they agreed to replace.
   public init(chosen url: URL) {
     self.url = url
-    replacing = FileIdentity.at(url).map { .file($0) } ?? .nothing
+    // A look that fails agrees to nothing: the export then only creates, and reports anything it finds there.
+    replacing = (try? FileIdentity.at(url)).map { .file($0) } ?? .nothing
   }
 }
 
@@ -107,7 +114,7 @@ public enum ExactCopyExporter {
       case .nothing:
         return try publishExclusively(temporaryURL, at: destination)
       case .file(let agreed):
-        guard let current = FileIdentity.at(destination) else { return try publishExclusively(temporaryURL, at: destination) }
+        guard let current = try FileIdentity.at(destination) else { return try publishExclusively(temporaryURL, at: destination) }
         guard current == agreed else { throw failure(EEXIST, destination) }
         // Checked immediately before: a file put there in the moment between is replaced, as no narrower check exists.
         return try replace(destination, with: temporaryURL, fileManager: fileManager)
@@ -118,9 +125,9 @@ public enum ExactCopyExporter {
         return PublishedFile(url: destination, descriptor: file)
       }
     } catch {
-      if fileManager.fileExists(atPath: temporaryURL.path) {
-        try? fileManager.removeItem(at: temporaryURL)
-      }
+      do { try fileManager.removeItem(at: temporaryURL) }
+      catch let cleanup as CocoaError where cleanup.code == .fileNoSuchFile {}
+      catch { throw failure(error, leaving: [temporaryURL.path]) }
       throw error
     }
   }
@@ -137,18 +144,26 @@ public enum ExactCopyExporter {
   /// with neither an exclusive create; each fails when the name is taken, so an existing item is never touched.
   private static func publishExclusively(_ temporary: URL, at destination: URL) throws -> PublishedFile {
     let file = try descriptor(temporary, O_RDONLY | O_NOFOLLOW)
-    var code = call(temporary, destination) { renamex_np($0, $1, UInt32(RENAME_EXCL)) }
-    if code == ENOTSUP {
-      code = call(temporary, destination) { link($0, $1) }
-      if code == 0 { _ = call(temporary) { unlink($0) } }
+    let renamed = call(temporary, destination) { renamex_np($0, $1, UInt32(RENAME_EXCL)) }
+    if renamed == 0 { return PublishedFile(url: destination, descriptor: file) }
+    let linked = renamed == ENOTSUP ? call(temporary, destination) { link($0, $1) } : renamed
+    if linked == 0 {
+      let published = PublishedFile(url: destination, descriptor: file)
+      try removeTemporary(temporary, of: published)
+      return published
     }
-    guard code == 0 else {
-      close(file)
-      // FAT and exFAT, for example, support neither; the name is then claimed by an exclusive create.
-      if code == ENOTSUP { return try copyExclusively(temporary, to: destination) }
-      throw failure(code, destination)
-    }
-    return PublishedFile(url: destination, descriptor: file)
+    close(file)
+    // FAT and exFAT, for example, support neither; the name is then claimed by an exclusive create.
+    if linked == ENOTSUP { return try copyExclusively(temporary, to: destination) }
+    throw failure(linked, destination)
+  }
+
+  /// Removes the temporary name of a file just published. If that fails, the publication is taken back and the
+  /// error names whatever is left, so nothing stays behind unreported.
+  private static func removeTemporary(_ temporary: URL, of published: PublishedFile) throws {
+    let code = call(temporary) { unlink($0) }
+    guard code != 0 else { return }
+    throw failure(failure(code, temporary), leaving: [remove(published), temporary.path].compactMap { $0 })
   }
 
   /// Creates `destination` only if the name is free, copies `temporary` into it and removes `temporary`. This is for
@@ -163,12 +178,8 @@ public enum ExactCopyExporter {
     let target = try descriptor(destination, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
     let code = copy(source, target)
     let published = PublishedFile(url: destination, descriptor: target)
-    guard code == 0 else {
-      let reason = failure(code, destination)
-      guard let left = remove(published, checked: checked) else { throw reason }
-      throw AssetError(reason.localizedDescription + " Another app put a file at \(left), so it was left as it is.")
-    }
-    _ = call(temporary) { unlink($0) }
+    guard code == 0 else { throw failure(failure(code, destination), leaving: [remove(published, checked: checked)].compactMap { $0 }) }
+    try removeTemporary(temporary, of: published)
     return published
   }
 
@@ -178,15 +189,17 @@ public enum ExactCopyExporter {
   /// stays at the private name, and that path is returned.
   static func remove(_ published: PublishedFile, checked: () -> Void = {}) -> String? {
     let url = published.url
-    guard let current = FileIdentity.at(url) else { return nil }
+    let current: FileIdentity?
+    do { current = try FileIdentity.at(url) } catch { return url.path }
+    guard let current else { return nil }
     guard published.isPublished(current) else { return url.path }
     checked()
     let aside = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).frame-export-\(UUID().uuidString)")
     let moved = call(url, aside) { rename($0, $1) }
     guard moved == 0 else { return moved == ENOENT ? nil : url.path }
-    if let item = FileIdentity.at(aside), published.isPublished(item) { _ = call(aside) { unlink($0) }; return nil }
+    if let item = try? FileIdentity.at(aside), published.isPublished(item) { return call(aside) { unlink($0) } == 0 ? nil : aside.path }
     if call(aside, url, { renamex_np($0, $1, UInt32(RENAME_EXCL)) }) == 0 { return url.path }
-    if call(aside, url, { link($0, $1) }) == 0 { _ = call(aside) { unlink($0) }; return url.path }
+    if call(aside, url, { link($0, $1) }) == 0 { return call(aside) { unlink($0) } == 0 ? url.path : aside.path }
     return aside.path
   }
 
@@ -210,6 +223,10 @@ public enum ExactCopyExporter {
         return body(from, to) == 0 ? 0 : errno
       }
     }
+  }
+  /// `reason`, naming every path a clean-up could not remove.
+  private static func failure(_ reason: Error, leaving paths: [String]) -> Error {
+    paths.isEmpty ? reason : AssetError(reason.localizedDescription + " Left as it is: " + paths.joined(separator: ", ") + ".")
   }
   private static func failure(_ code: Int32, _ url: URL) -> Error {
     let info: [String: Any] = [NSFilePathErrorKey: url.path, NSURLErrorKey: url]

@@ -283,10 +283,10 @@ public actor RelayRemoteClient: RemoteAssetServing {
       if let value = cache[key], (try? value.0.validate()) != nil { await slots.release(); return value.0 }
       let response = try await fetch(photo, entry: entry)
       defer { release(response.jobID) }
+      // Components at "/" bytes, as the file system splits them; a name may start with a combining mark.
       guard let path = response.cacheRelativePath, let job = response.jobID,
-            path.split(separator: "/").count == 3,
-            path.split(separator: "/")[1] == Substring(job.uuidString),
-            path.hasPrefix("FrameTransfers-"), (path as NSString).lastPathComponent == entry.name else {
+            let parts = try? DocumentResources.components(path), parts.count == 3, parts[1] == job.uuidString,
+            path.hasPrefix("FrameTransfers-"), parts[2] == entry.name else {
         throw BridgeError("Invalid remote cache response.")
       }
       let sharedFile = try AssetPaths.below(sharedRoot(), relativePath: path)

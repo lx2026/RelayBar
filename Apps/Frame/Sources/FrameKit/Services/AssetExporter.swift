@@ -5,6 +5,8 @@ public struct AssetExportPlan: Sendable {
   let photo: PhotoItem
   let folder: URL
   let existing: [String: AssetFile]
+  /// The file at each name the plan replaces, as the person confirmed it; only that file may be replaced.
+  let identities: [String: FileIdentity]
   public var replacementNames: [String] { existing.keys.sorted() }
 }
 
@@ -24,7 +26,7 @@ public enum AssetExporter {
     guard Set(photo.companions.map { $0.url.lastPathComponent }).isSubset(of: grouped) else {
       throw AssetError("Companion filenames would belong to another image. Choose an empty destination folder.")
     }
-    var existing: [String: AssetFile] = [:]
+    var existing: [String: AssetFile] = [:], identities: [String: FileIdentity] = [:]
     for member in photo.exportMembers {
       try member.validate()
       let destination = folder.appendingPathComponent(member.url.lastPathComponent)
@@ -35,18 +37,19 @@ public enum AssetExporter {
       }
       if AssetPaths.exists(destination) {
         existing[destination.lastPathComponent] = try AssetFile.snapshot(destination, relativePath: destination.lastPathComponent)
+        guard let identity = try FileIdentity.at(destination) else { throw AssetError("Destination changed while it was checked. Choose Export again.") }
+        identities[destination.lastPathComponent] = identity
       }
     }
-    return AssetExportPlan(photo: photo, folder: folder, existing: existing)
+    return AssetExportPlan(photo: photo, folder: folder, existing: existing, identities: identities)
   }
 
-  /// `copy` publishes one member and returns the file it published; its third argument is true only for a
-  /// destination the plan replaces.
-  public static func export(_ plan: AssetExportPlan, copy: (URL, URL, Bool) throws -> PublishedFile = {
-    try ExactCopyExporter.export(source: $0, destination: $1, replacing: $2 ? .anything : .nothing)
+  /// `copy` publishes one member, replacing at most what its third argument allows, and returns the file it published.
+  public static func export(_ plan: AssetExportPlan, copy: (URL, URL, ExactCopyExporter.Replacement) throws -> PublishedFile = {
+    try ExactCopyExporter.export(source: $0, destination: $1, replacing: $2)
   }) throws {
     let fresh = try self.plan(plan.photo, folder: plan.folder)
-    guard fresh.existing == plan.existing else { throw AssetError("Destination changed after confirmation. Choose Export again.") }
+    guard fresh.existing == plan.existing, fresh.identities == plan.identities else { throw AssetError("Destination changed after confirmation. Choose Export again.") }
     let fm = FileManager.default
     let stage = plan.folder.appendingPathComponent(".frame-export-\(UUID())")
     try fm.createDirectory(at: stage, withIntermediateDirectories: false)
@@ -67,8 +70,10 @@ public enum AssetExporter {
         let old = plan.existing[member.url.lastPathComponent]
         if let old { try old.validate() }
         else if AssetPaths.exists(destination) { throw CocoaError(.fileWriteFileExists) }
-        // A planned create never replaces: a file that appears there during the copy is reported instead.
-        committed.append(try copy(stage.appendingPathComponent("new-\(index)"), destination, old != nil))
+        // A planned replace may replace only the file the plan confirmed, and a planned create nothing: a file saved
+        // or put there during the copy is reported as a collision and the rollback below handles the rest.
+        let replacing = plan.identities[member.url.lastPathComponent].map(ExactCopyExporter.Replacement.file) ?? .nothing
+        committed.append(try copy(stage.appendingPathComponent("new-\(index)"), destination, replacing))
       }
     } catch {
       var left: [String] = []
@@ -80,7 +85,7 @@ public enum AssetExporter {
         do { try ExactCopyExporter.export(source: backup, destination: published.url, replacing: .nothing) }
         catch { retainRecovery = true }
       }
-      let others = left.isEmpty ? "" : " Another app replaced " + left.joined(separator: ", ") + " meanwhile, so it was left as it is."
+      let others = left.isEmpty ? "" : " Left as it is, as another app replaced it or it could not be removed: " + left.joined(separator: ", ") + "."
       throw AssetError(error.localizedDescription + others
         + (retainRecovery ? " Recovery copies are retained at \(stage.path)." : " Previous destination files were preserved."))
     }
