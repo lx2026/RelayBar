@@ -12,6 +12,9 @@ public struct RemoteAssetReference: Hashable, Sendable {
   public var sidecar: BridgeEntry? { companions.first { ($0.name as NSString).pathExtension.lowercased() == "json" } }
   public var archiveRoot: String? = nil
   public var recordID: UUID? = nil
+  /// For an archived asset, where each member was before it was archived, in member order. Opened times are
+  /// tracked under these paths; remote operations use the members' stored paths.
+  public var originals: [String] = []
   public init(source: BridgeSource, listingID: UUID, entry: BridgeEntry,
               companions: [BridgeEntry] = [], archiveRoot: String? = nil, recordID: UUID? = nil) {
     self.source = source; self.listingID = listingID; self.entry = entry
@@ -485,7 +488,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
     return try records.map { record in
       guard let media = record.members.first, let original = record.originals.first,
             record.members.count == record.originals.count, record.members.count <= 10_000,
-            FrameBridgeEnvironment.validPath(original),
+            record.originals.allSatisfy(FrameBridgeEnvironment.validPath),
             record.members.allSatisfy({ FrameBridgeEnvironment.validPath($0.path) && FrameBridgeEnvironment.validName($0.name) && $0.size >= 0 }),
             let format = PhotoFormat(pathExtension: (media.name as NSString).pathExtension) else { throw BridgeError("Invalid asset record.") }
       let rootID = Self.rootID(source.id)
@@ -497,6 +500,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
         archiveID: record.id)
       photo.remote = RemoteAssetReference(source: source, listingID: listingID, entry: media, companions: companions,
         archiveRoot: root, recordID: record.id)
+      photo.remote?.originals = record.originals
       return photo
     }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
   }

@@ -11,11 +11,76 @@ public enum ExportError: LocalizedError {
   }
 }
 
+/// A file as the file system names it (device and inode), with the size and modification time it had when looked at.
+public struct FileIdentity: Equatable, Sendable {
+  let device: Int32
+  let inode: UInt64
+  let size: Int64
+  let seconds: Int
+  let nanoseconds: Int
+  init(_ info: stat) {
+    device = info.st_dev; inode = info.st_ino; size = info.st_size
+    seconds = info.st_mtimespec.tv_sec; nanoseconds = info.st_mtimespec.tv_nsec
+  }
+  /// The item at `url` now, without following a final symbolic link; nil when there is none.
+  public static func at(_ url: URL) -> FileIdentity? {
+    var info = stat()
+    let found = url.withUnsafeFileSystemRepresentation { path in path.map { lstat($0, &info) == 0 } ?? false }
+    return found ? FileIdentity(info) : nil
+  }
+}
+
+/// A file the exporter published. It stays open, so it can be told apart from any file put at its name later.
+public final class PublishedFile {
+  public let url: URL
+  private let descriptor: Int32
+  private let published: FileIdentity?
+  init(url: URL, descriptor: Int32) {
+    self.url = url; self.descriptor = descriptor
+    var info = stat()
+    published = fstat(descriptor, &info) == 0 ? FileIdentity(info) : nil
+  }
+  deinit { close(descriptor) }
+  /// True when `item` is this file, unchanged since it was published. The inode is taken from the descriptor now,
+  /// because FAT and exFAT give an empty file a new number when it is renamed.
+  func isPublished(_ item: FileIdentity) -> Bool {
+    var info = stat()
+    guard let published, fstat(descriptor, &info) == 0 else { return false }
+    let now = FileIdentity(info)
+    return item.device == now.device && item.inode == now.inode && item.size == published.size
+      && item.seconds == published.seconds && item.nanoseconds == published.nanoseconds
+  }
+}
+
+/// A name the save panel returned, and what the person agreed to there.
+public struct ExportDestination: Sendable {
+  public let url: URL
+  let replacing: ExactCopyExporter.Replacement
+  /// Looks at the name at once, so make this as soon as the panel returns. The panel asks before replacing an
+  /// existing file, so the file there now is the one the person agreed to replace, and only that file will be.
+  /// A file created between the person's click and this look cannot be told apart from one they agreed to replace.
+  public init(chosen url: URL) {
+    self.url = url
+    replacing = FileIdentity.at(url).map { .file($0) } ?? .nothing
+  }
+}
+
 public enum ExactCopyExporter {
-  /// Copies to a temporary file beside `destination`, then publishes it. With `replacing` false nothing at the
-  /// destination is ever replaced: an item that appears there during the copy is reported as a collision.
-  public static func export(source: URL, destination: URL, fileManager: FileManager = .default, replacing: Bool = true)
-    throws
+  /// What publishing may do to an item already at the destination.
+  public enum Replacement: Sendable {
+    /// Nothing may be there: an item that appears there is a collision.
+    case nothing
+    /// Only this file may be replaced: any other item there is a collision. If it is gone and nothing has taken its
+    /// place, the copy is created as for `nothing`.
+    case file(FileIdentity)
+    /// Whatever is there is replaced, for a caller that has just checked it.
+    case anything
+  }
+
+  /// Copies to a temporary file beside `destination`, publishes it as `replacing` allows and returns it.
+  @discardableResult
+  public static func export(source: URL, destination: URL, fileManager: FileManager = .default,
+                            replacing: Replacement = .anything) throws -> PublishedFile
   {
     let source = source.standardizedFileURL
     let destination = destination.standardizedFileURL
@@ -38,17 +103,19 @@ public enum ExactCopyExporter {
 
     do {
       try fileManager.copyItem(at: source, to: temporaryURL)
-      if !replacing {
-        try publishExclusively(temporaryURL, at: destination)
-      } else if fileManager.fileExists(atPath: destination.path) {
-        _ = try fileManager.replaceItemAt(
-          destination,
-          withItemAt: temporaryURL,
-          backupItemName: nil,
-          options: [.usingNewMetadataOnly]
-        )
-      } else {
-        try fileManager.moveItem(at: temporaryURL, to: destination)
+      switch replacing {
+      case .nothing:
+        return try publishExclusively(temporaryURL, at: destination)
+      case .file(let agreed):
+        guard let current = FileIdentity.at(destination) else { return try publishExclusively(temporaryURL, at: destination) }
+        guard current == agreed else { throw failure(EEXIST, destination) }
+        // Checked immediately before: a file put there in the moment between is replaced, as no narrower check exists.
+        return try replace(destination, with: temporaryURL, fileManager: fileManager)
+      case .anything:
+        if fileManager.fileExists(atPath: destination.path) { return try replace(destination, with: temporaryURL, fileManager: fileManager) }
+        let file = try descriptor(temporaryURL, O_RDONLY | O_NOFOLLOW)
+        do { try fileManager.moveItem(at: temporaryURL, to: destination) } catch { close(file); throw error }
+        return PublishedFile(url: destination, descriptor: file)
       }
     } catch {
       if fileManager.fileExists(atPath: temporaryURL.path) {
@@ -58,48 +125,94 @@ public enum ExactCopyExporter {
     }
   }
 
-  /// Renames only if the name is free. A volume that cannot rename exclusively gets a hard link instead, and one
-  /// with neither an exclusive create; each fails when the name is taken, so an existing item is never touched.
-  private static func publishExclusively(_ temporary: URL, at destination: URL) throws {
-    var code: Int32 = temporary.withUnsafeFileSystemRepresentation { from in
-      destination.withUnsafeFileSystemRepresentation { to in
-        guard let from, let to else { return EINVAL }
-        if renamex_np(from, to, UInt32(RENAME_EXCL)) == 0 { return 0 }
-        guard errno == ENOTSUP else { return errno }
-        guard link(from, to) == 0 else { return errno }
-        unlink(from)
-        return 0
-      }
-    }
-    // FAT and exFAT, for example, support neither; the name is then claimed by an exclusive create.
-    if code == ENOTSUP { code = copyExclusively(temporary, to: destination) }
-    guard code != 0 else { return }
-    let info: [String: Any] = [NSFilePathErrorKey: destination.path, NSURLErrorKey: destination]
-    if code == EEXIST { throw CocoaError(.fileWriteFileExists, userInfo: info) }
-    throw NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: info)
+  /// Opened before it is moved, so the published file is known by its descriptor rather than by its name.
+  private static func replace(_ destination: URL, with temporary: URL, fileManager: FileManager) throws -> PublishedFile {
+    let file = try descriptor(temporary, O_RDONLY | O_NOFOLLOW)
+    do { _ = try fileManager.replaceItemAt(destination, withItemAt: temporary, backupItemName: nil, options: [.usingNewMetadataOnly]) }
+    catch { close(file); throw error }
+    return PublishedFile(url: destination, descriptor: file)
   }
 
-  /// Creates `destination` only if the name is free, copies `temporary` into it and removes `temporary`. Returns 0
-  /// or the error number. On failure only the file this call created is removed.
-  static func copyExclusively(_ temporary: URL, to destination: URL) -> Int32 {
-    temporary.withUnsafeFileSystemRepresentation { from in
-      destination.withUnsafeFileSystemRepresentation { to in
+  /// Renames only if the name is free. A volume that cannot rename exclusively gets a hard link instead, and one
+  /// with neither an exclusive create; each fails when the name is taken, so an existing item is never touched.
+  private static func publishExclusively(_ temporary: URL, at destination: URL) throws -> PublishedFile {
+    let file = try descriptor(temporary, O_RDONLY | O_NOFOLLOW)
+    var code = call(temporary, destination) { renamex_np($0, $1, UInt32(RENAME_EXCL)) }
+    if code == ENOTSUP {
+      code = call(temporary, destination) { link($0, $1) }
+      if code == 0 { _ = call(temporary) { unlink($0) } }
+    }
+    guard code == 0 else {
+      close(file)
+      // FAT and exFAT, for example, support neither; the name is then claimed by an exclusive create.
+      if code == ENOTSUP { return try copyExclusively(temporary, to: destination) }
+      throw failure(code, destination)
+    }
+    return PublishedFile(url: destination, descriptor: file)
+  }
+
+  /// Creates `destination` only if the name is free, copies `temporary` into it and removes `temporary`. This is for
+  /// volumes with neither exclusive rename nor hard links, which leave no way to avoid the new file being visible,
+  /// partly written, while its bytes are copied in. If the copy fails, the file is removed only while its name still
+  /// holds it. Tests pass `copy` to fail the copy and `checked` to act once the name has been checked.
+  static func copyExclusively(_ temporary: URL, to destination: URL,
+                              copy: (Int32, Int32) -> Int32 = { fcopyfile($0, $1, nil, copyfile_flags_t(COPYFILE_ALL)) == 0 ? 0 : errno },
+                              checked: () -> Void = {}) throws -> PublishedFile {
+    let source = try descriptor(temporary, O_RDONLY | O_NOFOLLOW)
+    defer { close(source) }
+    let target = try descriptor(destination, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
+    let code = copy(source, target)
+    let published = PublishedFile(url: destination, descriptor: target)
+    guard code == 0 else {
+      let reason = failure(code, destination)
+      guard let left = remove(published, checked: checked) else { throw reason }
+      throw AssetError(reason.localizedDescription + " Another app put a file at \(left), so it was left as it is.")
+    }
+    _ = call(temporary) { unlink($0) }
+    return published
+  }
+
+  /// Removes a published file while its name still holds it and returns nil; otherwise leaves what is there and
+  /// returns its path. Whatever is at the name is first moved to a private name, so the check and the removal see
+  /// the same file. Another writer's file is put back with an exclusive rename or link; on a volume with neither it
+  /// stays at the private name, and that path is returned.
+  static func remove(_ published: PublishedFile, checked: () -> Void = {}) -> String? {
+    let url = published.url
+    guard let current = FileIdentity.at(url) else { return nil }
+    guard published.isPublished(current) else { return url.path }
+    checked()
+    let aside = url.deletingLastPathComponent().appendingPathComponent(".\(url.lastPathComponent).frame-export-\(UUID().uuidString)")
+    let moved = call(url, aside) { rename($0, $1) }
+    guard moved == 0 else { return moved == ENOENT ? nil : url.path }
+    if let item = FileIdentity.at(aside), published.isPublished(item) { _ = call(aside) { unlink($0) }; return nil }
+    if call(aside, url, { renamex_np($0, $1, UInt32(RENAME_EXCL)) }) == 0 { return url.path }
+    if call(aside, url, { link($0, $1) }) == 0 { _ = call(aside) { unlink($0) }; return url.path }
+    return aside.path
+  }
+
+  private static func descriptor(_ url: URL, _ flags: Int32, _ mode: mode_t = 0) throws -> Int32 {
+    var file: Int32 = -1
+    let code = call(url) { path in file = open(path, flags, mode); return file >= 0 ? 0 : -1 }
+    guard code == 0 else { throw failure(code, url) }
+    return file
+  }
+  /// Runs a system call on file-system paths and returns 0 or the error number.
+  private static func call(_ url: URL, _ body: (UnsafePointer<CChar>) -> Int32) -> Int32 {
+    url.withUnsafeFileSystemRepresentation { path in
+      guard let path else { return EINVAL }
+      return body(path) == 0 ? 0 : errno
+    }
+  }
+  private static func call(_ from: URL, _ to: URL, _ body: (UnsafePointer<CChar>, UnsafePointer<CChar>) -> Int32) -> Int32 {
+    from.withUnsafeFileSystemRepresentation { from in
+      to.withUnsafeFileSystemRepresentation { to in
         guard let from, let to else { return EINVAL }
-        let source = open(from, O_RDONLY | O_NOFOLLOW)
-        guard source >= 0 else { return errno }
-        defer { close(source) }
-        let target = open(to, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o600)
-        guard target >= 0 else { return errno }
-        defer { close(target) }
-        guard fcopyfile(source, target, nil, copyfile_flags_t(COPYFILE_ALL)) == 0 else {
-          let code = errno
-          var made = stat(), named = stat()
-          if fstat(target, &made) == 0, lstat(to, &named) == 0, made.st_dev == named.st_dev, made.st_ino == named.st_ino { unlink(to) }
-          return code
-        }
-        unlink(from)
-        return 0
+        return body(from, to) == 0 ? 0 : errno
       }
     }
+  }
+  private static func failure(_ code: Int32, _ url: URL) -> Error {
+    let info: [String: Any] = [NSFilePathErrorKey: url.path, NSURLErrorKey: url]
+    return code == EEXIST ? CocoaError(.fileWriteFileExists, userInfo: info) : NSError(domain: NSPOSIXErrorDomain, code: Int(code), userInfo: info)
   }
 }

@@ -80,6 +80,26 @@ final class DocumentPreviewTests: XCTestCase {
     let third = try await source.data(at: "notes.md")
     XCTAssertEqual(String(data: third, encoding: .utf8), "third")
   }
+  func testLocalResourcesSplitAtEverySlashEvenOneACombiningMarkFollows() async throws {
+    // A slash followed by a combining mark is one Swift character but two components to the file system.
+    let base = try root(), root = base.appendingPathComponent("library"), outside = base.appendingPathComponent("outside")
+    for folder in [root, outside, root.appendingPathComponent("docs")] { try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true) }
+    let hidden = "\u{301}secret.txt"
+    try Data("secret".utf8).write(to: outside.appendingPathComponent(hidden))
+    try Data("secret".utf8).write(to: base.appendingPathComponent(hidden))
+    try FileManager.default.createSymbolicLink(at: root.appendingPathComponent("escape"), withDestinationURL: outside)
+    try Data("inside".utf8).write(to: root.appendingPathComponent("docs/" + hidden))
+    let source = DocumentResources(location: .local(root))
+    for path in ["escape/" + hidden, "../" + hidden, "docs/../../" + hidden] {
+      XCTAssertEqual(path.split(separator: "/").count < path.utf8.split(separator: UInt8(ascii: "/")).count, true, path)
+      do { let data = try await source.data(at: path); XCTFail("Read \(path): \(String(decoding: data, as: UTF8.self))") } catch {}
+    }
+    XCTAssertEqual(try DocumentResources.components("docs/" + hidden), ["docs", hidden])
+    let inside = try await source.data(at: "docs/" + hidden)
+    XCTAssertEqual(String(decoding: inside, as: UTF8.self), "inside", "A name that starts with a combining mark is still a name")
+    XCTAssertThrowsError(try AssetPaths.below(root, relativePath: "escape/" + hidden))
+    XCTAssertThrowsError(try AssetPaths.below(root, relativePath: "../" + hidden))
+  }
   @MainActor private func waitFor(_ renderer: DocumentRenderer, _ script: String) async throws {
     for _ in 0..<200 {
       if (try? await renderer.webView.evaluateJavaScript(script)) as? Bool == true { return }

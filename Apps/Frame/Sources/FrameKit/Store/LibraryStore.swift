@@ -1374,10 +1374,10 @@ public final class LibraryStore: ObservableObject {
     panel.canCreateDirectories = true
     panel.isExtensionHidden = false
     panel.allowedContentTypes = [UTType(filenameExtension: photo.url.pathExtension) ?? .data]
-    guard panel.runModal() == .OK, let destination = panel.url else { return }
-    // The panel asks before replacing a file at the chosen name, so only one there now was agreed to.
-    let replacing = AssetPaths.exists(destination)
-    _ = try? presentation.task { [self] in await export(photo, to: destination, replacing: replacing) }
+    guard panel.runModal() == .OK, let url = panel.url else { return }
+    // Looked at as soon as the panel returns: only the file there now may be replaced.
+    let destination = ExportDestination(chosen: url)
+    _ = try? presentation.task { [self] in await export(photo, to: destination) }
   }
 
   private func exportPaired(_ photo: PhotoItem) {
@@ -1414,9 +1414,9 @@ public final class LibraryStore: ObservableObject {
     } catch { isExporting = false; if !isClosing { errorMessage = error.localizedDescription } }
   }
 
-  /// Exports an exact copy. `replacing` is true only when the person agreed to replace a file at `destination`;
-  /// otherwise a file that appears there meanwhile is reported, not replaced.
-  public func export(_ photo: PhotoItem, to destination: URL, replacing: Bool) async {
+  /// Exports an exact copy. Only the file the person agreed to replace may be replaced; any other file found at the
+  /// name is reported, not replaced.
+  public func export(_ photo: PhotoItem, to destination: ExportDestination) async {
     guard !isClosing, !isExporting else { return }
     isExporting = true
     let sourceRoot = rootURL
@@ -1424,8 +1424,8 @@ public final class LibraryStore: ObservableObject {
     do {
       try await previews.start()
       guard !isClosing, let feature = previews.files.exporter else { return }
-      try await feature.copy(photo, root: sourceRoot, to: destination, replacing: replacing)
-      if !isClosing { showNotice("Exported exact copy to \(destination.lastPathComponent)") }
+      try await feature.copy(photo, root: sourceRoot, to: destination.url, replacing: destination.replacing)
+      if !isClosing { showNotice("Exported exact copy to \(destination.url.lastPathComponent)") }
     } catch { if !isClosing { errorMessage = "Could not export \(photo.name): \(error.localizedDescription)" } }
   }
 
@@ -1619,22 +1619,23 @@ public final class LibraryStore: ObservableObject {
   /// Keeps the opened times of files Frame is about to move to the Trash or the Archive.
   private func holdOpened(_ targets: [PhotoItem]) {
     guard tracksChanges, let feature = previews.library.favorites, feature.isActive else { return }
-    let keys = Set(targets.flatMap { photo in
-      [photo.favoriteID] + photo.companions.map { FavoriteRecord.makeKey(rootID: photo.rootID, relativePath: $0.relativePath) }
-    }).intersection(openedTimes.keys)
-    try? feature.holdOpened(keys: keys)
+    try? feature.holdOpened(keys: trackingKeys(targets).intersection(openedTimes.keys))
+  }
+  /// The keys files' opened times are kept under. An archived remote file's companions keep the paths they had
+  /// before it was archived, as Archive held them under those.
+  private func trackingKeys(_ photos: [PhotoItem]) -> Set<String> {
+    Set(photos.flatMap { photo in
+      let originals = photo.remote?.originals.dropFirst() ?? []
+      let paths = originals.count == photo.companions.count && !originals.isEmpty ? Array(originals) : photo.companions.map(\.relativePath)
+      return [photo.favoriteID] + paths.map { FavoriteRecord.makeKey(rootID: photo.rootID, relativePath: $0) }
+    })
   }
   /// Drops the opened times of files a remote Delete removed for good. An archived file's entry, held since it was
   /// archived, goes too unless a file listed at its path since has taken it over.
   private func forgetOpened(_ deleted: [PhotoItem]) {
     guard tracksChanges, let feature = previews.library.favorites, feature.isActive else { return }
-    func keys(_ photos: [PhotoItem]) -> Set<String> {
-      Set(photos.flatMap { photo in
-        [photo.favoriteID] + photo.companions.map { FavoriteRecord.makeKey(rootID: photo.rootID, relativePath: $0.relativePath) }
-      })
-    }
-    guard let dropped = try? feature.forgetOpened(keys: keys(deleted.filter { $0.archiveID == nil }),
-                                                  heldKeys: keys(deleted.filter { $0.archiveID != nil })) else { return }
+    guard let dropped = try? feature.forgetOpened(keys: trackingKeys(deleted.filter { $0.archiveID == nil }),
+                                                  heldKeys: trackingKeys(deleted.filter { $0.archiveID != nil })) else { return }
     for key in dropped { openedTimes.removeValue(forKey: key) }
   }
   private func record(_ id: UUID) -> LibraryRootInfo? { try? previews.library.catalog?.record(id) }

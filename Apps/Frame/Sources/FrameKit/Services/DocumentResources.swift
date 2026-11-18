@@ -42,14 +42,17 @@ public actor DocumentResources {
     directoryTasks.removeAll(); directories.removeAll(); cache.removeAll(); loaded.removeAll()
     for task in pending { _ = try? await task.value }
   }
-  public static func normalized(_ path: String) throws -> String {
-    let parts = path.split(separator: "/", omittingEmptySubsequences: true)
+  public static func normalized(_ path: String) throws -> String { try components(path).joined(separator: "/") }
+  /// The path's components, split at every "/" byte. Swift's characters will not do: a slash followed by a
+  /// combining mark is one character, yet still a separator to the file system.
+  static func components(_ path: String) throws -> [String] {
+    let parts = path.utf8.split(separator: UInt8(ascii: "/"), omittingEmptySubsequences: true)
     guard !parts.isEmpty, parts.count <= 64, path.utf8.count <= 16_384,
-          parts.allSatisfy({ $0 != "." && $0 != ".." && !$0.contains("\0") }),
+          parts.allSatisfy({ !$0.elementsEqual(".".utf8) && !$0.elementsEqual("..".utf8) && !$0.contains(0) }),
           !path.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else {
       throw BridgeError("Resource outside this folder.")
     }
-    return parts.joined(separator: "/")
+    return parts.map { String(decoding: $0, as: UTF8.self) }
   }
   public func data(at path: String, limit: Int = DocumentResources.resourceLimit) async throws -> Data {
     let path = try Self.normalized(path), token = generation
@@ -128,7 +131,8 @@ public actor DocumentResources {
     return changed
   }
   private static func descriptor(root: URL, path: String) throws -> Int32 {
-    let parts = try normalized(path).split(separator: "/").map(String.init)
+    // The same components the path was checked by, opened one at a time so O_NOFOLLOW guards each of them.
+    let parts = try components(path)
     var fd = open(root.path, O_RDONLY | O_DIRECTORY | O_NOFOLLOW)
     guard fd >= 0 else { throw CocoaError(.fileReadNoPermission) }
     for (index, part) in parts.enumerated() {

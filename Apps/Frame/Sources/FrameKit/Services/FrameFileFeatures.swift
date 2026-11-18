@@ -35,8 +35,10 @@ struct FrameLocalFileOperations: Sendable {
         if $2 { try ArchiveService.restore($0, root: $1) }
         else { try ArchiveService.archive($0, root: $1) }
     }
-    /// Exports one file; the third argument is true only when the person confirmed replacing the destination.
-    var copy: @Sendable (URL, URL, Bool) throws -> Void = { try ExactCopyExporter.export(source: $0, destination: $1, replacing: $2) }
+    /// Exports one file, replacing at the destination only what the third argument allows.
+    var copy: @Sendable (URL, URL, ExactCopyExporter.Replacement) throws -> Void = {
+        try ExactCopyExporter.export(source: $0, destination: $1, replacing: $2)
+    }
     var planExport: @Sendable (PhotoItem, URL) async throws -> AssetExportPlan = { try AssetExporter.plan($0, folder: $1) }
     var exportGroup: @Sendable (AssetExportPlan) throws -> Void = { try AssetExporter.export($0) }
 }
@@ -200,7 +202,7 @@ final class FrameExportFeature {
     init(_ context: FeatureContext, operations: FrameLocalFileOperations, access: FrameLocalAccessFeature) {
         self.operations = operations; work = FrameFeatureWork(context, access: access)
     }
-    func copy(_ photo: PhotoItem, root: URL?, to destination: URL, replacing: Bool) async throws {
+    func copy(_ photo: PhotoItem, root: URL?, to destination: URL, replacing: ExactCopyExporter.Replacement) async throws {
         let operation = operations.copy
         try await work.run(roots: [root, photo.url, destination].compactMap { $0 }, allowRetired: true) { try operation(photo.url, destination, replacing) }
     }

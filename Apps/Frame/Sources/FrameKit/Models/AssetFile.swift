@@ -51,9 +51,10 @@ enum AssetPaths {
     (try? FileManager.default.attributesOfItem(atPath: url.path)) != nil
   }
   static func below(_ root: URL, relativePath: String) throws -> URL {
-    let parts = relativePath.split(separator: "/", omittingEmptySubsequences: false)
-    guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
-          !relativePath.contains("\0") else { throw AssetError("Invalid relative asset path.") }
+    // Split at "/" bytes, as the file system does; a slash followed by a combining mark is one Swift character.
+    let parts = relativePath.utf8.split(separator: UInt8(ascii: "/"), omittingEmptySubsequences: false)
+    guard !parts.isEmpty, parts.allSatisfy({ !$0.isEmpty && !$0.elementsEqual(".".utf8) && !$0.elementsEqual("..".utf8) }),
+          !relativePath.utf8.contains(0) else { throw AssetError("Invalid relative asset path.") }
     let result = root.resolvingSymlinksInPath().appendingPathComponent(relativePath).standardizedFileURL
     guard result.resolvingSymlinksInPath().path.hasPrefix(root.resolvingSymlinksInPath().path + "/"),
           result == result.resolvingSymlinksInPath().standardizedFileURL else {

@@ -40,15 +40,17 @@ public enum AssetExporter {
     return AssetExportPlan(photo: photo, folder: folder, existing: existing)
   }
 
-  /// `copy` publishes one member; its third argument is true only for a destination the plan replaces.
-  public static func export(_ plan: AssetExportPlan,
-    copy: (URL, URL, Bool) throws -> Void = { try ExactCopyExporter.export(source: $0, destination: $1, replacing: $2) }) throws {
+  /// `copy` publishes one member and returns the file it published; its third argument is true only for a
+  /// destination the plan replaces.
+  public static func export(_ plan: AssetExportPlan, copy: (URL, URL, Bool) throws -> PublishedFile = {
+    try ExactCopyExporter.export(source: $0, destination: $1, replacing: $2 ? .anything : .nothing)
+  }) throws {
     let fresh = try self.plan(plan.photo, folder: plan.folder)
     guard fresh.existing == plan.existing else { throw AssetError("Destination changed after confirmation. Choose Export again.") }
     let fm = FileManager.default
     let stage = plan.folder.appendingPathComponent(".frame-export-\(UUID())")
     try fm.createDirectory(at: stage, withIntermediateDirectories: false)
-    var committed: [AssetFile] = []
+    var committed: [PublishedFile] = []
     var retainRecovery = false
     defer { if !retainRecovery { try? fm.removeItem(at: stage) } }
     do {
@@ -66,22 +68,21 @@ public enum AssetExporter {
         if let old { try old.validate() }
         else if AssetPaths.exists(destination) { throw CocoaError(.fileWriteFileExists) }
         // A planned create never replaces: a file that appears there during the copy is reported instead.
-        try copy(stage.appendingPathComponent("new-\(index)"), destination, old != nil)
-        // Preserve recovery data if even this post-write snapshot cannot be obtained.
-        retainRecovery = true
-        committed.append(try AssetFile.snapshot(destination, relativePath: member.url.lastPathComponent))
-        retainRecovery = false
+        committed.append(try copy(stage.appendingPathComponent("new-\(index)"), destination, old != nil))
       }
     } catch {
-      for (index, destination) in committed.enumerated().reversed() {
-        do {
-          try destination.validate()
-          let backup = stage.appendingPathComponent("old-\(index)")
-          if AssetPaths.exists(backup) { try ExactCopyExporter.export(source: backup, destination: destination.url) }
-          else { try fm.removeItem(at: destination.url) }
-        } catch { retainRecovery = true }
+      var left: [String] = []
+      for (index, published) in committed.enumerated().reversed() {
+        // Only a file this export published is taken back; one another writer has put at its name is left.
+        if let path = ExactCopyExporter.remove(published) { left.append(path); retainRecovery = true; continue }
+        let backup = stage.appendingPathComponent("old-\(index)")
+        guard AssetPaths.exists(backup) else { continue }
+        do { try ExactCopyExporter.export(source: backup, destination: published.url, replacing: .nothing) }
+        catch { retainRecovery = true }
       }
-      throw AssetError(error.localizedDescription + (retainRecovery ? " Recovery copies are retained at \(stage.path)." : " Previous destination files were preserved."))
+      let others = left.isEmpty ? "" : " Another app replaced " + left.joined(separator: ", ") + " meanwhile, so it was left as it is."
+      throw AssetError(error.localizedDescription + others
+        + (retainRecovery ? " Recovery copies are retained at \(stage.path)." : " Previous destination files were preserved."))
     }
   }
 }
