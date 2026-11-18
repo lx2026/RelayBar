@@ -50,7 +50,7 @@ without adding search, indexing, mounting, or editing.
 
 Local builds offer **Open in Frame** in folder and preview toolbars only while the Open in Frame plugin runs; it is on by default only if Frame was installed when RelayBar launched. Switching the plugin adds or removes both buttons in an open window without reopening it. See the [authenticated companion contract](frame-viewer.md). RelayBar retains connection ownership and its own upload/delete behavior.
 
-Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfolder opens. Host-side previews/metadata, direct permanent Delete without confirmation, and separate Archive/Restore are supported; originals transfer only on explicit request. RelayBar's own browser still owns recent-history updates.
+Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfolder opens. Host-side previews/metadata, direct permanent Delete without confirmation, and separate Archive/Restore are supported; originals transfer only on explicit request, bounded only by the bridge's 100 MiB per-file limit rather than RelayBar's own preview limits. RelayBar's own browser still owns recent-history updates.
 
 - The top bar contains **Back**, the exact current path, **Refresh**, **Select**,
   and **Upload…**. **Select** appears only when the folder contains a regular
@@ -192,7 +192,7 @@ Empty folders show a single focused empty state with an explicit accessibility d
 ## HTML preview
 
 - `.html` and `.htm` render in one ephemeral WKWebView, with HTML keyboard focus protected from file shortcuts.
-- Relative CSS, scripts, images and data load on demand through the existing SSH service and root-contained helper. There is no recursive download or dependency history entry. Temporary transfer files are removed after reading; preview memory and requests are released on close.
+- Relative CSS, scripts, images and data load on demand through the existing SSH service and root-contained helper. There is no recursive download or dependency history entry. Each resource's local name comes from the requested path, never from the helper's reply. Temporary transfer files are removed after reading; preview memory and requests are released on close.
 - Online resources are allowed per the user’s 2026-11-07 approval. macOS transport protections remain unchanged; HTTPS works normally, while insecure HTTP may be rejected. No native mutation bridge is exposed to HTML.
 - Four concurrent resource transfers, 128 paths, 10 MiB documents, 32 MiB individual resources and 64 MiB total preview bytes bound the work.
 - Build 20 is installed and running. Real WebKit/model tests pass; the user confirmed the installed Remote Files check works on 2026-11-07.

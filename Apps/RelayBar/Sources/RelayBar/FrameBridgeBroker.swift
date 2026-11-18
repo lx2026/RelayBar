@@ -85,6 +85,8 @@ final class FrameBridgeBroker {
         listener?.disconnectAll(BridgeResponse(error: Self.unauthorized, sessionFailure: .unauthorized))
     }
     private static let unauthorized = "Open a folder in RelayBar and choose Open in Frame to allow remote viewing."
+    /// The most one original download may transfer.
+    private static let originalLimit: Int64 = 100 * 1_024 * 1_024
 
     /// A session's connection has ended: Frame quit, crashed, or closed it. Its work stops now.
     func disconnected(_ connection: UUID) {
@@ -267,10 +269,12 @@ final class FrameBridgeBroker {
                 }
             } catch { return BridgeResponse(error: error.localizedDescription) }
         case "fetch":
+            // The name becomes a local file name below, so it must be one path component.
             guard let listingID = request.listingID, let listing = listings[listingID], let name = request.name,
+                  FrameBridgeEnvironment.validName(name),
                   let entry = listing.entries.first(where: { $0.name == name && !$0.directory && (request.path == nil || $0.path == request.path) }),
                   let server = servers[listing.sourceID], let cacheRoot else { return BridgeResponse(error: "Refresh this remote folder before downloading.") }
-            guard entry.size >= 0, entry.size <= 100 * 1_024 * 1_024 else {
+            guard entry.size >= 0, entry.size <= Self.originalLimit else {
                 return BridgeResponse(error: "This file exceeds 100 MiB. Download it in RelayBar.")
             }
             let size = entry.size
@@ -286,7 +290,9 @@ final class FrameBridgeBroker {
                         check.members = [entry]; check.pixels = 0
                         _ = try await service.frameAsset(server: server, input: check)
                         let remoteEntry = RemoteFileEntry(name: entry.name, path: entry.path, kind: .file, size: entry.size, modificationText: entry.modified)
-                        let file = try await service.preparePreviewWithProgress(server: server, entry: remoteEntry) { bytes in
+                        // Bounded by this request's limit alone, not by RelayBar's own preview limits.
+                        let file = try await service.prepareOriginal(server: server, entry: remoteEntry,
+                                                                     maximumBytes: Self.originalLimit) { bytes in
                             Task { @MainActor in self?.jobs[id]?.response.completedBytes = bytes }
                         }
                         temporary = file.deletingLastPathComponent()

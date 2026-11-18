@@ -52,7 +52,9 @@ actor RemoteHTMLResources {
         guard let entry = result.entries?.first(where: { $0.path == full && !$0.directory }) else {
             throw BridgeError("File unavailable.")
         }
-        return entry
+        // The name is the requested path's own; the host's reply never names a local file.
+        return BridgeEntry(name: (full as NSString).lastPathComponent, path: full, directory: false,
+                           size: entry.size, modified: entry.modified, fingerprint: entry.fingerprint)
     }
 
     func data(at path: String, limit: Int = resourceLimit) async throws -> Data {

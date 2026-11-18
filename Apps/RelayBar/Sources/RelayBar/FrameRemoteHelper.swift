@@ -127,6 +127,9 @@ def record(root, ident):
     originals = data.get('originals', [])
     if data.get('version') != 1 or not 1 <= len(originals) <= 10000:
         raise ValueError('Invalid asset record.')
+    identities = data.get('identities')
+    if identities is not None and (not isinstance(identities, list) or len(identities) != len(originals)):
+        raise ValueError('Invalid asset record.')
     for path in originals:
         check_path(path)
         if os.path.dirname(path) != os.path.dirname(originals[0]) or not path.startswith(root.rstrip('/')+'/'):
@@ -151,19 +154,32 @@ def collection(root):
     records=[]
     for ident in sorted(names):
         if ident.startswith('.'): continue
-        folder, data = record(root, ident)
-        members=[]
-        for index,original in enumerate(data['originals']):
-            path=os.path.join(folder, os.path.basename(original))
-            try: fd,s=snapshot(path)
-            except FileNotFoundError:
-                # Interrupted paired moves retain a manifest; show recoverable members.
-                path=original; fd,s=snapshot(path)
-                if identity(s)!=data.get('identities',[])[index]:
-                    os.close(fd); raise ValueError('Partial asset changed at '+original)
-            os.close(fd); members.append(entry(path,s))
-        records.append(dict(id=ident, members=members, originals=data['originals']))
+        try:
+            folder, data = record(root, ident)
+            members=[]
+            for index,original in enumerate(data['originals']):
+                path=os.path.join(folder, os.path.basename(original))
+                try: fd,s=snapshot(path)
+                except FileNotFoundError:
+                    # Interrupted paired moves retain a manifest; show recoverable members.
+                    path=original; fd,s=snapshot(path)
+                os.close(fd)
+                if path==original and identity(s)!=data.get('identities',[])[index]:
+                    raise ValueError('Partial asset changed at '+original)
+                members.append(entry(path,s))
+            records.append(dict(id=ident, members=members, originals=data['originals']))
+        except Exception:
+            # A damaged record never hides the healthy ones. The reply has no field to name it in.
+            continue
     return dict(records=records)
+
+def drop_record(folder):
+    # Only this manifest and the then-empty record folder; never recursive deletion. The files have
+    # already moved, so metadata that cannot be removed stays behind instead of failing the operation.
+    try:
+        if os.listdir(folder)==['.frame-asset.json']:
+            os.unlink(os.path.join(folder,'.frame-asset.json')); os.rmdir(folder)
+    except OSError: pass
 
 def move_one(source, destination, expected):
     # Atomic no-clobber publication via a hard link, then unlink only the validated source.
@@ -231,8 +247,7 @@ def delete(q):
                 raise ValueError('File changed during delete: '+e['path'])
             os.unlink(name,dir_fd=d)
             deleted.append(e['path'])
-        if folder:
-            os.unlink(os.path.join(folder,'.frame-asset.json')); os.rmdir(folder)
+        if folder: drop_record(folder)
         return {}
     except Exception as error:
         if deleted: raise ValueError(str(error)+'; already deleted: '+', '.join(deleted)) from error
@@ -245,19 +260,26 @@ def mutate(q):
     if root=='/': raise ValueError('Choose a folder below the filesystem root.')
     if q['action']=='restore':
         folder,data=record(root,q['recordID'])
+        identities=data.get('identities')
+        # Any other file would be stranded in the record folder, so nothing is restored.
+        extra=sorted(set(os.listdir(folder))-{'.frame-asset.json'}-{os.path.basename(p) for p in data['originals']})
+        if extra: raise ValueError('The archive record also holds other files; nothing was restored: '+', '.join(extra[:20]))
         pairs=[]
         for index,original in enumerate(data['originals']):
             src=os.path.join(folder,os.path.basename(original))
             try: fd,s=snapshot(src)
             except FileNotFoundError:
                 fd,s=snapshot(original); os.close(fd)
-                if identity(s)!=data.get('identities',[])[index]: raise ValueError('Restore destination changed.')
+                if identities is None or identity(s)!=identities[index]: raise ValueError('Restore destination changed.')
                 continue
             os.close(fd)
+            # Every stored member must still be the file archived, checked before any move. A record
+            # without identities predates them and restores as before.
+            if identities is not None and identity(s)!=identities[index]:
+                raise ValueError('An archived file changed; nothing was restored: '+original)
             pairs.append((src,original,fingerprint(s)))
         move_group(pairs)
-        # Only this validated manifest and now-empty asset directory; never recursive deletion.
-        os.unlink(os.path.join(folder,'.frame-asset.json')); os.rmdir(folder)
+        drop_record(folder)
         return {}
     members=q['members']
     if not 1<=len(members)<=10000: raise ValueError('Invalid asset members.')

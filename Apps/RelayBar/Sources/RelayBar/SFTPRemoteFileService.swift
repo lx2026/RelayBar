@@ -16,6 +16,9 @@ protocol RemoteFileServing: AnyObject, Sendable {
     func preparePreview(server: RemoteServer, entry: RemoteFileEntry, maximumBytes: Int64,
                         progress: @escaping @Sendable (Int64) -> Void) async throws -> URL
     func prepareDocumentResource(server: RemoteServer, entry: RemoteFileEntry) async throws -> URL
+    /// An original another app asked for. Only `maximumBytes` bounds it; RelayBar's own preview limits do not.
+    func prepareOriginal(server: RemoteServer, entry: RemoteFileEntry, maximumBytes: Int64,
+                         progress: @escaping @Sendable (Int64) -> Void) async throws -> URL
     func preparePreviewWithProgress(
         server: RemoteServer,
         entry: RemoteFileEntry,
@@ -55,6 +58,11 @@ extension RemoteFileServing {
     }
     func prepareDocumentResource(server: RemoteServer, entry: RemoteFileEntry) async throws -> URL {
         try await preparePreview(server: server, entry: entry)
+    }
+    func prepareOriginal(server: RemoteServer, entry: RemoteFileEntry, maximumBytes: Int64,
+                         progress: @escaping @Sendable (Int64) -> Void) async throws -> URL {
+        if let size = entry.size, size > maximumBytes { throw RemoteFileError.previewTooLarge }
+        return try await preparePreviewWithProgress(server: server, entry: entry, progress: progress)
     }
     func frameAsset(server: RemoteServer, input: BridgeAssetInput) async throws -> BridgeAssetResult {
         throw BridgeError("This connection does not support Frame assets.")
@@ -613,6 +621,11 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             documentLimit: Int64(RemoteHTMLResources.resourceLimit), progress: { _ in })
     }
 
+    func prepareOriginal(server: RemoteServer, entry: RemoteFileEntry, maximumBytes: Int64,
+                         progress: @escaping @Sendable (Int64) -> Void) async throws -> URL {
+        try await preparePreview(server: server, entry: entry, documentLimit: maximumBytes, progress: progress)
+    }
+
     func preparePreview(server: RemoteServer, entry: RemoteFileEntry, maximumBytes: Int64,
                         progress: @escaping @Sendable (Int64) -> Void) async throws -> URL {
         try await preparePreview(server: server, entry: entry, previewLimit: maximumBytes, progress: progress)
@@ -625,6 +638,13 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         previewLimit: Int64? = nil,
         progress: @escaping @Sendable (Int64) -> Void
     ) async throws -> URL {
+        // The local file is the requested file's own name, one path component inside a new
+        // private folder, so a name from a remote reply can never place it elsewhere and callers
+        // remove exactly that folder.
+        guard FrameBridgeEnvironment.validName(entry.name),
+              entry.name == (entry.path as NSString).lastPathComponent else {
+            throw RemoteFileError.invalidPath
+        }
         var maximumBytes: Int64
         let limitError: RemoteFileError
         if let documentLimit {

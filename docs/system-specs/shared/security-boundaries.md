@@ -15,8 +15,8 @@
 - Host-key verification and authentication occur when that master is established. Multiplexed SFTP children reuse the authenticated transport while retaining the existing path, output, staging, preview, and cancellation bounds.
 - Normal SSH configuration, known hosts, identity files, and the user's SSH agent remain available.
 - Remote paths must be absolute, single-line, and no more than 32 KiB of UTF-8. SFTP batch values escape quotes and backslashes. Listing basenames containing path separators or control characters are ignored; absolute listing names are accepted only when they resolve to direct children of the requested folder.
-- Remote listings are capped at 10,000 supported entries, 32 KiB per line, and 4 KiB per entry name; negative sizes are rejected. Captured SFTP output is capped at 32 MiB, captured SFTP diagnostics at 1 MiB, image previews at 100 MiB, Markdown and JSON previews at 2 MiB, and MP4 previews at 512 MiB.
-- Command output and previews use private temporary directories. Downloads use a hidden `0700` staging directory beside the chosen destination and replace existing content only after success.
+- Remote listings are capped at 10,000 supported entries, 32 KiB per line, and 4 KiB per entry name; negative sizes are rejected. Captured SFTP output is capped at 32 MiB, captured SFTP diagnostics at 1 MiB, image previews at 100 MiB, Markdown and JSON previews at 2 MiB, and MP4 previews at 512 MiB. These are RelayBar's own preview limits; an original Frame fetches through the bridge is bounded only by the bridge's 100 MiB per-file limit.
+- Command output and previews use private temporary directories. A preview's local file takes the requested file's own name, the last component of its remote path, inside a new private folder. Any other name, such as a path-shaped name in a helper or host reply, is refused before transfer, so a reply cannot choose where RelayBar writes, and cleanup removes exactly the folder RelayBar created. Downloads use a hidden `0700` staging directory beside the chosen destination and replace existing content only after success.
 - Upload accepts one local regular non-symbolic-link file, validates the complete
   remote path, and uses a unique exact same-directory staging name. A new name
   is published only with the advertised SFTP hard-link extension; an explicitly
@@ -49,6 +49,7 @@
   unknown post-submission outcome remain distinct.
 - Cancellation, failure, preview exit, window close, and app quit clean up owned temporary content.
 - Markdown accepts UTF-8 without NULs. HTML-looking spans, including multi-line tags and tags in link labels, are escaped before parsing so raw tags stay literal and never execute; images and embeds never load; Mermaid never executes. The rendered page is static HTML with no script, shown in a web view that runs no page script, keeps no data, has no scheme handler, allows only the load of that page, and applies a content policy that permits no network or remote resource (`default-src 'none'`, inline styles and `data:` images only). The page names no link destination: every link is an opaque per-preview reference that RelayBar resolves itself, so a click cannot make WebKit contact a server, and it never navigates the view; each click goes to the link policy below.
+- Frame's document view gives each library its own custom-scheme host and serves a request only from the library whose host it names, so a page still on show while another library loads cannot read that library's files.
 - JSON accepts UTF-8 with an optional BOM and rejects NULs, invalid encoding,
   malformed input, and content above 2 MiB. It renders in a native read-only
   text view and never executes content, resolves references, or fetches a

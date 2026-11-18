@@ -319,4 +319,77 @@ final class FrameRemoteHelperTests: XCTestCase {
         XCTAssertNotNil(result.metadata?["Duration"])
         XCTAssertEqual(try XCTUnwrap(NSBitmapImageRep(data: XCTUnwrap(result.image))).pixelsWide, 512)
     }
+    private func recordFolder(_ root: URL, _ id: UUID) -> URL {
+        root.appendingPathComponent("Archive/\(id.uuidString.lowercased())")
+    }
+    func testRestoreRefusesAReplacedArchivedFileAndKeepsItsRecord() throws {
+        let root = try fixture()
+        let id = try XCTUnwrap(try move(root, action: "archive", members: entries(root)).recordID)
+        let folder = recordFolder(root, id)
+        // A different file of the same size takes the archived file's place.
+        try Data("replaced media".utf8).write(to: folder.appendingPathComponent("a.jpg"), options: .atomic)
+        var restore = BridgeAssetInput(action: "restore", root: root.path); restore.recordID = id
+        XCTAssertNotNil(try call(restore).error)
+        XCTAssertTrue(try entries(root).isEmpty, "No member moves when one of them is not the archived file")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent(".frame-asset.json").path))
+        XCTAssertEqual(try String(contentsOf: folder.appendingPathComponent("a.jpg"), encoding: .utf8), "replaced media")
+        XCTAssertEqual(try call(BridgeAssetInput(action: "collection", root: root.path)).records?.map(\.id), [id])
+    }
+    func testRecordWithoutIdentitiesStillRestores() throws {
+        let root = try fixture(), members = try entries(root)
+        let id = try XCTUnwrap(try move(root, action: "archive", members: members).recordID)
+        let manifest = recordFolder(root, id).appendingPathComponent(".frame-asset.json")
+        try JSONSerialization.data(withJSONObject: ["version": 1, "originals": members.map(\.path)]).write(to: manifest)
+        var restore = BridgeAssetInput(action: "restore", root: root.path); restore.recordID = id
+        XCTAssertNil(try call(restore).error)
+        XCTAssertEqual(try entries(root).count, 2)
+    }
+    func testDamagedArchiveRecordsDoNotHideHealthyOnes() throws {
+        let root = try fixture()
+        for name in ["b.jpg", "c.jpg", "d.jpg"] { try Data(name.utf8).write(to: root.appendingPathComponent(name)) }
+        let listing = try entries(root)
+        var ids: [String: UUID] = [:]
+        for name in ["a.jpg", "b.jpg", "c.jpg", "d.jpg"] {
+            let entry = try XCTUnwrap(listing.first { $0.name == name })
+            let members = [entry] + FrameBridgeBroker.companions(for: entry, entries: listing)
+            ids[name] = try XCTUnwrap(try move(root, action: "archive", members: members).recordID)
+        }
+        let manifest = ".frame-asset.json"
+        try FileManager.default.removeItem(at: recordFolder(root, ids["b.jpg"]!).appendingPathComponent(manifest))
+        try Data("{not json".utf8).write(to: recordFolder(root, ids["c.jpg"]!).appendingPathComponent(manifest))
+        try FileManager.default.removeItem(at: recordFolder(root, ids["d.jpg"]!).appendingPathComponent("d.jpg"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("Archive/not-a-record"), withIntermediateDirectories: false)
+        let collection = try call(BridgeAssetInput(action: "collection", root: root.path))
+        XCTAssertNil(collection.error)
+        XCTAssertEqual(collection.records?.map(\.id), [ids["a.jpg"]!])
+        XCTAssertEqual(collection.records?.first?.members.map(\.name), ["a.jpg", "a.jpg.json"])
+    }
+    func testRestoreWithAnUnexpectedFileMovesNothingAndKeepsTheRecordListed() throws {
+        let root = try fixture()
+        let id = try XCTUnwrap(try move(root, action: "archive", members: entries(root)).recordID)
+        let folder = recordFolder(root, id)
+        try Data("note".utf8).write(to: folder.appendingPathComponent("notes.txt"))
+        var restore = BridgeAssetInput(action: "restore", root: root.path); restore.recordID = id
+        let result = try call(restore)
+        XCTAssertTrue(result.error?.contains("notes.txt") == true, result.error ?? "no error")
+        XCTAssertTrue(try entries(root).isEmpty, "Nothing is restored into the library")
+        XCTAssertTrue(FileManager.default.fileExists(atPath: folder.appendingPathComponent(".frame-asset.json").path))
+        let collection = try call(BridgeAssetInput(action: "collection", root: root.path))
+        XCTAssertNil(collection.error)
+        XCTAssertEqual(collection.records?.map(\.id), [id])
+        XCTAssertEqual(collection.records?.first?.members.count, 2)
+    }
+    func testRestoreSucceedsWhenOnlyRecordCleanupFails() throws {
+        let root = try fixture()
+        let id = try XCTUnwrap(try move(root, action: "archive", members: entries(root)).recordID)
+        let script = FrameRemoteHelper.script.replacingOccurrences(of: "os.rmdir(folder)",
+            with: "raise PermissionError('fixture cleanup denied')")
+        var restore = BridgeAssetInput(action: "restore", root: root.path); restore.recordID = id
+        XCTAssertNil(try call(restore, script: script).error, "The files were restored; only the record folder stayed")
+        XCTAssertEqual(try String(contentsOf: root.appendingPathComponent("a.jpg"), encoding: .utf8), "original media")
+        XCTAssertEqual(try entries(root).count, 2)
+        let collection = try call(BridgeAssetInput(action: "collection", root: root.path))
+        XCTAssertNil(collection.error)
+        XCTAssertEqual(collection.records?.count, 0)
+    }
 }
