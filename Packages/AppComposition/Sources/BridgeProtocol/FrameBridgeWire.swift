@@ -150,13 +150,15 @@ public enum FrameBridgeEnvironment {
     return root
   }
   public static func socketURL() throws -> URL { try root().appendingPathComponent("viewer.sock") }
+  // Slashes are found byte by byte: a slash followed by a combining mark is one Character, and the file system
+  // still splits the path there.
   public static func validPath(_ value: String) -> Bool {
     value.hasPrefix("/") && value.utf8.count <= 16_384
       && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
-      && !value.split(separator: "/").contains(where: { $0 == "." || $0 == ".." })
+      && !value.utf8.split(separator: UInt8(ascii: "/")).contains(where: { $0.elementsEqual(".".utf8) || $0.elementsEqual("..".utf8) })
   }
   public static func validName(_ value: String) -> Bool {
-    !value.isEmpty && value != "." && value != ".." && !value.contains("/") && value.utf8.count <= 4_096
+    !value.isEmpty && value != "." && value != ".." && !value.utf8.contains(UInt8(ascii: "/")) && value.utf8.count <= 4_096
       && !value.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
   }
   public static func validSource(_ source: BridgeSource) -> Bool {

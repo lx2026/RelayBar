@@ -25,7 +25,19 @@ if name == "ditto":
     with zipfile.ZipFile(args[2]) as archive:
         archive.extractall(args[3])
 elif name == "codesign":
-    assert (pathlib.Path(args[-1]) / "Contents/Info.plist").is_file()
+    app = pathlib.Path(args[-1])
+    identifier = plistlib.loads((app / "Contents/Info.plist").read_bytes())["CFBundleIdentifier"]
+    team = (app / "Contents/fixture-team").read_text()
+    satisfied = f'=anchor apple generic and identifier "{identifier}" and certificate leaf[subject.OU] = "{team}"'
+    # Like codesign, check a requirement only when one is given.
+    if any(arg.startswith("-R=") and arg != "-R=" + satisfied for arg in args):
+        sys.exit(f"{app}: test-requirement: code failed to satisfy specified code requirement(s)")
+elif name == "cp":
+    target = pathlib.Path(args[-1]).resolve()
+    if os.environ.get("FAIL_FEED_COPY") and target.parent == (root / "docs").resolve():
+        target.write_text("<rss><chan")
+        sys.exit("cp: write error: No space left on device")
+    os.execv("/bin/cp", ["cp", *args])
 elif name == "xcrun":
     assert args[:2] == ["stapler", "validate"], args
     if not (pathlib.Path(args[2]) / "Contents/ticket").is_file():
@@ -50,7 +62,7 @@ elif name == "generate_appcast":
         '<?xml version="1.0"?><rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">'
         f'<channel>{"".join(items)}</channel></rss>')
 elif name == "generate_keys":
-    print("fixture-public-key")
+    print(os.environ.get("FIXTURE_KEYCHAIN_KEY", "fixture-public-key"))
 elif name == "sign_update":
     assert "--verify" in args, args
     if len(args) == 4:
@@ -76,7 +88,7 @@ class UpdateAppcastTests(unittest.TestCase):
         driver = bin_path / "driver"
         driver.write_text(DRIVER)
         driver.chmod(0o755)
-        for name in ("ditto", "codesign", "xcrun", "spctl", "curl"):
+        for name in ("ditto", "codesign", "xcrun", "spctl", "curl", "cp"):
             (bin_path / name).symlink_to(driver)
         for name in ("generate_appcast", "generate_keys", "sign_update"):
             (sparkle / name).symlink_to(driver)
@@ -88,6 +100,8 @@ class UpdateAppcastTests(unittest.TestCase):
         packaging = self.root / "Apps/RelayBar/Packaging"
         packaging.mkdir(parents=True)
         (packaging / "Info.plist").write_bytes(plistlib.dumps(self.metadata))
+        entitlements = {"com.apple.security.application-groups": ["ABCDE12345.FrameRelay"]}
+        (packaging / "RelayBar.entitlements").write_bytes(plistlib.dumps(entitlements))
         (self.root / "docs").mkdir()
         self.feed = self.root / "docs/appcast.xml"
         self.feed.write_text("<rss><!-- the feed already published --></rss>\n")
@@ -96,12 +110,13 @@ class UpdateAppcastTests(unittest.TestCase):
         self.env = {**os.environ, "PATH": str(bin_path) + os.pathsep + os.environ["PATH"],
                     "FIXTURE_ROOT": str(self.root), "SPARKLE_BIN": str(sparkle),
                     "RELAYBAR_PUBLICATION_APPROVED": "yes"}
-        self.env.pop("FAIL_FEED_VERIFY", None)
-        self.env.pop("SPARKLE_ACCOUNT", None)
+        for name in ("FAIL_FEED_VERIFY", "FAIL_FEED_COPY", "FIXTURE_KEYCHAIN_KEY", "SPARKLE_ACCOUNT"):
+            self.env.pop(name, None)
 
-    def build_archive(self, stapled=True, **changes):
+    def build_archive(self, stapled=True, team="ABCDE12345", **changes):
         with zipfile.ZipFile(self.archive, "w") as bundle:
             bundle.writestr("RelayBar.app/Contents/Info.plist", plistlib.dumps({**self.metadata, **changes}))
+            bundle.writestr("RelayBar.app/Contents/fixture-team", team)
             if stapled:
                 bundle.writestr("RelayBar.app/Contents/ticket", "fixture ticket")
         shutil.copyfile(self.archive, self.root / "published/RelayBar.zip")
@@ -133,10 +148,15 @@ class UpdateAppcastTests(unittest.TestCase):
         extracted = {call[-1] for call in calls if call[0] in ("codesign", "xcrun", "spctl")}
         self.assertEqual(len(extracted), 1, "Every check reads the same clean extraction")
         self.assertTrue(extracted.pop().endswith("/extracted/RelayBar.app"))
+        codesign = next(call for call in calls if call[0] == "codesign")
+        self.assertIn('-R==anchor apple generic and identifier "fixture.RelayBar" and '
+                      'certificate leaf[subject.OU] = "ABCDE12345"', codesign)
         feed_checks = [call for call in calls if call[:2] == ["sign_update", "--account"] and len(call) == 5]
         self.assertEqual(len(feed_checks), 1)
         self.assertNotEqual(feed_checks[0][-1], str(self.feed), "The staged feed is verified, not the repository's")
+        self.assertLess(names.index("generate_keys"), signing, "The signing key is checked before signing")
         self.assertIn(f'url="{URL}"', self.feed.read_text())
+        self.assertEqual(sorted(path.name for path in self.feed.parent.iterdir()), ["appcast.xml"])
         self.assertEqual(result.stdout.splitlines()[-1], str(self.feed))
 
     def test_an_unstapled_archive_is_refused_before_signing(self):
@@ -149,7 +169,37 @@ class UpdateAppcastTests(unittest.TestCase):
         self.build_archive(CFBundleIdentifier="fixture.Other")
         result = self.run_script()
         self.check_refused_before_signing(result)
-        self.assertIn("CFBundleIdentifier", result.stderr)
+        self.assertIn("failed to satisfy", result.stderr)
+
+    def test_another_team_is_refused_before_signing(self):
+        self.build_archive(team="ZYXWV98765")
+        result = self.run_script()
+        self.check_refused_before_signing(result)
+        self.assertIn("failed to satisfy", result.stderr)
+
+    def test_a_signing_key_or_updater_setting_that_differs_is_refused_before_signing(self):
+        cases = (({"FIXTURE_KEYCHAIN_KEY": "another-key"}, {}, "Keychain signing key does not match"),
+                 ({}, {"SUPublicEDKey": "another-key"}, "SUPublicEDKey differs"),
+                 ({}, {"SUFeedURL": "https://example.invalid/appcast.xml"}, "SUFeedURL differs"))
+        for env, changes, message in cases:
+            with self.subTest(message):
+                (self.root / "calls.jsonl").unlink(missing_ok=True)
+                self.build_archive(**changes)
+                self.env.update(env)
+                result = self.run_script()
+                for name in env:
+                    self.env.pop(name)
+                self.check_refused_before_signing(result)
+                self.assertIn(message, result.stderr)
+
+    def test_a_failed_copy_leaves_the_previous_feed_intact(self):
+        self.build_archive()
+        self.env["FAIL_FEED_COPY"] = "1"
+        result = self.run_script()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("No space left on device", result.stderr)
+        self.assertEqual(self.feed.read_text(), "<rss><!-- the feed already published --></rss>\n")
+        self.assertEqual(sorted(path.name for path in self.feed.parent.iterdir()), ["appcast.xml"])
 
     def test_a_failed_feed_verification_leaves_the_repository_feed_untouched(self):
         self.build_archive()

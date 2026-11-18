@@ -24,12 +24,17 @@ configuration, while its credentials remain in Keychain. Sparkle's
 - `./scripts/package-release.sh [relaybar|frame]` creates `.build/RelayBar.zip` or `.build/Frame.zip`; omission selects RelayBar.
 - `./scripts/notarize-release.sh [relaybar|frame]` builds the selected app, submits its archive, requires an Accepted result, staples, rebuilds the ZIP and validates a clean extraction. Omission selects RelayBar. Submission JSON is retained as `.build/notarization-<app>.json`.
 - `./scripts/update-appcast.sh <final ZIP> <immutable HTTPS URL>` first checks
-  a clean extraction of the archive (strict deep signature, stapled ticket,
-  Gatekeeper, and RelayBar's identity, version and build through
-  `release-plan.py`), then verifies the published archive byte-for-byte,
-  preserves full-update history, and signs the appcast in a staging directory.
-  It replaces `docs/appcast.xml` only after the production-feed verifier
-  accepts the staged feed.
+  a clean extraction of the archive: a strict deep signature that satisfies
+  the bridge's requirement for RelayBar (Apple anchor, the bundle identifier
+  from the production Info.plist, and the Developer ID team that prefixes the
+  App Group in `RelayBar.entitlements`), the stapled ticket, Gatekeeper, and
+  RelayBar's identity, version and build through `release-plan.py`. It then
+  requires the archive's `SUFeedURL` and `SUPublicEDKey` and the signing
+  account's public key to match the production Info.plist, verifies the
+  published archive byte-for-byte, preserves full-update history, and signs
+  the appcast in a staging directory. Only after the production-feed verifier
+  accepts the staged feed does it copy the feed beside `docs/appcast.xml` and
+  rename it into place.
 - `./scripts/verify-update-feed.sh` downloads and verifies every retained full
   update enclosure against its declared length and EdDSA signature.
 - `./scripts/stage-private-update.sh <final ZIP> <port> <new directory>` creates
@@ -109,9 +114,11 @@ Autoupdate tool, Updater app, and framework inside-out before signing RelayBar.
 Every nested boundary and the final bundle must pass strict code-signature
 verification. Appcast generation accepts only the final archive rebuilt after
 stapling; never sign a pre-notarization or pre-staple ZIP. `update-appcast.sh`
-refuses an archive without a valid stapled ticket before Sparkle signs it, and
-script tests with stand-in tools cover that refusal and an unchanged
-`docs/appcast.xml` after a failed feed verification. Production
+refuses an archive without a valid stapled ticket, from another team, or with
+other updater settings, and a signing key that differs from `SUPublicEDKey`,
+before Sparkle signs anything. Script tests with stand-in tools cover those
+refusals and an unchanged `docs/appcast.xml` after a failed feed verification
+or a failed copy. Production
 verification checks the feed signature before downloading and validating every
 retained enclosure.
 
