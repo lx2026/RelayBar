@@ -59,6 +59,8 @@ Markdown (`.md`, `.markdown`) and HTML (`.html`, `.htm`) are independent primary
 
 The signed app contains a fixed Python helper, executed over the existing SSH control socket. JSON is sent on stdin; paths never enter shell text. Python 3 is required for Frame browsing/actions, Pillow for JPEG/PNG derivatives/metadata, and ffmpeg/ffprobe for video posters/metadata. Nothing is installed automatically.
 
+Frame accepts saved paths through a symlinked remote login home. The helper resolves the home prefix once per request and keeps the saved spelling in listings and archive records. The conventional `/home/<login>` spelling is also accepted when it resolves to the account’s configured home. Directory and file lookups below the home retain their no-follow checks.
+
 Listings return precise stat fingerprints and omit symlinks and managed Archive. Previews are 512 or 2048 pixels with bounded metadata and companion text. Frame and RelayBar share filename grouping: longest same-folder dot-prefix wins, exact media filenames take precedence over tied stems, ambiguous stems remain ungrouped. Arbitrary suffixes/extensions and multiple companions are supported, e.g. `name1.png`, `name1.xyz.json`, `name1.qqq.txt`. No content guessing or suffix whitelist.
 
 Conditional validation returns unchanged without another image transfer. Images download for Original/Export; selected video downloads for native AVKit playback, without requiring ffmpeg/ffprobe. Those host tools remain optional for grid posters. No whole-video download occurs just to fill the contact sheet. Each downloaded member is stat-checked before and after SFTP.

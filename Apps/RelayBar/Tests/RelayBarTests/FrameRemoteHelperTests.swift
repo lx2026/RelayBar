@@ -39,6 +39,41 @@ final class FrameRemoteHelperTests: XCTestCase {
         }
     }
 
+    func testSymlinkedLoginHomePreservesSavedPathsAndRejectsNestedLinks() throws {
+        let fixtureRoot = try fixture()
+        let home = fixtureRoot.appendingPathComponent("home")
+        let physical = fixtureRoot.appendingPathComponent("physical")
+        let documents = physical.appendingPathComponent("documents")
+        try FileManager.default.createDirectory(at: documents, withIntermediateDirectories: true)
+        try FileManager.default.createSymbolicLink(at: home, withDestinationURL: physical)
+        try Data("notes".utf8).write(to: documents.appendingPathComponent("notes.md"))
+        try FileManager.default.createSymbolicLink(at: documents.appendingPathComponent("nested"),
+                                                  withDestinationURL: fixtureRoot)
+
+        let saved = home.appendingPathComponent("documents").path
+        func request(_ input: BridgeAssetInput) throws -> BridgeAssetResult {
+            try call(input, home: home)
+        }
+        let list = try request(BridgeAssetInput(action: "list", root: saved))
+        let entries = try XCTUnwrap(list.entries, list.error ?? "")
+        XCTAssertEqual(entries.map(\.path), [saved + "/notes.md"])
+        XCTAssertNotNil(try request(BridgeAssetInput(action: "list", root: saved + "/nested")).error)
+        var stat = BridgeAssetInput(action: "documentStat", root: saved)
+        stat.paths = [saved + "/nested/a.jpg"]
+        XCTAssertNotNil(try request(stat).error)
+
+        var archive = BridgeAssetInput(action: "archive", root: saved)
+        archive.members = entries
+        let archived = try request(archive)
+        let id = try XCTUnwrap(archived.recordID, archived.error ?? "")
+        let collection = try request(BridgeAssetInput(action: "collection", root: saved))
+        XCTAssertEqual(collection.records?.first?.originals, [saved + "/notes.md"])
+        var restore = BridgeAssetInput(action: "restore", root: saved)
+        restore.recordID = id
+        XCTAssertNil(try request(restore).error)
+        XCTAssertEqual(try String(contentsOf: documents.appendingPathComponent("notes.md"), encoding: .utf8), "notes")
+    }
+
     func testDocumentStatBatchesChangesAndRejectsEscapes() throws {
         let root = try fixture()
         try Data("# Notes".utf8).write(to: root.appendingPathComponent("notes.md"))
@@ -83,9 +118,14 @@ final class FrameRemoteHelperTests: XCTestCase {
         try Data("{\"prompt\":\"fixture\"}".utf8).write(to: root.appendingPathComponent("a.jpg.json"))
         return root
     }
-    private func call(_ input: BridgeAssetInput, script: String = FrameRemoteHelper.script) throws -> BridgeAssetResult {
+    private func call(_ input: BridgeAssetInput, script: String = FrameRemoteHelper.script, home: URL? = nil) throws -> BridgeAssetResult {
         let process = Process(), stdin = Pipe(), stdout = Pipe()
         process.executableURL = URL(fileURLWithPath: ProcessInfo.processInfo.environment["FRAME_HELPER_PYTHON"] ?? "/usr/bin/python3")
+        if let home {
+            var environment = ProcessInfo.processInfo.environment
+            environment["HOME"] = home.path
+            process.environment = environment
+        }
         process.arguments = ["-c", script]
         process.standardInput = stdin; process.standardOutput = stdout; process.standardError = FileHandle.nullDevice
         try process.run()
