@@ -127,9 +127,12 @@ def record(root, ident):
     originals = data.get('originals', [])
     if data.get('version') != 1 or not 1 <= len(originals) <= 10000:
         raise ValueError('Invalid asset record.')
-    identities = data.get('identities')
-    if identities is not None and (not isinstance(identities, list) or len(identities) != len(originals)):
-        raise ValueError('Invalid asset record.')
+    # Only a record with no identities field predates them; a present field must be complete.
+    if 'identities' in data:
+        identities = data['identities']
+        if not isinstance(identities, list) or len(identities) != len(originals) or not all(
+                isinstance(x, list) and len(x) == 4 and all(type(v) is int for v in x) for x in identities):
+            raise ValueError('Invalid asset record.')
     for path in originals:
         check_path(path)
         if os.path.dirname(path) != os.path.dirname(originals[0]) or not path.startswith(root.rstrip('/')+'/'):
@@ -155,8 +158,11 @@ def collection(root):
     for ident in sorted(names):
         if ident.startswith('.'): continue
         try:
+            # Another spelling of an id names the same record, so only the canonical one is read.
+            # Directory names are unique, so no id is listed twice.
+            if ident != str(uuid.UUID(ident)): continue
             folder, data = record(root, ident)
-            members=[]
+            members=[]; returned=0
             for index,original in enumerate(data['originals']):
                 path=os.path.join(folder, os.path.basename(original))
                 try: fd,s=snapshot(path)
@@ -164,9 +170,13 @@ def collection(root):
                     # Interrupted paired moves retain a manifest; show recoverable members.
                     path=original; fd,s=snapshot(path)
                 os.close(fd)
-                if path==original and identity(s)!=data.get('identities',[])[index]:
-                    raise ValueError('Partial asset changed at '+original)
+                if path==original:
+                    if identity(s)!=data.get('identities',[])[index]:
+                        raise ValueError('Partial asset changed at '+original)
+                    returned+=1
                 members.append(entry(path,s))
+            # Every member is back where it came from: a restore whose manifest could not be removed.
+            if returned==len(members): continue
             records.append(dict(id=ident, members=members, originals=data['originals']))
         except Exception:
             # A damaged record never hides the healthy ones. The reply has no field to name it in.
