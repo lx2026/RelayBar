@@ -168,7 +168,9 @@ final class PopoverScrollingTests: XCTestCase {
         let controls = allControls(in: document)
         XCTAssertFalse(controls.isEmpty, "\(name): the document has AppKit-backed controls", line: line)
         for control in controls {
-            let frame = control.convert(control.bounds, to: document)
+            // Measured by the alignment rectangle, which is what layout places and what the control draws within.
+            // On macOS 13 to 15 a pop-up button's frame is a few points wider than that on each side.
+            let frame = control.convert(control.alignmentRect(forFrame: control.bounds), to: document)
             XCTAssertGreaterThanOrEqual(frame.minX, inset - 0.5,
                                         "\(name): \(type(of: control)) at \(frame) clears the leading inset",
                                         line: line)
