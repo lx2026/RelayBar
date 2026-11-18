@@ -16,7 +16,7 @@ enum FrameRemoteHelper {
     }
 
     static let script = #"""
-import os, sys, json, stat, hashlib, datetime, uuid, io, base64, signal, resource, subprocess, warnings
+import os, sys, json, stat, hashlib, datetime, uuid, io, base64, signal, resource, subprocess, warnings, pwd
 signal.alarm(50)
 resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
 resource.setrlimit(resource.RLIMIT_FSIZE, (8*1024*1024, 8*1024*1024))
@@ -33,8 +33,33 @@ def check_path(path):
         raise ValueError('Unsafe path.')
     return os.path.normpath(path)
 
+def home_mapping(root):
+    # Resolve only a login-home prefix, never a caller-selected subfolder or file.
+    home = os.path.expanduser('~')
+    def under(alias):
+        return os.path.isabs(alias) and alias != '/' and (root == alias or root.startswith(alias+'/'))
+    if under(home):
+        return home, os.path.realpath(home)
+    try: account = pwd.getpwuid(os.getuid())
+    except KeyError: return None
+    if under(account.pw_dir):
+        return account.pw_dir, os.path.realpath(account.pw_dir)
+    conventional = os.path.join('/home', account.pw_name)
+    if under(conventional):
+        physical = os.path.realpath(account.pw_dir)
+        if os.path.realpath(conventional) == physical:
+            return conventional, physical
+    return None
+
+def filesystem_path(path):
+    if home_paths:
+        alias, physical = home_paths
+        if path == alias or path.startswith(alias+'/'):
+            return os.path.join(physical, path[len(alias):].lstrip('/'))
+    return path
+
 def directory(path):
-    path = check_path(path)
+    path = filesystem_path(check_path(path))
     fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
     try:
         for name in path.split('/')[1:]:
@@ -184,6 +209,7 @@ def collection(root):
     return dict(records=records)
 
 def drop_record(folder):
+    folder=filesystem_path(folder)
     # Only this manifest and the then-empty record folder; never recursive deletion. The files have
     # already moved, so metadata that cannot be removed stays behind instead of failing the operation.
     try:
@@ -272,7 +298,7 @@ def mutate(q):
         folder,data=record(root,q['recordID'])
         identities=data.get('identities')
         # Any other file would be stranded in the record folder, so nothing is restored.
-        extra=sorted(set(os.listdir(folder))-{'.frame-asset.json'}-{os.path.basename(p) for p in data['originals']})
+        extra=sorted(set(os.listdir(filesystem_path(folder)))-{'.frame-asset.json'}-{os.path.basename(p) for p in data['originals']})
         if extra: raise ValueError('The archive record also holds other files; nothing was restored: '+', '.join(extra[:20]))
         pairs=[]
         for index,original in enumerate(data['originals']):
@@ -300,7 +326,7 @@ def mutate(q):
         if not path.startswith(root.rstrip('/')+'/') or os.path.relpath(path,root).split('/')[0] == 'Archive':
             raise ValueError('Asset is outside the opened folder.')
         fd,s=snapshot(path,e); identities.append(identity(s)); os.close(fd)
-    base=managed(root,True); ident=str(uuid.uuid4()); folder=os.path.join(base,ident)
+    base=managed(root,True); ident=str(uuid.uuid4()); folder=filesystem_path(os.path.join(base,ident))
     os.mkdir(folder,0o700)
     manifest=os.path.join(folder,'.frame-asset.json')
     with open(manifest,'x',encoding='utf8') as f:
@@ -419,6 +445,7 @@ def preview(q):
 try:
     q=json.loads(sys.stdin.buffer.read(8*1024*1024+1))
     root=check_path(q['root'])
+    home_paths=home_mapping(root)
     action=q['action']
     if action=='list': result=list_folder(root)
     elif action=='collection': result=collection(root)
