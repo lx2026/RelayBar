@@ -274,9 +274,11 @@ private struct DocumentReader: View {
       HStack(alignment: .top, spacing: 0) {
         DocumentPreview(photo: photo, store: store)
         if photo.format == .markdown {
-          if showsRail, !renderer.showsSource, renderer.outline.count >= 2, geometry.size.width >= Self.outlineRoom {
+          if showsRail, !renderer.showsSource, renderer.hasPageOutline, geometry.size.width >= Self.outlineRoom {
             OutlineRail(renderer: renderer, location: "\(store.rootName) / \(store.documentPath(photo))",
                         changed: ChangeTracking.modificationDate(of: photo).map(FrameFormat.relative.string(from:)))
+              .opacity(renderer.outline.isEmpty ? 0 : 1)
+              .accessibilityHidden(renderer.outline.isEmpty)
               .frame(width: FrameMetrics.outlineWidth)
               .padding(.leading, 16).padding(.trailing, 36).padding(.top, 16)
           }

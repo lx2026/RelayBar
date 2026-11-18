@@ -20,6 +20,7 @@ import WebKit
   /// The second- and third-level headings of the Markdown page on show, and the one being read.
   @Published public private(set) var outline: [DocumentHeading] = []
   @Published public private(set) var activeHeading: Int?
+  @Published public private(set) var hasPageOutline = false
   public private(set) var webView: WKWebView!
   public var onNavigate: ((String) -> Void)?
   /// Receives a code block's text from its Copy link; replaceable so tests leave the real pasteboard alone.
@@ -114,6 +115,7 @@ import WebKit
   }
   public func showFailure(_ message: String) {
     stop()
+    hasPageOutline = false
     prepared = nil
     webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>Preview unavailable</article>", baseURL: nil)
     error = message
@@ -235,10 +237,11 @@ import WebKit
       if reset { try await source.begin() }
       let data = try await source.data(at: path, limit: documentLimit)
       guard !data.isEmpty else { throw BridgeError("File is empty. Retry after saving.") }
-      let html = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: source.host, source: showsSource,
+      let page = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: source.host, source: showsSource,
                                             paper: .current)
       guard generation == token, !Task.isCancelled else { return }
-      prepared = (source.host, path, Data(html.utf8))
+      hasPageOutline = page.hasOutline
+      prepared = (source.host, path, Data(page.html.utf8))
       for task in tasks.values { task.cancel() }; tasks.removeAll()
       error = nil
       var url = URLComponents(); url.scheme = "frame-document"; url.host = source.host; url.path = "/" + path
@@ -247,7 +250,7 @@ import WebKit
       guard generation == token, !Task.isCancelled else { return }
       self.error = (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == CocoaError.fileReadNoSuchFile.rawValue
         ? "File missing." : error.localizedDescription
-      if reset { webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>No preview</article>", baseURL: nil) }
+      if reset { hasPageOutline = false; webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>No preview</article>", baseURL: nil) }
     }
   }
   public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
@@ -271,7 +274,7 @@ import WebKit
           let data = try await source.data(at: path, limit: isDocument ? documentLimit : DocumentResources.resourceLimit)
           if isDocument {
             bytes = Data(try await parser.page(data, extension: (path as NSString).pathExtension, referenceToken: referenceToken,
-                                               paper: paper).utf8)
+                                               paper: paper).html.utf8)
           }
           else { bytes = data }
         }
