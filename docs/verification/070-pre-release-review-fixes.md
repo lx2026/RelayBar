@@ -1,6 +1,6 @@
 # Task 070 — Pre-release review fixes
 
-Date: 2026-11-17. Implemented and pushed on the 2.0.0 pull request; not merged or released. Every check below comes from unit tests and builds; nothing here was exercised in the running apps or against a live SSH host.
+Date: 2026-11-17. Merged to `main` with the 2.0.0 pull request and first built into RelayBar build 26 and Frame build 20 ([Task 071](071-2.0.0-beta-1-pre-releases.md)). Every check below comes from unit tests and builds; nothing here was exercised in the running apps or against a live SSH host.
 
 ## Source of the findings
 
@@ -70,7 +70,7 @@ Two are recorded as known limits, each needing another program to write the same
 
 ## Checks
 
-`scripts/test.sh` passes locally with all three rounds in place: 17 script tests; shared package 107 tests (3 skipped); RelayBar 463 tests (33 skipped); Frame 234 tests (3 skipped); no failures. Frame's product build with warnings as errors and `git diff --check` pass. All windows made by tests stay off screen. CI on macOS 15 passed on the first two rounds.
+`scripts/test.sh` passes locally with all three rounds in place: 17 script tests; shared package 107 tests (3 skipped); RelayBar 463 tests (33 skipped); Frame 234 tests (3 skipped); no failures. Frame's product build with warnings as errors and `git diff --check` pass. All windows made by tests stay off screen. CI on macOS 15 passed on each of the three rounds.
 
 ## Still to check
 
