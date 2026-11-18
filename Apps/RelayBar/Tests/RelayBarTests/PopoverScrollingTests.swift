@@ -10,6 +10,22 @@ import XCTest
 /// override loses, so these checks do not depend on the "Show scroll bars" setting.
 @MainActor
 final class PopoverScrollingTests: XCTestCase {
+    func testNestedBoundsNotificationDoesNotReenterScrollCorrection() {
+        let scroll = NSScrollView(frame: NSRect(x: 0, y: 0, width: 200, height: 100))
+        let clip = ReentrantClipView(frame: scroll.bounds)
+        scroll.contentView = clip
+        let document = NSView(frame: NSRect(x: 0, y: 0, width: 400, height: 500))
+        scroll.documentView = document
+        let observer = VerticalScrollingOnlyView()
+        document.addSubview(observer)
+        observer.apply()
+
+        clip.observeCorrections = true
+        clip.setBoundsOrigin(NSPoint(x: 20, y: 30))
+        XCTAssertEqual(clip.maximumCorrectionDepth, 1)
+        XCTAssertEqual(clip.bounds.origin, NSPoint(x: 0, y: 30))
+    }
+
     func testListAndEditorHaveNoHorizontalRangeWhileTheLegacyScrollerIsInForce() throws {
         let store = try makeStore()
         for index in 0..<14 {
@@ -241,5 +257,27 @@ private final class LegacyScrollerKeeper: NSObject {
 
     @objc private func clipViewFrameDidChange(_ notification: Notification) {
         if scrollView.scrollerStyle != .legacy { scrollView.scrollerStyle = .legacy }
+    }
+}
+
+/// Delivers a nested notification while the old horizontal offset is still visible.
+@MainActor
+private final class ReentrantClipView: NSClipView {
+    var observeCorrections = false
+    private var correctionDepth = 0
+    private(set) var maximumCorrectionDepth = 0
+
+    override func setBoundsOrigin(_ newOrigin: NSPoint) {
+        guard observeCorrections, newOrigin.x == 0, bounds.minX != 0 else {
+            super.setBoundsOrigin(newOrigin)
+            return
+        }
+        correctionDepth += 1
+        defer { correctionDepth -= 1 }
+        maximumCorrectionDepth = max(maximumCorrectionDepth, correctionDepth)
+        if correctionDepth == 1 {
+            NotificationCenter.default.post(name: NSView.boundsDidChangeNotification, object: self)
+        }
+        super.setBoundsOrigin(newOrigin)
     }
 }
