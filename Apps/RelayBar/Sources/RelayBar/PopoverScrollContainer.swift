@@ -230,6 +230,7 @@ private struct VerticalScrollingOnly: NSViewRepresentable {
 final class VerticalScrollingOnlyView: NSView {
     var scrollerWidth: Binding<CGFloat?>?
     private weak var scrollView: NSScrollView?
+    private var isCorrectingHorizontalOffset = false
     private var isWidthReportPending = false
 
     override func viewDidMoveToWindow() {
@@ -280,9 +281,12 @@ final class VerticalScrollingOnlyView: NSView {
 
     /// The document is never wider than the clip view, so its leading edge is the only horizontal position.
     private func keepAtLeadingEdge() {
-        guard let scrollView else { return }
+        guard !isCorrectingHorizontalOffset, let scrollView else { return }
         let clip = scrollView.contentView
         guard clip.bounds.origin.x != 0 else { return }
+        // AppKit can adjust the origin and post another bounds change during either call.
+        isCorrectingHorizontalOffset = true
+        defer { isCorrectingHorizontalOffset = false }
         clip.setBoundsOrigin(NSPoint(x: 0, y: clip.bounds.origin.y))
         scrollView.reflectScrolledClipView(clip)
     }

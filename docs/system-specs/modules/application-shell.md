@@ -55,7 +55,8 @@ RelayBar is a native SwiftUI `MenuBarExtra` application for macOS 13 or newer.
   create a horizontal scroll range or shift content against an edge, and on
   a legacy scroller the content narrows rather than running underneath it.
   The backing scroll view has no horizontal scroller or horizontal
-  elasticity, and its clip view is held at the leading edge. Field labels
+  elasticity. It corrects horizontal drift once per bounds change. Nested
+  notifications during that correction leave the clip view alone. Field labels
   appear once; native picker labels are hidden where a custom field label is
   present. The editor's form keeps its cards and its circular rule buttons.
 - The menu-bar glyph is the Route mark, drawn in code as an 18 × 18 point
