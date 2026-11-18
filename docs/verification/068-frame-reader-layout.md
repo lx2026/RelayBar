@@ -1,6 +1,6 @@
 # Task 068 — Frame reader layout
 
-Date: 2026-11-16. Implemented in the working tree; not committed. A notarized Frame 2.0.0 (18) built from this tree is verified but not installed, because the catalog could not be backed up first (see [Local installation, build 18](#local-installation-build-18)); Frame 2.0.0 (17) remains installed. Nothing has been run in the real app: every check below comes from unit tests, builds, and captures of the separate debug verification build (`com.lx2026.Frame.workspace-verification`) with a synthetic library.
+Date: 2026-11-16. Committed locally as `ff86044`; not pushed. A notarized Frame 2.0.0 (19), built from the committed tree and so including the shared palette, is installed but has not been opened yet (see [Local installation, build 19](#local-installation-build-19)); build 18 was notarized and never installed. Nothing has been run in the real app: every check below comes from unit tests, builds, and captures of the separate debug verification build (`com.lx2026.Frame.workspace-verification`) with a synthetic library.
 
 ## What changed
 
@@ -133,3 +133,18 @@ The clean extraction of the final ZIP passed: strict deep signature; Developer I
 **Not installed.** Build 18 adds two tables to the catalog, so the catalog was to be copied before its first launch. The catalog is not in Frame's own sandbox container. Frame opens SwiftData's default configuration, and because the app has an App Group entitlement that configuration keeps `default.store` and its `-wal` and `-shm` files in the shared `39HYFR5Z65.FrameRelay` group container, under `Library/Application Support/`. macOS refused to let the installing session read files there ("Operation not permitted"), so no copy was made, and the originals were neither opened nor changed. Frame was therefore not replaced, quit or launched; 2.0.0 (17) remains installed. Frame has not opened its catalog with build 18.
 
 The installed 2.0.0 (17) is already archived to `.build/local-notarized-install-2.0.0-rb24-frame18-2026-11-16/backups/Frame-2.0.0-build17.zip`, which extracts and passes signature, ticket and Gatekeeper checks. The verified build 18, its dSYM, logs and Apple's records are in the same folder. Installation waits for the three store files to be copied, with Frame quit, into `backups/frame-catalog/` there. No commit, push, tag, release, feed, website or Homebrew change was made.
+
+## Local installation, build 19
+
+The owner chose to skip build 18 and install Frame 2.0.0, build 19, which adds the shared palette of [Task 069](069-shared-paper-palette.md), together with RelayBar 2.0.0, build 25. The source was commit `3d140fa` with a clean tree; the only change made for this build raised the build number from 18 to 19 in `Apps/Frame/AppBundle/Info.plist`.
+
+- Apple submission `49a677d7-a36a-4506-8bbe-e3590d7c067c`: Accepted, status code 0, no issues; team `39HYFR5Z65`, profile `AC_NOTARY`.
+- Final ZIP SHA-256, after stapling: `f2173657e29592ab9b051a43bf35d864afbb6f43aafc3f8d3c9ae58480d145e3`.
+
+The clean extraction of the final ZIP and, this time, the installed bundle each passed the checks listed for build 18's extraction, at build 19. The bundled icon equals the Viewfinder icon in the tree and differs from the icon at `a896188`.
+
+**Installed without a catalog backup.** macOS still denies the installing session access to the App Group container that holds the catalog, and the owner decided to install without a copy of it. The upgrade itself is covered only by `CatalogUpgradeTests` (see [Catalog upgrade](#catalog-upgrade)).
+
+The installed 2.0.0 (17) was archived first to `.build/local-notarized-install-2.0.0-rb25-frame19-2026-11-17/backups/Frame-2.0.0-build17.zip`; that archive extracts with a valid signature and the same executable as the installed app. Frame was not running. `/Applications/Frame.app` was replaced with `ditto`, and the installed executable matches the extraction. Frame was not opened afterwards, so its first launch, and with it the catalog upgrade on the real catalog, is still to happen and is the first thing to check by hand. No new crash report appeared.
+
+Logs, Apple's records, the final ZIPs, checksums, dSYMs and backups are in `.build/local-notarized-install-2.0.0-rb25-frame19-2026-11-17/`. No push, tag, release, feed, website or Homebrew change was made.

@@ -1,6 +1,6 @@
 # Task 067 — Switchboard popover, Settings window and new icon
 
-Date: 2026-11-16. Implemented in the working tree; not committed or pushed. A notarized RelayBar 2.0.0 (24) built from this tree is installed for the owner's hand test (see [Local installation, build 24](#local-installation-build-24)); the hand checks below are still open.
+Date: 2026-11-16. Committed locally as `5909f1c`; not pushed. A notarized RelayBar 2.0.0 (25), built from the committed tree and so including the shared palette, is installed for the owner's hand test (see [Local installation, build 25](#local-installation-build-25)); the hand checks below are still open.
 
 ## What changed
 
@@ -98,3 +98,18 @@ The clean extraction of the final ZIP and the installed bundle each passed: stri
 The installed 2.0.0 (23) was archived first to `.build/local-notarized-install-2.0.0-rb24-frame18-2026-11-16/backups/RelayBar-2.0.0-build23.zip`; that archive extracts and passes signature, ticket and Gatekeeper checks. RelayBar then quit normally, which stopped its tunnels, and `/Applications/RelayBar.app` was replaced with `ditto`. The installed executable matches the extraction. The new app completed launch as PID 34850 and was still running ten seconds later; Launch Services resolves `com.lx2026.RelayBar` to `/Applications/RelayBar.app`, and no new crash report appeared.
 
 RelayBar was installed on its own. Frame build 18 was notarized and verified but not installed, because its catalog could not be backed up first; see [Task 068](068-frame-reader-layout.md#local-installation-build-18). Frame 2.0.0 (17) remains installed, as it was beside build 23. Logs, Apple's records, the final ZIPs, checksums, dSYMs and backups are in `.build/local-notarized-install-2.0.0-rb24-frame18-2026-11-16/`. No commit, push, tag, release, feed, website or Homebrew change was made.
+
+## Local installation, build 25
+
+The owner approved building, notarizing and installing RelayBar 2.0.0, build 25, with Frame 2.0.0, build 19, so that both installed apps carry the shared palette of [Task 069](069-shared-paper-palette.md). The source was commit `3d140fa` with a clean tree; the only change made for this build raised the build number from 24 to 25 in `Apps/RelayBar/Packaging/Info.plist` and both Xcode configurations. The branch had no upstream and was six commits ahead of `origin/main`, zero behind. The tracked application patch was unchanged from build to installation.
+
+- Apple submission `6090a7f3-6531-47bb-8815-7ff675850d39`: Accepted, status code 0, no issues; team `39HYFR5Z65`, profile `AC_NOTARY`.
+- Final ZIP SHA-256, after stapling: `48bfac53e09cc5d213bf82edc9d841bef758a05fe5da89d418c0a18078080245`.
+
+Before building, the 9 release-script tests and the property-list, entitlements and project lint passed for both apps. The app suites were not rerun: they passed on this tree the same day and only build numbers changed.
+
+The clean extraction of the final ZIP and the installed bundle each passed the checks listed for build 24, at build 25. Both slices of the Release executable load `libswiftObservation` through `LC_LOAD_WEAK_DYLIB` and have a minimum OS of 13.0, which is what lets the palette's macOS 14 code sit in a macOS 13 app; the app has not been launched on macOS 13.
+
+The installed 2.0.0 (24) was archived first to `.build/local-notarized-install-2.0.0-rb25-frame19-2026-11-17/backups/RelayBar-2.0.0-build24.zip`; that archive extracts with a valid signature and the same executable as the installed app. RelayBar then quit normally, which stopped its tunnels, and `/Applications/RelayBar.app` was replaced with `ditto`. The installed executable matches the extraction. The new app completed launch and was still running ten seconds later; Launch Services resolves `com.lx2026.RelayBar` to `/Applications/RelayBar.app`, and no new crash report appeared.
+
+Frame 2.0.0 (19) was installed in the same round; see [Task 068](068-frame-reader-layout.md#local-installation-build-19). Logs, Apple's records, the final ZIPs, checksums, dSYMs and backups are in `.build/local-notarized-install-2.0.0-rb25-frame19-2026-11-17/`. No push, tag, release, feed, website or Homebrew change was made.

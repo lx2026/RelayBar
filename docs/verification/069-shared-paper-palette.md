@@ -1,6 +1,6 @@
 # Task 069 — Shared paper palette
 
-Date: 2026-11-17. Implemented in the working tree; not committed, pushed, installed or released. Nothing has been run in the real apps: every check below comes from unit tests, builds and captures drawn in off-screen test windows.
+Date: 2026-11-17. Committed locally (`6a2a04d` for the shared package, `5909f1c` and `ff86044` for the apps, `3d140fa` for these records); not pushed or released. RelayBar 2.0.0 (25) and Frame 2.0.0 (19), built from that tree, are installed and are the first installed builds with the palette (see [Installed builds](#installed-builds)). Nothing has been checked by hand in the installed apps yet: every check below comes from unit tests, builds and captures drawn in off-screen test windows.
 
 ## What changed
 
@@ -81,3 +81,7 @@ The checks it asked for:
 - RelayBar on macOS 13, if a Mac with it is available: it starts, and a switch redraws open windows while a half-typed profile, an open sheet and a playing video stay as they were.
 - Switches, prominent buttons and the app icon in Settings drawn as active, which the captures cannot show.
 - `RELAYBAR_KEY_WINDOW_TESTS=1 swift test --package-path Apps/RelayBar --filter testMarkdownPreviewKeepsTheWindowKeysWhetherOrNotItHasTheFocus` at a Mac nobody is using.
+
+## Installed builds
+
+RelayBar 2.0.0 (25) and Frame 2.0.0 (19) were notarized and installed locally on 2026-11-17 from commit `3d140fa` with only their build numbers raised. Earlier installed builds (RelayBar 23 and 24, Frame 17) do not have the palette or the Paper Appearance plugin. The installation evidence is under [Task 067](067-switchboard-popover-settings-window-icon.md#local-installation-build-25) and [Task 068](068-frame-reader-layout.md#local-installation-build-19). RelayBar's Release executable weak-links `libswiftObservation` with a minimum OS of 13.0; it has not been launched on macOS 13.
