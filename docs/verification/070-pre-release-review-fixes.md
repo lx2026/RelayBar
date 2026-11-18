@@ -29,18 +29,37 @@ An independent read-only review of the pull request's whole diff reported three 
 - **Popover scrolling tests.** They compared control frames with the insets; on macOS 13 to 15 a pop-up button's frame is wider than its alignment rectangle. They now compare alignment rectangles.
 - **An unreliable bridge test.** `testPeersThatHangUpAtOnceCannotRaiseSIGPIPEAndTheServerKeepsAnswering` opened fifty connections at once against a listen backlog of eight, so macOS sometimes refused one. It now retries a refused connection and passed 100 of 100 runs.
 
+## Second review
+
+A second read-only review of the fixes found findings 1, 2, 6, 7, 8, 9 and 11 closed and the other four partly closed, and reported nine further points. All nine were confirmed by a failing test and fixed.
+
+| Area | Defect | Fix | Regression tests |
+|---|---|---|---|
+| Frame, local documents | Paths were split by `Character`. A slash followed by a combining mark is one character, so a separator could hide inside one component and an intermediate symlink could lead outside the selected folder. | Paths are split at every slash byte, each part is checked, and the descriptor walk uses that same list. The shared `validPath` and `validName` checks find slashes the same way. | `DocumentPreviewTests.testLocalResourcesSplitAtEverySlashEvenOneACombiningMarkFollows`, `BridgePathValidationTests` |
+| Frame, single-file export | Whatever existed when Frame looked, after the save panel closed, counted as agreed to. | The destination's identity is recorded when the panel returns; only that same file is replaced, anything else is a collision. | `AssetTests.testSingleFileExportReplacesOnlyTheFileThePersonAgreedTo` |
+| Frame, export cleanup | A failed publish or a grouped rollback could remove a file another program had written at the same name meanwhile. | Publishing returns the file it published, held by descriptor; cleanup and rollback remove a name only while it is still that file, and otherwise leave it and report the path. | `AssetTests.testFailedExclusiveCopyLeavesAFileThatReplacedIt`, `testGroupedRollbackLeavesAMemberAnotherAppReplacedAfterPublication` |
+| Frame, change markers | Deleting an archived group for good left its companions' opened times held. | Archived items carry their original paths, and the records are keyed by them. | `ReviewAidsTests.testAnArchivedGroupsSidecarLosesItsOpenedTimeWhenDeletedForGood` |
+| Remote archive | A record folder under a second spelling of its id made the whole listing unreadable. | A folder whose name is not the canonical spelling of its id is skipped. | `FrameRemoteHelperTests.testDamagedArchiveRecordsDoNotHideHealthyOnes` |
+| Remote archive | A restored record stayed listed when its manifest could not be removed. | A record whose members are all back at their originals is left out; a partial move stays listed. | `testRestoreSucceedsWhenOnlyRecordCleanupFails`, `testPartlyRestoredRecordStaysListedAndRecoverable` |
+| Remote archive | A manifest with a null identity field skipped the identity check. | Only an absent field is exempt; null or malformed moves nothing. | `testRestoreRefusesAReplacedFileWhenIdentitiesAreNullOrMalformed` |
+| Appcast script | The archive's publisher and the update key were not checked before signing. | The signature check requires this project's team and bundle identifier, and the archive's feed address and public key and the signing account's key must match the app's own settings, before anything is signed. | `test_update_appcast.py` (two tests) |
+| Appcast script | The final copy could leave a truncated feed. | The verified feed is written beside the old one and renamed into place. | `test_update_appcast.py` |
+
+Two limits are stated in the code: a file created between the person's click in the save panel and Frame's look cannot be told apart from one they agreed to replace, and on volumes with neither exclusive rename nor hard links (exFAT, FAT32) a file being exported is briefly visible while incomplete.
+
 ## Left as it is
 
 - Archive records written before identities were recorded still restore without the identity check.
 - A damaged archive record is skipped without being reported, because the reply has no field for warnings.
 - Opened-time records left held by earlier builds' permanent deletes are not cleaned up.
 - The server side of the bridge descriptor fix has no deterministic test.
+- An archive record with a null or malformed identity is left out of the listing, so it cannot be restored or deleted through Frame; its files stay in the archive folder on the host.
 
 ## Checks
 
-`scripts/test.sh` passes locally with everything in place: 14 script tests; shared package 105 tests (3 skipped); RelayBar 461 tests (33 skipped); Frame 227 tests (3 skipped); no failures. Frame's product build with warnings as errors and `git diff --check` pass. All windows made by tests stay off screen.
+`scripts/test.sh` passes locally with both rounds in place: 17 script tests; shared package 107 tests (3 skipped); RelayBar 463 tests (33 skipped); Frame 231 tests (3 skipped); no failures. Frame's product build with warnings as errors and `git diff --check` pass. All windows made by tests stay off screen. CI on macOS 15 passed on the first round of fixes.
 
 ## Still to check
 
-- A second independent review of these fixes.
+- A narrow third review of the local-document and export changes made after the second review.
 - The fixes in the running apps and against a live SSH host: HTML preview of a remote file, switching libraries while an HTML page is on show, export into a folder that changes during the copy, remote Archive and Restore.
