@@ -267,8 +267,10 @@ private final class ProbeSessionDelegate: NSObject, URLSessionTaskDelegate, Send
         completionHandler(rebuilt)
     }
 
-    func urlSession(_ session: URLSession, task: URLSessionTask, didReceive challenge: URLAuthenticationChallenge,
-                    completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    // The async form of the challenge callback: the completion-handler form's signature differs between SDK
+    // versions, and a form that does not match exactly is silently never called.
+    func urlSession(_ session: URLSession, task: URLSessionTask,
+                    didReceive challenge: URLAuthenticationChallenge) async -> (URLSession.AuthChallengeDisposition, URLCredential?) {
         // No challenge is answered. Going on without a credential would send the request again, so the
         // probe stops here and keeps the response that asked. The probe never speaks TLS, so a trust
         // challenge is refused as well and no certificate is evaluated.
@@ -276,7 +278,7 @@ private final class ProbeSessionDelegate: NSObject, URLSessionTaskDelegate, Send
             let asking = challenge.failureResponse as? HTTPURLResponse
             refused.withLock { $0 = asking }
         }
-        completionHandler(.cancelAuthenticationChallenge, nil)
+        return (.cancelAuthenticationChallenge, nil)
     }
 
     func urlSession(_ session: URLSession, didBecomeInvalidWithError error: (any Error)?) {

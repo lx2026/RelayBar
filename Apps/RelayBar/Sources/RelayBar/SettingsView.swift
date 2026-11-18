@@ -328,6 +328,7 @@ struct SettingsView: View {
 }
 
 /// A switch at the size every Settings toggle uses.
+@MainActor
 private func settingsSwitch(_ title: String, isOn: Binding<Bool>) -> some View {
     Toggle(title, isOn: isOn)
         .labelsHidden()
