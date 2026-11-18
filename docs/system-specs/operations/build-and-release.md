@@ -212,6 +212,7 @@ Homebrew or guesses the installation source.
 The GitHub Pages site is a build-free static site under `docs/`. Its
 `index.html`, `styles.css`, and local image assets are sufficient to render the
 page; it does not require a generated page runtime or third-party font request.
-Release download links identify the current stable version explicitly.
+The primary download and the Homebrew command stay on stable 1.6.0 and name it
+explicitly; beta links name 2.0.0 Beta 1.
 
-The Frame preview section describes implemented source under test, with an explicit notice that the stable 1.6.0 download does not contain it and Frame has no public release yet. It reuses Task 063's synthetic renderer captures. Both READMEs distinguish stable availability from current source, document bridge compatibility and plugin defaults, and separate Markdown's restrictions from online HTML previews. Advancing release claims and download URLs remains a separate publication step.
+A 2.0.0 Beta section presents RelayBar 2.0.0 Beta 1 and Frame 2.0.0 Beta 1, each with a download from its GitHub pre-release (`v2.0.0-beta.1`, `frame-v2.0.0-beta.1`) and its release notes, and states that the two betas work together, their minimum macOS versions, that Frame updates manually, and that Homebrew and RelayBar's in-app updater stay on 1.6.0. Screenshots show the 2.0 beta with sample data, and the page says so. The Frame section gives Frame's availability as the beta pre-release. Both READMEs separate stable 1.6.0 from the 2.0.0 beta, link both pre-releases, document bridge compatibility and plugin defaults, and separate Markdown's restrictions from online HTML previews. The beta links resolve once both pre-releases are published.

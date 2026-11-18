@@ -1,6 +1,39 @@
 # Changelog
 
-Notable RelayBar changes are recorded here.
+Notable RelayBar changes are recorded here, with Frame from 2.0.0.
+
+## [2.0.0-beta.1] - 2026-11-17
+
+RelayBar 2.0.0 Beta 1 and Frame 2.0.0 Beta 1 ship as a pair. Frame's beta is
+its first public build. RelayBar 1.6.0 remains the stable release.
+
+### Added
+
+- Frame views images, video, Markdown, HTML and text in local folders and,
+  through RelayBar, on SSH servers. It needs macOS 14 or newer and has no
+  updater.
+- **Open in Frame** in Remote Files hands the current folder to Frame. RelayBar
+  asks once before Frame may reach remote folders and keeps SSH credentials.
+- Both apps have a Plugins window: Reconnect on Wake, Service Labels and Open in
+  Frame in RelayBar, Prompt Search in Frame, and Paper Appearance in both.
+- Remote Files previews HTML pages, which can run scripts and load online
+  resources.
+
+### Changed
+
+- The popover has a summary header, one line per profile with a status mark
+  that differs by shape, and controls that appear on hover. Settings is its own
+  window with a switch and size limit for each preview format. The app and
+  menu-bar icon is a new route mark.
+- Markdown previews use a renderer shared with Frame; a dense 200 KB test
+  document renders in about 0.5 s instead of 7.2 s.
+
+### Security
+
+- RelayBar and Frame verify each other's signed identity over a local bridge,
+  protocol 7, which refuses older peers. Frame is sandboxed.
+- Both universal beta ZIPs are signed with a Developer ID, notarized by Apple,
+  and stapled for offline Gatekeeper verification.
 
 ## [1.6.0] - 2026-09-29
 
@@ -235,6 +268,7 @@ or quit RelayBar manually for the first later upgrade.
 - Remote Markdown remains inert: raw HTML is not activated, remote embeds are not fetched, and unsafe links are blocked.
 - Release builds retain the hardened runtime, Developer ID signing, notarization, and Gatekeeper verification workflow.
 
+[2.0.0-beta.1]: https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.1
 [1.6.0]: https://github.com/lx2026/RelayBar/releases/tag/v1.6.0
 [1.5.1]: https://github.com/lx2026/RelayBar/releases/tag/v1.5.1
 [1.5.0]: https://github.com/lx2026/RelayBar/releases/tag/v1.5.0
