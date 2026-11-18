@@ -1,6 +1,6 @@
 # Pre-release review fixes
 
-Status: Implemented — 2026-11-17. Automated checks pass; [verification](../verification/070-pre-release-review-fixes.md). Two further review passes are recorded there; the owner's acceptance is open.
+Status: Implemented and merged — 2026-11-17. Automated checks pass; [verification](../verification/070-pre-release-review-fixes.md). Two further review passes are recorded there; the owner's acceptance is open.
 
 ## Outcome
 
