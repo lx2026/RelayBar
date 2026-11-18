@@ -208,13 +208,124 @@ final class BridgeLifecycleTests: XCTestCase {
         let server = try BridgeSocketServer(url: url, verifyPeer: { _ in throw BridgeError("Not Frame.") }) { _, _ in
             BridgeResponse()
         }
-        for _ in 0..<50 { Darwin.close(try BridgeSocket.connect(url)) }
-        let fd = try BridgeSocket.connect(url)
-        defer { Darwin.close(fd) }
-        let notice = try BridgeSocket.receive(BridgeReply.self, fd: fd)
-        XCTAssertEqual(notice.response.error, "Not Frame.", "The process survived and a waiting peer is still told why")
+        for _ in 0..<50 { Darwin.close(try await connectRetrying(url)) }
+        var notice: BridgeReply?
+        for _ in 0..<50 where notice == nil {
+            let fd = try await connectRetrying(url)
+            notice = try? BridgeSocket.receive(BridgeReply.self, fd: fd)
+            Darwin.close(fd)
+            if notice == nil { try await Task.sleep(for: .milliseconds(20)) }
+        }
+        XCTAssertEqual(notice?.response.error, "Not Frame.", "The process survived and a waiting peer is still told why")
         await server.close()
     }
+
+    private func connectRetrying(_ url: URL) async throws -> Int32 {
+        // The burst can briefly fill the listen backlog or the 8-client cap, which refuses or drops a connection while the server catches up.
+        for _ in 0..<49 {
+            if let fd = try? BridgeSocket.connect(url) { return fd }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        return try BridgeSocket.connect(url)
+    }
+
+    func testAWriteQueuedWhenTheConnectionEndsNeverReachesAConnectionThatReusedItsNumber() async throws {
+        let url = try endpoint(), peer = try SilentPeer(url: url), number = BridgeNumber(), reused = BridgeProbe(), ended = BridgeProbe()
+        var other: [Int32] = [-1, -1]
+        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &other), 0)
+        XCTAssertTrue(BridgeSocket.configure(other[0]))
+        let otherEnd = other[0]
+        defer { Darwin.close(other[0]); Darwin.close(other[1]); peer.stop() }
+        let channel = BridgeChannel(socketURL: url, verifyPeer: { number.set($0) }, onClose: { _ in
+            // A failed write ended the session, so this runs on the write queue with a release still queued.
+            // If the number is released meanwhile, another connection takes it before that release runs.
+            let fd = number.value
+            for _ in 0..<150 where fcntl(fd, F_GETFD) != -1 { usleep(2_000) }
+            if fcntl(fd, F_GETFD) == -1, dup2(otherEnd, fd) == fd { reused.mark() }
+            ended.mark()
+        })
+        // The peer never reads, so this write stays stuck and holds the write queue.
+        let stuck = Task { () throws -> BridgeResponse in
+            var request = BridgeRequest("upload"); request.paths = [String(repeating: "x", count: 1 << 20)]
+            return try await channel.exchange(request)
+        }
+        var server: Int32 = -1
+        try await wait("the connection") { server = peer.accept(); return server >= 0 }
+        defer { Darwin.close(server) }
+        try await wait("the stuck write to start") {
+            var ready = pollfd(fd: server, events: Int16(POLLIN), revents: 0)
+            return poll(&ready, 1, 0) == 1
+        }
+        // A receipt nobody waits for makes the reader queue its release behind the stuck write.
+        var late = BridgeResponse(); late.jobID = UUID()
+        try BridgeSocket.send(BridgeReply(id: 999, response: late), fd: server)
+        try BridgeSocket.send(BridgeReply(id: 1, response: BridgeResponse()), fd: server)
+        _ = try await stuck.value
+        Darwin.shutdown(number.value, SHUT_WR)
+        try await wait("the end of the session") { ended.count == 1 }
+        if reused.count == 0 {
+            // The close comes after every queued write, so once it has happened the release has run.
+            try await wait("the connection to close") { fcntl(number.value, F_GETFD) == -1 }
+        } else {
+            Darwin.close(number.value)
+        }
+        XCTAssertEqual(reused.count, 0, "The number was released while a write was still queued for it")
+        var arrived = pollfd(fd: other[1], events: Int16(POLLIN), revents: 0)
+        XCTAssertEqual(poll(&arrived, 1, 100), 0, "A queued write reached the connection that reused the number")
+    }
+
+    func testReleasingAnEndedChannelLeavesAConnectionThatReusedItsNumberAlone() async throws {
+        let url = try endpoint(), number = BridgeNumber(), closed = BridgeProbe()
+        let server = try BridgeSocketServer(url: url, verifyPeer: { _ in }) { _, _ in BridgeResponse() }
+        var channel: BridgeChannel? = BridgeChannel(socketURL: url, verifyPeer: { number.set($0) }, onClose: { _ in closed.mark() })
+        _ = try await channel?.exchange(BridgeRequest("catalog"))
+        server.disconnectAll(BridgeResponse(error: "Access was revoked.", sessionFailure: .unauthorized))
+        try await wait("the end of the session") { closed.count == 1 }
+        let fd = number.value
+        try await wait("the connection to close") { fcntl(fd, F_GETFD) == -1 }
+        // A new connection takes the released number while the ended channel is still referenced.
+        var other: [Int32] = [-1, -1]
+        XCTAssertEqual(socketpair(AF_UNIX, SOCK_STREAM, 0, &other), 0)
+        XCTAssertTrue(BridgeSocket.configure(other[0]))
+        XCTAssertEqual(dup2(other[0], fd), fd)
+        defer { Darwin.close(fd); Darwin.close(other[0]); Darwin.close(other[1]) }
+        weak let released = channel
+        channel = nil
+        try await wait("the channel to be released") { released == nil }
+        var byte: UInt8 = 1
+        XCTAssertEqual(Darwin.write(fd, &byte, 1), 1, "Releasing the ended channel shut down the connection that reused its number")
+        await server.close()
+    }
+}
+
+private final class BridgeNumber: @unchecked Sendable {
+    private let lock = NSLock()
+    private var number: Int32 = -1
+    var value: Int32 { lock.withLock { number } }
+    func set(_ value: Int32) { lock.withLock { number = value } }
+}
+
+/// Accepts one connection and never reads from it, so a large write to it stays stuck.
+private final class SilentPeer: @unchecked Sendable {
+    private let descriptor: Int32
+    init(url: URL) throws {
+        var address = try BridgeSocket.address(url)
+        descriptor = socket(AF_UNIX, SOCK_STREAM, 0)
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { Darwin.bind(descriptor, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) }
+        }
+        guard bound == 0, listen(descriptor, 1) == 0 else { throw BridgeError("silent listener failed") }
+        _ = fcntl(descriptor, F_SETFL, O_NONBLOCK)
+    }
+    /// Returns -1 until a connection is waiting.
+    func accept() -> Int32 {
+        let fd = Darwin.accept(descriptor, nil, nil)
+        guard fd >= 0 else { return -1 }
+        _ = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL) & ~O_NONBLOCK)
+        BridgeSocket.configure(fd)
+        return fd
+    }
+    func stop() { Darwin.close(descriptor) }
 }
 
 private final class BridgeProbe: @unchecked Sendable {

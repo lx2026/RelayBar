@@ -293,6 +293,9 @@ public final class BridgeChannel: @unchecked Sendable {
   private let verifyPeer: @Sendable (Int32) throws -> Void
   private let onClose: @Sendable (BridgeError) -> Void
   private let writes = DispatchQueue(label: "FrameBridge.channel.write")
+  /// The open connection, or -1. `end` interrupts it under the lock; only the reader closes it, on
+  /// `writes` after every write queued before it, clearing this under the lock first. Writes read it
+  /// on `writes`, so none can touch the number once it is released.
   private var fd: Int32 = -1
   private var opening: Task<Void, Error>?
   private var ended: BridgeError?
@@ -306,7 +309,6 @@ public final class BridgeChannel: @unchecked Sendable {
               }, onClose: @escaping @Sendable (BridgeError) -> Void = { _ in }) {
     self.socketURL = socketURL; self.verifyPeer = verifyPeer; self.onClose = onClose
   }
-  deinit { if fd >= 0 { Darwin.shutdown(fd, SHUT_RDWR) } }
 
   /// Sends one request and waits for its reply. A cancelled caller stops waiting; if RelayBar had
   /// already accepted work for it, the late receipt is released.
@@ -329,12 +331,18 @@ public final class BridgeChannel: @unchecked Sendable {
     lock.lock()
     if let ended { lock.unlock(); continuation.resume(throwing: ended); return }
     waiting[id] = continuation
-    let fd = fd
     lock.unlock()
     writes.async { [self] in
-      do { try BridgeSocket.send(BridgeCall(id: id, request: request), fd: fd) }
+      do { try write(BridgeCall(id: id, request: request)) }
       catch { end(BridgeError(error.localizedDescription, sessionFailure: .unavailable)) }
     }
+  }
+
+  /// Runs on `writes`, where the reader also closes the connection.
+  private func write(_ call: BridgeCall) throws {
+    let fd = lock.withLock { self.fd }
+    guard fd >= 0 else { throw BridgeError("The local bridge connection ended.") }
+    try BridgeSocket.send(call, fd: fd)
   }
 
   /// Ends the session from this side. `onClose` is not called.
@@ -391,10 +399,14 @@ public final class BridgeChannel: @unchecked Sendable {
         // Nobody is waiting any more: give the accepted work back.
         lock.lock(); nextID += 1; let id = nextID; lock.unlock()
         var release = BridgeRequest("release"); release.jobID = job
-        writes.async { try? BridgeSocket.send(BridgeCall(id: id, request: release), fd: descriptor) }
+        writes.async { [self] in try? write(BridgeCall(id: id, request: release)) }
       }
     }
-    Darwin.close(descriptor)
+    // Writes queued before this run first; one queued later finds the descriptor cleared.
+    writes.async { [self] in
+      lock.withLock { fd = -1 }
+      Darwin.close(descriptor)
+    }
   }
 
   private func end(_ error: BridgeError, notify: Bool = true) {
@@ -402,9 +414,10 @@ public final class BridgeChannel: @unchecked Sendable {
     guard ended == nil else { lock.unlock(); return }
     ended = error
     let pending = waiting; waiting.removeAll()
-    let descriptor = fd, silent = closedByOwner
+    let silent = closedByOwner
+    // Under the lock, so the reader cannot release the number first.
+    if fd >= 0 { Darwin.shutdown(fd, SHUT_RDWR) }
     lock.unlock()
-    if descriptor >= 0 { Darwin.shutdown(descriptor, SHUT_RDWR) }
     for continuation in pending.values { continuation.resume(throwing: error) }
     if notify, !silent { onClose(error) }
   }
@@ -535,6 +548,8 @@ private final class BridgeServerConnections: @unchecked Sendable {
     lock.lock(); let client = clients[id]; lock.unlock()
     guard let client else { return }
     client.writes.lock(); defer { client.writes.unlock() }
+    // `finished` closes the descriptor under this lock after removing the client, so look again.
+    guard lock.withLock({ clients[id] != nil }) else { return }
     try? BridgeSocket.send(value, fd: client.fd)
   }
   /// The reader has ended. Its calls are cancelled; the descriptor closes once they have returned.
@@ -547,15 +562,17 @@ private final class BridgeServerConnections: @unchecked Sendable {
     for task in tasks { task.cancel() }
     Task.detached { [group] in
       for task in tasks { await task.value }
-      Darwin.close(client.fd)
+      // A write that found the client before it was removed finishes first.
+      client.writes.withLock { _ = Darwin.close(client.fd) }
       group.leave()
     }
   }
   func disconnectAll(_ notice: BridgeReply) {
-    lock.lock(); let current = clients; lock.unlock()
-    for (id, client) in current {
+    lock.lock(); let current = Array(clients.keys); lock.unlock()
+    for id in current {
       write(id, notice)
-      _ = Darwin.shutdown(client.fd, SHUT_RDWR)
+      // Only while it is registered: after `finished` its number may belong to another connection.
+      lock.withLock { if let client = clients[id] { _ = Darwin.shutdown(client.fd, SHUT_RDWR) } }
     }
   }
   func stop() {

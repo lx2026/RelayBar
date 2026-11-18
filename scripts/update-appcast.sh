@@ -35,20 +35,28 @@ cleanup() {
 }
 trap cleanup EXIT
 
-mkdir "$RELAYBAR_TEMP/archives"
-cp "$ARCHIVE" "$RELAYBAR_TEMP/archives/RelayBar.zip"
-if [[ -f "$APPCAST" ]]; then
-  cp "$APPCAST" "$RELAYBAR_TEMP/archives/appcast.xml"
-fi
+mkdir "$RELAYBAR_TEMP/archives" "$RELAYBAR_TEMP/extracted"
+STAGED_ARCHIVE="$RELAYBAR_TEMP/archives/RelayBar.zip"
+cp "$ARCHIVE" "$STAGED_ARCHIVE"
+
+# Sign only the final archive: verify the bytes to be signed from a clean extraction.
+ditto -x -k "$STAGED_ARCHIVE" "$RELAYBAR_TEMP/extracted"
+codesign --verify --deep --strict "$RELAYBAR_TEMP/extracted/RelayBar.app"
+xcrun stapler validate "$RELAYBAR_TEMP/extracted/RelayBar.app"
+spctl --assess --type execute --verbose=4 "$RELAYBAR_TEMP/extracted/RelayBar.app"
+python3 "$ROOT/scripts/release-plan.py" relaybar --archive "$STAGED_ARCHIVE"
 
 curl --fail --location --silent --show-error \
   "$DOWNLOAD_URL" \
   --output "$RELAYBAR_TEMP/public-RelayBar.zip"
-if ! cmp -s "$ARCHIVE" "$RELAYBAR_TEMP/public-RelayBar.zip"; then
+if ! cmp -s "$STAGED_ARCHIVE" "$RELAYBAR_TEMP/public-RelayBar.zip"; then
   echo "The public archive differs from the final stapled archive." >&2
   exit 1
 fi
 
+if [[ -f "$APPCAST" ]]; then
+  cp "$APPCAST" "$RELAYBAR_TEMP/archives/appcast.xml"
+fi
 "$SPARKLE_BIN/generate_appcast" \
   --account "$SPARKLE_ACCOUNT" \
   --download-url-prefix "${DOWNLOAD_URL%/*}/" \
@@ -56,6 +64,7 @@ fi
   --maximum-versions 0 \
   "$RELAYBAR_TEMP/archives"
 
+# Replace the repository feed only after the staged one verifies.
+"$ROOT/scripts/verify-update-feed.sh" "$RELAYBAR_TEMP/archives/appcast.xml"
 cp "$RELAYBAR_TEMP/archives/appcast.xml" "$APPCAST"
-"$ROOT/scripts/verify-update-feed.sh" "$APPCAST"
 echo "$APPCAST"
