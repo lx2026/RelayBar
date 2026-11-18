@@ -1150,7 +1150,8 @@ public final class LibraryStore: ObservableObject {
     let source = remoteSource, tree = remoteFolders
     let oldOrder = visiblePhotos.map(\.id), oldCurrent = selectionID
     cancelRemoteScan()
-    if action != "restore" { holdOpened(targets) }
+    // Only Archive can be undone (by Restore); a remote Delete is permanent.
+    if action == "archive" { holdOpened(targets) }
     beginFileOperation(action == "delete" ? "Deleting" : action == "restore" ? "Restoring" : "Archiving", total: targets.count, stopsPlayback: true)
     let result: RemoteMutationResult
     do {
@@ -1163,9 +1164,10 @@ public final class LibraryStore: ObservableObject {
       }
     } catch { isFileOperation = false; if !isClosing { errorMessage = error.localizedDescription }; return }
     isFileOperation = false
+    let removedTargets = targets.filter { result.removed.contains($0.id) }
+    if action == "delete" { forgetOpened(removedTargets) }
     guard !isClosing, remoteSource == source, remoteFolders === tree else { return }
     operationProgress = result.processed
-    let removedTargets = targets.filter { result.removed.contains($0.id) }
     let removedPaths = Set(removedTargets.flatMap { $0.fileMembers.map(\.relativePath) })
     photos.removeAll { result.removed.contains($0.id) || removedPaths.contains($0.relativePath) }
     tree?.remove(removedTargets)
@@ -1373,7 +1375,9 @@ public final class LibraryStore: ObservableObject {
     panel.isExtensionHidden = false
     panel.allowedContentTypes = [UTType(filenameExtension: photo.url.pathExtension) ?? .data]
     guard panel.runModal() == .OK, let destination = panel.url else { return }
-    _ = try? presentation.task { [self] in await export(photo, to: destination) }
+    // The panel asks before replacing a file at the chosen name, so only one there now was agreed to.
+    let replacing = AssetPaths.exists(destination)
+    _ = try? presentation.task { [self] in await export(photo, to: destination, replacing: replacing) }
   }
 
   private func exportPaired(_ photo: PhotoItem) {
@@ -1410,7 +1414,9 @@ public final class LibraryStore: ObservableObject {
     } catch { isExporting = false; if !isClosing { errorMessage = error.localizedDescription } }
   }
 
-  public func export(_ photo: PhotoItem, to destination: URL) async {
+  /// Exports an exact copy. `replacing` is true only when the person agreed to replace a file at `destination`;
+  /// otherwise a file that appears there meanwhile is reported, not replaced.
+  public func export(_ photo: PhotoItem, to destination: URL, replacing: Bool) async {
     guard !isClosing, !isExporting else { return }
     isExporting = true
     let sourceRoot = rootURL
@@ -1418,7 +1424,7 @@ public final class LibraryStore: ObservableObject {
     do {
       try await previews.start()
       guard !isClosing, let feature = previews.files.exporter else { return }
-      try await feature.copy(photo, root: sourceRoot, to: destination)
+      try await feature.copy(photo, root: sourceRoot, to: destination, replacing: replacing)
       if !isClosing { showNotice("Exported exact copy to \(destination.lastPathComponent)") }
     } catch { if !isClosing { errorMessage = "Could not export \(photo.name): \(error.localizedDescription)" } }
   }
@@ -1605,9 +1611,9 @@ public final class LibraryStore: ObservableObject {
   private func recordRemoteBaselines() {
     guard tracksChanges, !isClosing, let tree = remoteFolders else { return }
     for (path, node) in tree.nodes where node.isLoaded && folderBaselines[path] == nil {
-      // A folder whose listing has left the cache is skipped rather than given an empty baseline.
-      let files = tree.files(at: path)
-      if !files.isEmpty { recordBaseline(folder: path, files: files) }
+      // A folder whose listing has left the cache is skipped rather than given an empty baseline; a cached empty
+      // listing gets the same baseline as opening the folder would give it.
+      if let files = tree.cachedFiles(at: path) { recordBaseline(folder: path, files: files) }
     }
   }
   /// Keeps the opened times of files Frame is about to move to the Trash or the Archive.
@@ -1617,6 +1623,19 @@ public final class LibraryStore: ObservableObject {
       [photo.favoriteID] + photo.companions.map { FavoriteRecord.makeKey(rootID: photo.rootID, relativePath: $0.relativePath) }
     }).intersection(openedTimes.keys)
     try? feature.holdOpened(keys: keys)
+  }
+  /// Drops the opened times of files a remote Delete removed for good. An archived file's entry, held since it was
+  /// archived, goes too unless a file listed at its path since has taken it over.
+  private func forgetOpened(_ deleted: [PhotoItem]) {
+    guard tracksChanges, let feature = previews.library.favorites, feature.isActive else { return }
+    func keys(_ photos: [PhotoItem]) -> Set<String> {
+      Set(photos.flatMap { photo in
+        [photo.favoriteID] + photo.companions.map { FavoriteRecord.makeKey(rootID: photo.rootID, relativePath: $0.relativePath) }
+      })
+    }
+    guard let dropped = try? feature.forgetOpened(keys: keys(deleted.filter { $0.archiveID == nil }),
+                                                  heldKeys: keys(deleted.filter { $0.archiveID != nil })) else { return }
+    for key in dropped { openedTimes.removeValue(forKey: key) }
   }
   private func record(_ id: UUID) -> LibraryRootInfo? { try? previews.library.catalog?.record(id) }
   private func reloadRecents() {

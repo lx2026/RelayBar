@@ -202,6 +202,84 @@ final class ReviewAidsTests: XCTestCase {
     await store.shutdown()
   }
 
+  private let early = "2026-11-16T20:00:00+00:00", late = "2026-11-16T21:00:00+00:00"
+  private func remoteStore(_ container: ModelContainer, _ fixture: MarkerFixture) async -> LibraryStore {
+    let client = RelayRemoteClient(transport: { await fixture.send($0) })
+    let actions = FixtureRemoteActions(mutation: { photo, action, _ in
+      XCTAssertEqual(action, "archive"); await fixture.archive(photo); return UUID()
+    }, deletion: { photos, _ in await fixture.delete(photos); return [] },
+    archive: { _, _ in await fixture.archived })
+    let suite = "FrameReviewAids.\(UUID())"
+    addTeardownBlock { UserDefaults(suiteName: suite)?.removePersistentDomain(forName: suite) }
+    let store = makeRemoteStore(defaults: UserDefaults(suiteName: suite)!, remoteFolderLoader: { try await client.list(source: $0, path: $1) },
+                                actions: actions)
+    addTeardownBlock { await client.shutdown() }
+    await store.start(modelContext: container.mainContext)
+    return store
+  }
+
+  func testPermanentRemoteDeleteDropsTheOpenedTimeAndArchiveKeepsIt() async throws {
+    let fixture = MarkerFixture(), container = try catalog()
+    await fixture.set("a.png", modified: early); await fixture.set("b.png", modified: early)
+    let store = await remoteStore(container, fixture)
+    await store.openRemote(fixture.source, path: "/photos")
+    XCTAssertEqual(store.folderBaselines["/photos"], ChangeTracking.parse(early))
+    await fixture.set("a.png", modified: late)
+    await store.openRemote(fixture.source, path: "/photos", preserveSelection: true)
+    let shown = try file(store, "a.png", in: "/photos"), key = shown.favoriteID
+    store.showFile(shown); store.noteDisplayed(shown)
+    XCTAssertEqual(store.openedTimes[key], ChangeTracking.parse(late))
+
+    await store.deleteSelection()
+    XCTAssertEqual(store.notice?.message, "1 deleted")
+    XCTAssertNil(store.openedTimes[key], "A remote Delete cannot be undone, so nothing is kept for it")
+    XCTAssertFalse(try container.mainContext.fetch(FetchDescriptor<OpenedFileRecord>()).contains { $0.key == key })
+    // A new file at the same path is not taken for the one opened before.
+    await fixture.set("a.png", modified: late)
+    await store.openRemote(fixture.source, path: "/photos", preserveSelection: true)
+    let arrived = try file(store, "a.png", in: "/photos")
+    XCTAssertTrue(store.isChanged(arrived))
+
+    // Archive can be undone by Restore: the entry is kept, and dropped once the archived file is deleted.
+    store.showFile(arrived); store.noteDisplayed(arrived)
+    XCTAssertNotNil(store.openedTimes[key])
+    await store.archiveSelection()
+    await store.openRemote(fixture.source, path: "/photos", preserveSelection: true)
+    XCTAssertNil(store.files(in: "/photos").first { $0.name == "a.png" })
+    XCTAssertNotNil(store.openedTimes[key], "A file Frame archived keeps its entry")
+    store.setFilter(.archive)
+    try await wait { store.visiblePhotos.count == 1 && !store.isScanning }
+    store.select(try XCTUnwrap(store.visiblePhotos.first))
+    await store.deleteSelection()
+    XCTAssertNil(store.openedTimes[key])
+    XCTAssertTrue(try container.mainContext.fetch(FetchDescriptor<OpenedFileRecord>()).isEmpty)
+    await store.shutdown()
+  }
+
+  func testAnEmptyRemoteFolderListedByExpandingGetsTheSameBaselineAsOpeningIt() async throws {
+    let fixture = MarkerFixture()
+    await fixture.set("a.png", modified: early)
+    await fixture.addFolder("Opened"); await fixture.addFolder("Expanded")
+    let store = await remoteStore(try catalog(), fixture)
+    await store.openRemote(fixture.source, path: "/photos/Opened")
+    XCTAssertEqual(store.folderBaselines["/photos/Opened"], .distantPast, "An empty folder's baseline is the distant past")
+    await store.openRemote(fixture.source, path: "/photos")
+    let tree = try XCTUnwrap(store.remoteFolders)
+    XCTAssertNil(tree.cachedFiles(at: "/photos/Expanded"), "Never listed is not the same as empty")
+    store.setRemoteFolderExpanded("/photos/Expanded", true)
+    try await wait { tree.nodes["/photos/Expanded"]?.isLoaded == true && store.folderBaselines["/photos/Expanded"] != nil }
+    XCTAssertEqual(tree.cachedFiles(at: "/photos/Expanded")?.count, 0)
+    XCTAssertEqual(store.folderBaselines["/photos/Expanded"], .distantPast)
+    // A file that arrives afterwards is new to both folders.
+    await fixture.set("new.png", modified: late, in: "/photos/Expanded")
+    await fixture.set("new.png", modified: late, in: "/photos/Opened")
+    for folder in ["/photos/Expanded", "/photos/Opened"] {
+      await store.openRemote(fixture.source, path: folder, preserveSelection: true)
+      XCTAssertTrue(store.isChanged(try file(store, "new.png", in: folder)), folder)
+    }
+    await store.shutdown()
+  }
+
   func testCatalogWithoutTheNewModelsHasNoMarkers() async throws {
     let root = try folder(["a.md"])
     let store = try await store(try catalog(tracking: false), root: root)
@@ -339,4 +417,38 @@ final class ReviewAidsTests: XCTestCase {
     XCTAssertEqual(renderer.outline.count, 7)
   }
 
+}
+
+/// A remote library under /photos whose files the test changes. Archive moves a file into one record.
+private actor MarkerFixture {
+  let source = BridgeSource(id: String(repeating: "e", count: 64), name: "Markers")
+  private var files: [String: [String: String]] = ["/photos": [:]]
+  private var folders: [String: [String]] = [:]
+  private(set) var archived: [PhotoItem] = []
+  func set(_ name: String, modified: String, in folder: String = "/photos") { files[folder, default: [:]][name] = modified }
+  func addFolder(_ name: String) { folders["/photos", default: []].append(name); files["/photos/" + name] = [:] }
+  func delete(_ photos: [PhotoItem]) {
+    for photo in photos where photo.archiveID == nil { files[photo.folderRelativePath]?[photo.name] = nil }
+    archived.removeAll { archivedPhoto in photos.contains { $0.id == archivedPhoto.id } }
+  }
+  func archive(_ photo: PhotoItem) {
+    guard let remote = photo.remote else { return }
+    files[photo.folderRelativePath]?[photo.name] = nil
+    let id = UUID(), entry = BridgeEntry(name: photo.name, path: "/photos/Archive/\(id)/" + photo.name, directory: false,
+                                         size: remote.entry.size, modified: remote.entry.modified)
+    var item = PhotoItem(id: id.uuidString, rootID: photo.rootID, url: photo.url, relativePath: photo.relativePath, folderRelativePath: "",
+                         name: photo.name, format: photo.format, fileSize: photo.fileSize, createdAt: nil, modifiedAt: nil,
+                         fileIdentifier: nil, archiveID: id)
+    item.remote = RemoteAssetReference(source: source, listingID: UUID(), entry: entry, archiveRoot: "/photos", recordID: id)
+    archived.append(item)
+  }
+  func send(_ request: BridgeRequest) -> BridgeResponse {
+    var response = BridgeResponse()
+    guard request.operation == "list", let path = request.path else { return response }
+    response.listingID = UUID()
+    response.entries = (files[path] ?? [:]).sorted { $0.key < $1.key }.map {
+      BridgeEntry(name: $0.key, path: path + "/" + $0.key, directory: false, size: 4, modified: $0.value, fingerprint: $0.value)
+    } + (folders[path] ?? []).map { BridgeEntry(name: $0, path: path + "/" + $0, directory: true, size: 0, modified: "") }
+    return response
+  }
 }

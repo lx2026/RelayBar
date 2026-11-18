@@ -191,7 +191,9 @@ public actor RelayRemoteClient: RemoteAssetServing {
     let response = try await operation(request)
     defer { release(response.jobID) }
     let entries = response.asset?.entries ?? []
-    guard entries.allSatisfy({ paths.contains($0.path) && !$0.directory }) else { throw BridgeError("Invalid resource response.") }
+    // At most one entry for each path asked about; callers key the reply by path.
+    guard Set(entries.map(\.path)).count == entries.count,
+          entries.allSatisfy({ paths.contains($0.path) && !$0.directory }) else { throw BridgeError("Invalid resource response.") }
     return entries
   }
   private static func remoteURL(source: String, path: String) -> URL {
@@ -473,6 +475,11 @@ public actor RelayRemoteClient: RemoteAssetServing {
     let response = try await operation(request)
     defer { release(response.jobID) }
     guard let records = response.asset?.records, records.count <= 10_000, let listingID = response.listingID else {
+      throw BridgeError("Invalid archive response.")
+    }
+    // A record's id is its item's id in the list, and Delete keys members by path: neither may repeat.
+    let members = records.flatMap { $0.members.map(\.path) }
+    guard Set(records.map(\.id)).count == records.count, Set(members).count == members.count else {
       throw BridgeError("Invalid archive response.")
     }
     return try records.map { record in

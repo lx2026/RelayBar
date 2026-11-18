@@ -101,13 +101,13 @@ final class FileFeatureTests: XCTestCase {
         let photo = try XCTUnwrap(photos(root).first), gate = FileWorkerGate()
         defer { gate.release() }
         var operations = FrameLocalFileOperations()
-        operations.copy = { source, destination in
+        operations.copy = { source, destination, replacing in
             gate.enter()
-            try ExactCopyExporter.export(source: source, destination: destination)
+            try ExactCopyExporter.export(source: source, destination: destination, replacing: replacing)
         }
         let composition = FrameComposition(fileFeatures: FrameFileFeatures(operations: operations))
         let store = LibraryStore(previews: composition)
-        let export = Task { await store.export(photo, to: destination) }
+        let export = Task { await store.export(photo, to: destination, replacing: false) }
         try await waitFor { gate.entered }
         var stopped = false
         let shutdown = Task { await store.shutdown(); stopped = true }
@@ -122,7 +122,7 @@ final class FileFeatureTests: XCTestCase {
         XCTAssertNil(store.notice, "A late receipt must not resurrect closing UI")
         XCTAssertEqual(try Data(contentsOf: destination), try Data(contentsOf: photo.url))
         let later = destination.deletingLastPathComponent().appendingPathComponent("later.jpg")
-        await store.export(photo, to: later)
+        await store.export(photo, to: later, replacing: false)
         XCTAssertFalse(FileManager.default.fileExists(atPath: later.path))
         XCTAssertTrue(composition.runtime.statuses.isEmpty)
     }

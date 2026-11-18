@@ -57,6 +57,48 @@ final class RemoteTests: XCTestCase {
       catch {}
     }
   }
+  func testRepeatedOrUnrequestedEntriesInRepliesAreRejected() async throws {
+    func stats(_ entries: [BridgeEntry]) -> RelayRemoteClient {
+      RelayRemoteClient(transport: { request in
+        var response = BridgeResponse()
+        if request.operation == "documentStat" { var result = BridgeAssetResult(); result.entries = entries; response.asset = result }
+        return response
+      })
+    }
+    let page = entry("page.html"), style = entry("style.css")
+    for reply in [[page, page], [page, entry("other.css")], [page, entry("style.css", directory: true)]] {
+      do {
+        _ = try await stats(reply).documentStats(source: source, root: "/photos", paths: [page.path, style.path])
+        XCTFail("Accepted \(reply.map(\.path))")
+      } catch { XCTAssertEqual(error.localizedDescription, "Invalid resource response.") }
+    }
+    let accepted = try await stats([style]).documentStats(source: source, root: "/photos", paths: [page.path, style.path])
+    XCTAssertEqual(accepted, [style], "A missing file is simply absent")
+    // The document view refreshes through this reply; a repeated path is an error there, not a crash.
+    let resources = DocumentResources(location: .remote(source, "/photos"), client: stats([page, page]))
+    do { _ = try await resources.data(at: "page.html") } catch {}
+    do { _ = try await resources.refresh(); XCTFail("Accepted a repeated path") }
+    catch { XCTAssertEqual(error.localizedDescription, "Invalid resource response.") }
+
+    func archive(_ records: [BridgeStoredAsset]) -> RelayRemoteClient {
+      RelayRemoteClient(transport: { request in
+        var response = BridgeResponse(); response.listingID = UUID()
+        if request.operation == "collection" { var result = BridgeAssetResult(); result.records = records; response.asset = result }
+        return response
+      })
+    }
+    let id = UUID()
+    func record(_ id: UUID, folder: String) -> BridgeStoredAsset {
+      BridgeStoredAsset(id: id, members: [BridgeEntry(name: "a.jpg", path: "/photos/Archive/\(folder)/a.jpg", directory: false, size: 4, modified: "")],
+                        originals: ["/photos/a.jpg"])
+    }
+    for records in [[record(id, folder: "one"), record(id, folder: "two")], [record(id, folder: "one"), record(UUID(), folder: "one")]] {
+      do { _ = try await archive(records).archivedAssets(source: source, root: "/photos"); XCTFail("Accepted a repeated record") }
+      catch { XCTAssertEqual(error.localizedDescription, "Invalid archive response.") }
+    }
+    let archived = try await archive([record(id, folder: "one"), record(UUID(), folder: "two")]).archivedAssets(source: source, root: "/photos")
+    XCTAssertEqual(archived.count, 2, "The same original archived twice is two records")
+  }
   func testListingGroupsArbitraryCompanionsWithoutDownloads() async throws {
     let client = client(["name1.png", "name1.prompt.json", "name1.xyz.json", "name1.qqq.txt", "name10.txt"].map { entry($0) })
     let photo = try await client.list(source: source, path: "/photos").photos[0]

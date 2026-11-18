@@ -212,9 +212,10 @@ final class AssetTests: XCTestCase {
     try Data("old-json".utf8).write(to: oldJSON)
     let plan = try AssetExporter.plan(photo, folder: destination)
     XCTAssertEqual(plan.replacementNames, ["a.jpg", "a.json"])
-    XCTAssertThrowsError(try AssetExporter.export(plan, copy: { source, target in
+    XCTAssertThrowsError(try AssetExporter.export(plan, copy: { source, target, replacing in
+      XCTAssertTrue(replacing)
       if target.pathExtension == "json" { throw CocoaError(.fileWriteOutOfSpace) }
-      try ExactCopyExporter.export(source: source, destination: target)
+      try ExactCopyExporter.export(source: source, destination: target, replacing: replacing)
     }))
     XCTAssertEqual(try Data(contentsOf: oldImage), Data("old-image".utf8))
     XCTAssertEqual(try Data(contentsOf: oldJSON), Data("old-json".utf8))
@@ -225,10 +226,88 @@ final class AssetTests: XCTestCase {
     XCTAssertThrowsError(try AssetExporter.export(plan))
     XCTAssertThrowsError(try AssetExporter.plan(photo, folder: photo.url.deletingLastPathComponent()))
   }
+  func testPlannedCreateNeverReplacesAFileThatAppearsDuringTheCopy() throws {
+    let root = try fixture(["source/a.jpg", "source/a.json"])
+    let photo = try FileScanner.scan(rootURL: root.appendingPathComponent("source"), rootID: UUID()).photos[0]
+    let destination = root.appendingPathComponent("destination")
+    try FileManager.default.createDirectory(at: destination, withIntermediateDirectories: false)
+    let plan = try AssetExporter.plan(photo, folder: destination)
+    XCTAssertTrue(plan.replacementNames.isEmpty, "Both members are planned creates")
+    // Another app writes a.json while the export is still copying it.
+    let arrival = destination.appendingPathComponent("a.json")
+    let manager = ArrivingFileManager(arrival: arrival, contents: Data("someone else's".utf8))
+    XCTAssertThrowsError(try AssetExporter.export(plan, copy: { source, target, replacing in
+      XCTAssertFalse(replacing)
+      try ExactCopyExporter.export(source: source, destination: target, fileManager: manager, replacing: replacing)
+    })) { error in
+      XCTAssertTrue(error.localizedDescription.contains("same name"), error.localizedDescription)
+    }
+    XCTAssertEqual(try Data(contentsOf: arrival), Data("someone else's".utf8), "The file that appeared is left alone")
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: destination.path), ["a.json"],
+                   "The export's own new file and its temporary files are removed")
+    // A planned replace still replaces, and a create into a free name still publishes.
+    let replace = try AssetExporter.plan(photo, folder: destination)
+    XCTAssertEqual(replace.replacementNames, ["a.json"])
+    try AssetExporter.export(replace)
+    XCTAssertEqual(try Data(contentsOf: arrival), try Data(contentsOf: photo.sidecar!.url))
+    XCTAssertEqual(try Data(contentsOf: destination.appendingPathComponent("a.jpg")), try Data(contentsOf: photo.url))
+  }
+  func testExactCopyCreateReportsAnExistingDestination() throws {
+    let root = try fixture(["source.png", "taken.png"])
+    let source = root.appendingPathComponent("source.png"), taken = root.appendingPathComponent("taken.png")
+    try Data("theirs".utf8).write(to: taken)
+    XCTAssertThrowsError(try ExactCopyExporter.export(source: source, destination: taken, replacing: false)) { error in
+      XCTAssertEqual((error as? CocoaError)?.code, .fileWriteFileExists)
+    }
+    XCTAssertEqual(try Data(contentsOf: taken), Data("theirs".utf8))
+    let free = root.appendingPathComponent("free.png")
+    try ExactCopyExporter.export(source: source, destination: free, replacing: false)
+    XCTAssertEqual(try Data(contentsOf: free), try Data(contentsOf: source))
+    // Volumes without exclusive rename or hard links (FAT, exFAT) claim the name with an exclusive create.
+    let temporary = root.appendingPathComponent(".pending"), fallback = root.appendingPathComponent("fallback.png")
+    try Data("bytes".utf8).write(to: temporary)
+    try FileManager.default.setAttributes([.posixPermissions: 0o644], ofItemAtPath: temporary.path)
+    XCTAssertEqual(ExactCopyExporter.copyExclusively(temporary, to: taken), EEXIST)
+    XCTAssertEqual(try Data(contentsOf: taken), Data("theirs".utf8))
+    XCTAssertEqual(ExactCopyExporter.copyExclusively(temporary, to: fallback), 0)
+    XCTAssertEqual(try Data(contentsOf: fallback), Data("bytes".utf8))
+    XCTAssertEqual(try FileManager.default.attributesOfItem(atPath: fallback.path)[.posixPermissions] as? Int, 0o644)
+    XCTAssertEqual(Set(try FileManager.default.contentsOfDirectory(atPath: root.path)),
+                   ["source.png", "taken.png", "free.png", "fallback.png"])
+  }
+  @MainActor func testSingleFileExportReplacesOnlyWhatThePersonAgreedTo() async throws {
+    let root = try fixture(["source/a.png"])
+    let photo = try FileScanner.scan(rootURL: root.appendingPathComponent("source"), rootID: UUID()).photos[0]
+    let destination = root.appendingPathComponent("copy.png")
+    // Nothing was at the chosen name; another app writes one there while the export copies.
+    let manager = ArrivingFileManager(arrival: destination, contents: Data("someone else's".utf8))
+    var operations = FrameLocalFileOperations()
+    operations.copy = { try ExactCopyExporter.export(source: $0, destination: $1, fileManager: manager, replacing: $2) }
+    let store = LibraryStore(previews: FrameComposition(fileFeatures: FrameFileFeatures(operations: operations)))
+    await store.export(photo, to: destination, replacing: false)
+    XCTAssertTrue(store.errorMessage?.contains("same name") == true, store.errorMessage ?? "no error")
+    XCTAssertEqual(try Data(contentsOf: destination), Data("someone else's".utf8))
+    XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: root.path).sorted(), ["copy.png", "source"])
+    // A file the save panel asked about and the person agreed to replace is replaced as before.
+    store.errorMessage = nil
+    await store.export(photo, to: destination, replacing: true)
+    XCTAssertNil(store.errorMessage)
+    XCTAssertEqual(try Data(contentsOf: destination), try Data(contentsOf: photo.url))
+    await store.shutdown()
+  }
   func testPairedExportRejectsUnrelatedDestinationJSON() throws {
     let root = try fixture(["source/a.jpg", "source/a.jpg.json", "destination/a.json"])
     let photo = try FileScanner.scan(rootURL: root.appendingPathComponent("source"), rootID: UUID()).photos[0]
     XCTAssertThrowsError(try AssetExporter.plan(photo, folder: root.appendingPathComponent("destination")))
+  }
+  /// Writes `arrival` right after copying the export's temporary file for it, as another app might.
+  private final class ArrivingFileManager: FileManager, @unchecked Sendable {
+    let arrival: URL, contents: Data
+    init(arrival: URL, contents: Data) { self.arrival = arrival; self.contents = contents; super.init() }
+    override func copyItem(at srcURL: URL, to dstURL: URL) throws {
+      try super.copyItem(at: srcURL, to: dstURL)
+      if dstURL.lastPathComponent.hasPrefix("." + arrival.lastPathComponent + ".frame-export-") { try contents.write(to: arrival) }
+    }
   }
   @MainActor func testStoreArchiveAndRestoreKeepsFavoriteAndSelectsVisibleAsset() async throws {
     let root = try fixture(["a.jpg", "a.json"])

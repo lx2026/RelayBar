@@ -14,6 +14,9 @@ public actor DocumentResources {
   public static let resourceLimit = 32 * 1_024 * 1_024
   public static let sessionLimit = 64 * 1_024 * 1_024
   public let location: DocumentLocation
+  /// The custom-scheme host WebKit reaches this source by, and nothing else. Each source has its own, so a page
+  /// loaded from one source can never be served from another.
+  public nonisolated let host = UUID().uuidString.lowercased()
   private let client: (any RemoteAssetServing)?
   private struct Cached { let data: Data; let stamp: String }
   private var cache: [String: Cached] = [:]

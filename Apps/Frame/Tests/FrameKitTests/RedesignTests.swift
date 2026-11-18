@@ -270,7 +270,7 @@ final class RedesignTests: XCTestCase {
     let original = try Data(contentsOf: source)
     let photo = try XCTUnwrap(FileScanner.scan(rootURL: root, rootID: UUID()).photos.first { $0.name == source.lastPathComponent })
     let store = store()
-    await store.export(photo, to: destination)
+    await store.export(photo, to: destination, replacing: true)
     XCTAssertNil(store.errorMessage)
     XCTAssertFalse(store.isExporting)
     XCTAssertEqual(try Data(contentsOf: destination), original)

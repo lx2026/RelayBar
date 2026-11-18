@@ -194,6 +194,20 @@ final class FrameFavoritesFeature {
         for record in try model.fetch(FetchDescriptor<OpenedFileRecord>()) where keys.contains(record.key) { record.held = true }
         try model.save()
     }
+    /// Drops the entries of files deleted for good: those in `keys` always, those in `heldKeys` only while still
+    /// held (a released entry belongs to a file listed at that path since). Returns the keys dropped.
+    @discardableResult
+    func forgetOpened(keys: Set<String>, heldKeys: Set<String>) throws -> [String] {
+        guard tracksOpening, !keys.isEmpty || !heldKeys.isEmpty else { return [] }
+        let model = try model()
+        var dropped: [String] = []
+        for record in try model.fetch(FetchDescriptor<OpenedFileRecord>())
+        where keys.contains(record.key) || (record.held && heldKeys.contains(record.key)) {
+            dropped.append(record.key); model.delete(record)
+        }
+        if model.hasChanges { try model.save() }
+        return dropped
+    }
     /// Drops the opened times of `folder`'s files that its listing no longer has, except those Frame moved away
     /// itself; an entry whose file is listed again stops being held. Returns the keys dropped.
     @discardableResult

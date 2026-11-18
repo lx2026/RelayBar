@@ -40,8 +40,9 @@ public enum AssetExporter {
     return AssetExportPlan(photo: photo, folder: folder, existing: existing)
   }
 
+  /// `copy` publishes one member; its third argument is true only for a destination the plan replaces.
   public static func export(_ plan: AssetExportPlan,
-    copy: (URL, URL) throws -> Void = { try ExactCopyExporter.export(source: $0, destination: $1) }) throws {
+    copy: (URL, URL, Bool) throws -> Void = { try ExactCopyExporter.export(source: $0, destination: $1, replacing: $2) }) throws {
     let fresh = try self.plan(plan.photo, folder: plan.folder)
     guard fresh.existing == plan.existing else { throw AssetError("Destination changed after confirmation. Choose Export again.") }
     let fm = FileManager.default
@@ -61,9 +62,11 @@ public enum AssetExporter {
       }
       for (index, member) in plan.photo.exportMembers.enumerated() {
         let destination = plan.folder.appendingPathComponent(member.url.lastPathComponent)
-        if let old = plan.existing[member.url.lastPathComponent] { try old.validate() }
+        let old = plan.existing[member.url.lastPathComponent]
+        if let old { try old.validate() }
         else if AssetPaths.exists(destination) { throw CocoaError(.fileWriteFileExists) }
-        try copy(stage.appendingPathComponent("new-\(index)"), destination)
+        // A planned create never replaces: a file that appears there during the copy is reported instead.
+        try copy(stage.appendingPathComponent("new-\(index)"), destination, old != nil)
         // Preserve recovery data if even this post-write snapshot cannot be obtained.
         retainRecovery = true
         committed.append(try AssetFile.snapshot(destination, relativePath: member.url.lastPathComponent))

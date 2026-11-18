@@ -187,7 +187,7 @@ final class LocalAccessFeatureTests: XCTestCase {
         try access.activate(destination, rootID: UUID())
         try access.activate(source, rootID: photo.rootID)
         let target = destination.appendingPathComponent("copy.png")
-        try await XCTUnwrap(composition.files.exporter).copy(photo, root: source, to: target)
+        try await XCTUnwrap(composition.files.exporter).copy(photo, root: source, to: target, replacing: false)
         XCTAssertEqual(try Data(contentsOf: target), try Data(contentsOf: photo.url))
         XCTAssertEqual(recorder.starts(destination), 2, "Explicit export reacquires the containing bookmarked folder")
         XCTAssertEqual(recorder.active(destination), 0)

@@ -297,6 +297,44 @@ final class DocumentPreviewTests: XCTestCase {
     let retained = try await renderer.webView.evaluateJavaScript("window.result") as? Int
     XCTAssertEqual(retained, 99)
   }
+  @MainActor func testAPageStillOnShowCannotReadTheNextLibrarysFiles() async throws {
+    QuietWindow.prepareTestProcess()
+    let first = try root(), shared = try root()
+    try Data("<h1>First</h1>".utf8).write(to: first.appendingPathComponent("page.html"))
+    try Data("first's own".utf8).write(to: first.appendingPathComponent("own.txt"))
+    let fixture = HandoverFixture(root: shared)
+    let client = RelayRemoteClient(transport: { try await fixture.send($0) }, cacheRoot: shared.appendingPathComponent("cache"), sharedRoot: { shared })
+    let source = BridgeSource(id: String(repeating: "d", count: 64), name: "Second")
+    let renderer = DocumentRenderer(client: client)
+    let window = QuietWindow(size: NSSize(width: 900, height: 700), styleMask: [.titled])
+    window.contentView = renderer.webView
+    defer { renderer.stop(); window.contentView = nil }
+    renderer.show(path: "page.html", location: .local(first))
+    try await waitFor(renderer, "document.querySelector('h1')?.textContent === 'First'")
+    _ = try await renderer.webView.evaluateJavaScript("fetch('own.txt').then(r=>r.text()).then(t=>window.own=t);'ok'")
+    try await waitFor(renderer, "window.own === \"first's own\"")
+    let firstHost = try XCTUnwrap(renderer.webView.url?.host)
+    // The next library's document is slow to arrive, so the first page stays committed meanwhile.
+    renderer.stop()
+    renderer.show(path: "page.html", location: .remote(source, "/second"))
+    try await fixture.gate.waitFor("page.html")
+    let committed = try await renderer.webView.evaluateJavaScript("document.querySelector('h1')?.textContent") as? String
+    XCTAssertEqual(committed, "First")
+    _ = try await renderer.webView.evaluateJavaScript("""
+    fetch('secret.txt').then(r=>r.ok?r.text():Promise.reject(r.status)).then(t=>window.leaked=t).catch(()=>window.blocked=true);\
+    fetch('own.txt').then(r=>r.ok?r.text():Promise.reject(r.status)).then(t=>window.leaked=t).catch(()=>window.ownBlocked=true);'ok'
+    """)
+    try await waitFor(renderer, "window.blocked === true && window.ownBlocked === true")
+    let leaked = try await renderer.webView.evaluateJavaScript("window.leaked === undefined") as? Bool
+    XCTAssertEqual(leaked, true, "A page is served only from the source it was loaded from")
+    let fetched = await fixture.fetches
+    XCTAssertEqual(fetched, ["page.html"], "Nothing of the second library was read for the first page")
+    await fixture.gate.releaseAll()
+    try await waitFor(renderer, "document.querySelector('h1')?.textContent === 'Second'")
+    XCTAssertNotEqual(renderer.webView.url?.host, firstHost)
+    _ = try await renderer.webView.evaluateJavaScript("fetch('secret.txt').then(r=>r.text()).then(t=>window.secret=t);'ok'")
+    try await waitFor(renderer, "window.secret === 'second secret'")
+  }
   @MainActor func testComposedRemoteDocumentFreezesWithoutAuthorityAndReloadsAfterReconnect() async throws {
     QuietWindow.prepareTestProcess()
     let root = try root(), fixture = DocumentBridgeFixture(root: root)
@@ -384,6 +422,43 @@ final class DocumentPreviewTests: XCTestCase {
     }
     getrusage(RUSAGE_SELF, &memory)
     print("Document performance: 10,000 entries \(listingTime); 200 Markdown/HTML switches \(switches.duration(to: .now)); one WKWebView; test-process peak RSS at 100/200: \(halfway)/\(memory.ru_maxrss) bytes")
+  }
+}
+
+/// A remote library whose document download waits at a gate the test opens.
+private actor HandoverFixture {
+  let root: URL
+  let gate = KeyedGate(failure: "The second library's document was never requested", timeout: CancellationError())
+  var fetches: [String] = []
+  let files = ["page.html": Data("<h1>Second</h1>".utf8), "secret.txt": Data("second secret".utf8)]
+  init(root: URL) { self.root = root }
+  func send(_ request: BridgeRequest) async throws -> BridgeResponse {
+    var response = BridgeResponse()
+    switch request.operation {
+    case "list":
+      response.listingID = UUID()
+      response.entries = files.keys.sorted().map {
+        BridgeEntry(name: $0, path: "/second/" + $0, directory: false, size: Int64(files[$0]!.count), modified: "0", fingerprint: $0)
+      }
+    case "fetch":
+      let name = request.name!, job = UUID(), folder = "FrameTransfers-fixture/\(job)"
+      fetches.append(name)
+      if name == "page.html" { await gate.wait(name) }
+      let directory = root.appendingPathComponent(folder)
+      try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+      try files[name]!.write(to: directory.appendingPathComponent(name))
+      response.jobID = job; response.cacheRelativePath = folder + "/" + name
+    case "documentStat":
+      var result = BridgeAssetResult()
+      result.entries = (request.paths ?? []).compactMap { path in
+        let name = (path as NSString).lastPathComponent
+        return files[name].map { BridgeEntry(name: name, path: path, directory: false, size: Int64($0.count), modified: "0", fingerprint: name) }
+      }
+      response.asset = result
+    case "release": break
+    default: throw BridgeError("Unexpected bridge request: \(request.operation)")
+    }
+    return response
   }
 }
 

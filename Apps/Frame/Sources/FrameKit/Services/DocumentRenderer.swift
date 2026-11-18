@@ -29,13 +29,15 @@ import WebKit
   private var source: DocumentResources?
   private var location: DocumentLocation?
   private var path: String?
-  private let host = UUID().uuidString.lowercased()
+  /// The host of the source in use. Each location gets a new source and so a new host: a page still on show from
+  /// the last location keeps its old host, which reaches nothing once the new source is in place.
+  private var host: String? { source?.host }
   private var tasks: [ObjectIdentifier: Task<Void, Never>] = [:]
   private var loadTask: Task<Void, Never>?
   private var pollTask: Task<Void, Never>?
   private var generation = UUID()
   private var showsMarkdown = false
-  private var prepared: (String, Data)?
+  private var prepared: (host: String, path: String, data: Data)?
   private var scrollY: Double = 0
   private var pendingScroll: Double?
   private var refreshing = false
@@ -233,13 +235,13 @@ import WebKit
       if reset { try await source.begin() }
       let data = try await source.data(at: path, limit: documentLimit)
       guard !data.isEmpty else { throw BridgeError("File is empty. Retry after saving.") }
-      let html = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: host, source: showsSource,
+      let html = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: source.host, source: showsSource,
                                             paper: .current)
       guard generation == token, !Task.isCancelled else { return }
-      prepared = (path, Data(html.utf8))
+      prepared = (source.host, path, Data(html.utf8))
       for task in tasks.values { task.cancel() }; tasks.removeAll()
       error = nil
-      var url = URLComponents(); url.scheme = "frame-document"; url.host = host; url.path = "/" + path
+      var url = URLComponents(); url.scheme = "frame-document"; url.host = source.host; url.path = "/" + path
       webView.load(URLRequest(url: url.url!))
     } catch {
       guard generation == token, !Task.isCancelled else { return }
@@ -250,20 +252,21 @@ import WebKit
   }
   public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
     let key = ObjectIdentifier(urlSchemeTask)
-    guard active, let url = urlSchemeTask.request.url, url.host == host, url.user == nil, url.password == nil,
-          urlSchemeTask.request.httpMethod == "GET" || urlSchemeTask.request.httpMethod == nil,
-          let source else { urlSchemeTask.didFailWithError(BridgeError("Resource outside this folder.")); return }
+    // A request is served only from the source whose host it names.
+    guard active, let source, let url = urlSchemeTask.request.url, url.host == source.host, url.user == nil, url.password == nil,
+          urlSchemeTask.request.httpMethod == "GET" || urlSchemeTask.request.httpMethod == nil
+    else { urlSchemeTask.didFailWithError(BridgeError("Resource outside this folder.")); return }
     let path: String
     do { path = try DocumentResources.normalized(url.path) }
     catch { urlSchemeTask.didFailWithError(error); return }
-    let prepared = self.prepared
-    let parser = self.parser, referenceToken = host, paper = DocumentPaper.current
+    let prepared = self.prepared?.host == source.host ? self.prepared : nil
+    let parser = self.parser, referenceToken = source.host, paper = DocumentPaper.current
     let documentLimit = self.documentLimit
     tasks[key] = try? work.task { [weak self] in
       do {
-        let isDocument = AssetCompanionNames.isDocument(path) || prepared?.0 == path
+        let isDocument = AssetCompanionNames.isDocument(path) || prepared?.path == path
         let bytes: Data
-        if prepared?.0 == path { bytes = prepared!.1 }
+        if prepared?.path == path { bytes = prepared!.data }
         else {
           let data = try await source.data(at: path, limit: isDocument ? documentLimit : DocumentResources.resourceLimit)
           if isDocument {
@@ -300,7 +303,7 @@ import WebKit
     if navigationAction.navigationType == .backForward { decisionHandler(.cancel); return }
     if url.absoluteString == "about:blank", navigationAction.targetFrame?.isMainFrame == true { decisionHandler(.allow); return }
     guard active else { decisionHandler(.cancel); return }
-    if url.scheme == "frame-document", url.host == host {
+    if url.scheme == "frame-document", let host, url.host == host {
       if navigationAction.navigationType == .linkActivated, url.path != webView.url?.path {
         let target = String(url.path.dropFirst())
         onNavigate?(target)
@@ -309,7 +312,8 @@ import WebKit
       }
       decisionHandler(navigationAction.targetFrame?.isMainFrame == true ? .allow : .cancel)
     } else {
-      if navigationAction.navigationType == .linkActivated, let block = MarkdownRenderer.copiedBlockIndex(from: url, referenceToken: host) { copyCode(block) }
+      if navigationAction.navigationType == .linkActivated, let host,
+         let block = MarkdownRenderer.copiedBlockIndex(from: url, referenceToken: host) { copyCode(block) }
       else if navigationAction.navigationType == .linkActivated, ["https", "http", "mailto"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
       decisionHandler(.cancel)
     }
@@ -332,7 +336,7 @@ import WebKit
     // Recorded once per load. The scheme handler renders by this same extension, and a page's
     // script can change the address afterwards only without a new load.
     let page = webView.url
-    showsMarkdown = page?.scheme == "frame-document" && page?.host == host
+    showsMarkdown = page?.scheme == "frame-document" && host != nil && page?.host == host
       && ["md", "markdown"].contains(page?.pathExtension.lowercased() ?? "")
   }
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -347,8 +351,8 @@ import WebKit
   }
   /// Accepts the outline only from Frame's isolated world, for the rendered Markdown page on show.
   private func receiveOutline(_ message: WKScriptMessage) {
-    guard message.world == .defaultClient, message.frameInfo.isMainFrame, showsMarkdown, !showsSource, let path,
-          message.frameInfo.request.url?.path == "/" + path,
+    guard message.world == .defaultClient, message.frameInfo.isMainFrame, showsMarkdown, !showsSource, let path, let host,
+          message.frameInfo.request.url?.host == host, message.frameInfo.request.url?.path == "/" + path,
           let body = message.body as? [String: Any], let items = body["headings"] as? [[Any]] else { return }
     let headings = items.prefix(Self.outlineLimit).compactMap { item -> DocumentHeading? in
       guard item.count == 2, let level = (item[0] as? NSNumber)?.intValue, level == 2 || level == 3,

@@ -65,7 +65,9 @@ import Foundation
   public func setExpanded(_ path: String, _ value: Bool) {
     if value { expanded.insert(path) } else { expanded.remove(path) }
   }
-  public func files(at path: String) -> [PhotoItem] { cache[path]?.result.files ?? [] }
+  public func files(at path: String) -> [PhotoItem] { cachedFiles(at: path) ?? [] }
+  /// The files of the listing cached for `path`: empty for an empty folder, nil when no listing is cached.
+  public func cachedFiles(at path: String) -> [PhotoItem]? { cache[path]?.result.files }
   /// Moving up extends the existing tree rather than discarding its hierarchy.
   public func reveal(_ path: String) {
     let path = Self.normalize(path)
