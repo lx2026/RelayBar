@@ -47,6 +47,19 @@ A second read-only review of the fixes found findings 1, 2, 6, 7, 8, 9 and 11 cl
 
 Two limits are stated in the code: a file created between the person's click in the save panel and Frame's look cannot be told apart from one they agreed to replace, and on volumes with neither exclusive rename nor hard links (exFAT, FAT32) a file being exported is briefly visible while incomplete.
 
+## Third review
+
+A narrow third review of the local-document and export changes found the local reader's escape closed, along with the three archive points, the atomic feed publication and the archived companions' records. It reported six further points. Four are fixed:
+
+| Area | Defect | Fix | Regression tests |
+|---|---|---|---|
+| Frame, grouped export | A planned replace replaced whatever was at the destination after the copy, so a file another program saved during a long copy was lost. | The plan records each confirmed file's identity and publication replaces only that file; anything else is a collision and the rollback restores the members already replaced. | `AssetTests.testPlannedReplaceNeverReplacesAFileSavedDuringTheCopy` |
+| Frame, export cleanup | A failed look-up counted as "gone" and failed removals were ignored, so cleanup could report success with a file left behind. | A failed look-up is told apart from an absent file, every removal is checked, and any path left behind is named in the error. | `AssetTests.testCleanupNamesFilesItCouldNotTakeBack`; no seam for the private-name and hard-link removals |
+| Frame, remote fetch | A file whose name starts with a combining mark was refused, because the reply's path was split by character. | The reply's path is split at slash bytes like every other checked path. | `RemoteTests.testFileWhoseNameStartsWithACombiningMarkDownloads`, and a `validPath` case only the byte-level check catches |
+| Appcast script | The team requirement was passed to `codesign` in a form the tool rejects, so a correctly signed archive would have been refused; the stand-in tool in the tests accepted the same wrong form. | The requirement is passed as its own argument, and the stand-in parses it as the real tool does. Checked read-only against the installed RelayBar: this project's team is accepted, another team refused. | `test_update_appcast.py` |
+
+Two are recorded as known limits, each needing another program to write the same name within an instant of Frame's last step: a different file arriving between Frame's final look at the destination and the replace call in single-file export; and the temporary names Frame uses in the destination folder during rollback, which are ordinary entries another program could replace.
+
 ## Left as it is
 
 - Archive records written before identities were recorded still restore without the identity check.
@@ -57,9 +70,8 @@ Two limits are stated in the code: a file created between the person's click in 
 
 ## Checks
 
-`scripts/test.sh` passes locally with both rounds in place: 17 script tests; shared package 107 tests (3 skipped); RelayBar 463 tests (33 skipped); Frame 231 tests (3 skipped); no failures. Frame's product build with warnings as errors and `git diff --check` pass. All windows made by tests stay off screen. CI on macOS 15 passed on the first round of fixes.
+`scripts/test.sh` passes locally with all three rounds in place: 17 script tests; shared package 107 tests (3 skipped); RelayBar 463 tests (33 skipped); Frame 234 tests (3 skipped); no failures. Frame's product build with warnings as errors and `git diff --check` pass. All windows made by tests stay off screen. CI on macOS 15 passed on the first two rounds.
 
 ## Still to check
 
-- A narrow third review of the local-document and export changes made after the second review.
 - The fixes in the running apps and against a live SSH host: HTML preview of a remote file, switching libraries while an HTML page is on show, export into a folder that changes during the copy, remote Archive and Restore.
