@@ -289,13 +289,19 @@ final class BridgeLifecycleTests: XCTestCase {
         XCTAssertTrue(BridgeSocket.configure(other[0]))
         XCTAssertEqual(dup2(other[0], fd), fd)
         defer { Darwin.close(fd); Darwin.close(other[0]); Darwin.close(other[1]) }
-        weak let released = channel
+        let released = WeakChannel(channel)
         channel = nil
-        try await wait("the channel to be released") { released == nil }
+        try await wait("the channel to be released") { released.channel == nil }
         var byte: UInt8 = 1
         XCTAssertEqual(Darwin.write(fd, &byte, 1), 1, "Releasing the ended channel shut down the connection that reused its number")
         await server.close()
     }
+}
+
+/// Watches a channel without keeping it alive. A class, because the older compiler CI uses has no `weak let`.
+private final class WeakChannel: @unchecked Sendable {
+    private(set) weak var channel: BridgeChannel?
+    init(_ channel: BridgeChannel?) { self.channel = channel }
 }
 
 private final class BridgeNumber: @unchecked Sendable {
