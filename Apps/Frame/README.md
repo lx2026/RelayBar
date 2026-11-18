@@ -1,25 +1,34 @@
 # Frame
 
-Frame is a native macOS folder viewer for images, video, Markdown, HTML and text. Open an existing folder, browse its tree or contact sheet, and inspect files beside their metadata. Nothing is imported. General files stay visible even when they have no preview.
+Frame is a native macOS folder viewer for images, video, Markdown, HTML and text. Open an existing folder, browse its tree or thumbnails, and inspect files beside their metadata. Nothing is imported. General files stay visible even when they have no preview.
 
-**Current source is under test; Frame has no public release yet.** Local folders work independently. Remote folders require a compatible RelayBar from the same source revision; the current bridge is v7, and older versions are rejected. See the [paired-app README](../../README.md) and [local installation evidence](../../docs/verification/063-one-markdown-renderer.md#local-installation).
+- **Stable 1.6.0:** there is no stable Frame release, and stable RelayBar 1.6.0 does not include the Frame integration.
+- **2.0.0 beta:** [Frame 2.0.0 Beta 1, build 20](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1) is Frame's first public build: universal, Developer ID signed, notarized and stapled; macOS 14+.
+
+Local folders work independently. Remote folders need [RelayBar 2.0.0 Beta 1](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.1) or a RelayBar from the same source revision; both use bridge v7, and older versions are rejected. Frame has no updater or Homebrew cask: download a new build by hand. Hand acceptance in the running app and against live SSH hosts is not finished. See the [paired-app README](../../README.md) and the [reader layout verification](../../docs/verification/068-frame-reader-layout.md).
 
 ## Review a folder
 
+- The window has two columns. The library column holds the Files/Icons switch, the search field, the folder tree and a footer with the kind filter, favourites only and Archive. The root row's menu has Open…, Parent Folder and Refresh.
 - Open… combines local and remote locations. Remote folders expand on demand; Subfolders scans progressively.
-- Images and same-name companion files form one item. Favorites, Archive/Restore and exact-copy export work on the group.
+- Files mode shows one file with its name, kind, Previous/Next, Favorite, Archive, Move to Trash (Delete in a remote folder) and More. Images and video sit beside a details rail: generation prompt and negative text, capture or video values, sidecar files and file details.
+- Icons mode shows the folder as thumbnails, with kind chips, Subfolders, Select and a size slider.
+- Images and same-name companion files form one item. A sidecar such as `image.png.json` shows as a `{ }` chip and in the details rail; **Show Sidecar Files** lists sidecars again. Favorites, Archive/Restore and exact-copy export work on the group.
 - F or the heart favorites the current image and advances. Select mode keeps checked action targets while you preview other files.
+- A dot marks files changed since they were last opened in Frame. Only file times are compared, never the Mac's clock, and the first listing of a folder sets its baseline, so nothing is marked then.
 - Local deletion uses macOS Trash with Undo. Remote Delete is immediate and permanent, without confirmation or Undo; Archive/Restore is a separate action.
-- Resize contact-sheet thumbnails and the preview/metadata panes; sizes are remembered.
-- Prompt Search is on by default: filter by filenames and companion text, with Command-F to focus it. Switch it in **Frame → Plugins…**, which also shows the running feature tree.
+- Drag the divider to size the library column between 200 and 420 points. The column width and thumbnail size are remembered.
+- Prompt Search is on by default: filter by filenames and companion text, with Command-F to focus it. Paper Appearance, also on by default, draws Frame's warm paper colours; off, Frame uses standard macOS colours. Switch either in **Frame → Plugins…**, which also shows a map of the running features.
 
 ## Read documents
 
 Markdown shares RelayBar's renderer: highlighted code with Copy, typeset math, frontmatter properties, callouts, footnotes and aligned tables in Frame's palette. Markdown HTML is shown literally, Mermaid stays source, and documents above 2 MiB skip enrichment. Frame can load Markdown images and follow neighbouring document links.
 
-HTML previews run page scripts and may load online resources. The viewer exposes no file-action, shell or clipboard bridge to HTML. Documents are limited to 10 MiB. [Document and bridge boundaries](../../docs/system-specs/shared/security-boundaries.md).
+Markdown and HTML have a Rendered/Source switch; Source shows the file's own text, monospaced and wrapped. Beside rendered Markdown, **On this page** lists the second- and third-level headings, marks the section being read and scrolls to a heading you choose. It is hidden with fewer than two headings, when the column is too narrow, and after Hide Details.
 
-Frame is sandboxed. Local access comes from user-selected folders. Remote access goes through RelayBar's authenticated local bridge; RelayBar owns SSH configuration and credentials. Preview caches are temporary and cleared when the session ends. Frame does not add to or change RelayBar's recent-folder history.
+HTML previews run page scripts and may load online resources. An HTML page fills the reader column as a white card. The viewer exposes no file-action, shell or clipboard bridge to HTML. Documents are limited to 10 MiB. [Document and bridge boundaries](../../docs/system-specs/shared/security-boundaries.md).
+
+Frame is sandboxed. Local access comes from user-selected folders. Remote access goes through RelayBar's authenticated local bridge; RelayBar owns SSH configuration and credentials, and asks once before Frame may reach remote folders. Remote folders need Python 3 on the server; image previews and metadata also need Pillow, and video posters ffmpeg and ffprobe. Nothing is installed on the server automatically. Preview caches are temporary and cleared when the session ends. Frame does not add to or change RelayBar's recent-folder history.
 
 ## Build and test
 

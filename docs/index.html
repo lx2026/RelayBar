@@ -3,16 +3,18 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta name="theme-color" content="#090c11">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f8f8f6" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#242526" media="(prefers-color-scheme: dark)">
     <title>RelayBar | SSH tunnels, one click away</title>
     <meta
       name="description"
       content="A native macOS menu-bar app for structured SSH forwarding profiles and exact-path remote files."
     >
     <link rel="canonical" href="https://lx2026.github.io/RelayBar/">
-    <link rel="icon" href="./favicon.png">
-    <link rel="apple-touch-icon" href="./relaybar-icon.png">
-    <link rel="stylesheet" href="./styles.css?v=20261114">
+    <link rel="icon" href="./favicon.png?v=20261117">
+    <link rel="apple-touch-icon" href="./relaybar-icon.png?v=20261117">
+    <link rel="stylesheet" href="./styles.css?v=20261117">
 
     <meta property="og:type" content="website">
     <meta property="og:title" content="RelayBar | SSH tunnels, one click away">
@@ -49,13 +51,14 @@
     <header class="site-header">
       <nav class="nav shell" aria-label="Primary navigation">
         <a class="brand" href="#top" aria-label="RelayBar home">
-          <img src="./favicon.png" alt="" width="30" height="30">
+          <img src="./favicon.png?v=20261117" alt="" width="30" height="30">
           <span>RelayBar</span>
           <span class="version-badge">v1.6.0</span>
         </a>
         <div class="nav-links">
+          <a class="nav-beta" href="#beta">2.0 beta</a>
           <a href="#remote-files">Remote Files</a>
-          <a href="#frame">Frame preview</a>
+          <a href="#frame">Frame</a>
           <a href="#how-it-works">How it works</a>
           <a href="#whats-new">What’s new</a>
           <a
@@ -73,9 +76,14 @@
     <main id="content">
       <section class="hero shell" id="top">
         <div class="hero-copy">
-          <div class="release-pill">
-            <span aria-hidden="true"></span>
-            Stable v1.6.0 · notarized · open source
+          <div class="hero-pills">
+            <div class="release-pill">
+              <span aria-hidden="true"></span>
+              Stable v1.6.0 · notarized · open source
+            </div>
+            <a class="beta-pill" href="#beta">
+              2.0.0 Beta 1 · RelayBar and Frame <span aria-hidden="true">↓</span>
+            </a>
           </div>
           <h1>SSH tunnels,<br>one click away.</h1>
           <p class="hero-lede">
@@ -124,12 +132,15 @@
               <span class="window-live"><i aria-hidden="true"></i> live</span>
             </div>
             <img
-              src="./relaybar-tunnels-hires.png?v=20260929"
-              alt="RelayBar showing visible Start All and Stop All controls at the right side of a Work group"
+              src="./screenshots/relaybar-2.0-popover-light.png"
+              alt="RelayBar popover listing tunnels in Personal and Work groups. Each row has a status mark, a port mapping, the host or what went wrong, and a switch; one tunnel shows a timeout and one is retrying."
               width="760"
               height="880"
             >
           </div>
+          <p class="hero-caption">
+            Screenshots on this page show the 2.0 beta, with sample data.
+          </p>
         </div>
       </section>
 
@@ -151,6 +162,139 @@
         </div>
       </section>
 
+      <section class="section beta-section shell" id="beta" aria-labelledby="beta-title">
+        <div class="section-heading split-heading">
+          <div>
+            <span class="section-kicker beta-kicker">Beta · 2.0.0 Beta 1</span>
+            <h2 id="beta-title">RelayBar 2.0,<br>now with Frame.</h2>
+          </div>
+          <p>
+            2.0.0 is the first version where RelayBar and Frame ship as a pair.
+            RelayBar keeps your tunnels and the SSH connection. Frame reads
+            folders of images, video, Markdown and HTML, on your Mac or on your
+            server through RelayBar.
+          </p>
+        </div>
+
+        <div class="beta-apps">
+          <article class="beta-app">
+            <img
+              src="./relaybar-icon.png?v=20261117"
+              alt="RelayBar icon: a blue route between two points"
+              width="72"
+              height="72"
+            >
+            <div>
+              <h3>RelayBar 2.0.0 Beta 1</h3>
+              <p>
+                A flatter popover, Settings in its own window, a Plugins window
+                and a new icon. The menu-bar mark dims when no tunnel is running
+                and adds an exclamation mark when one fails. Needs macOS 13 or
+                later.
+              </p>
+              <div class="beta-links">
+                <a
+                  class="button primary"
+                  href="https://github.com/lx2026/RelayBar/releases/download/v2.0.0-beta.1/RelayBar.zip"
+                  aria-label="Download RelayBar 2.0.0 Beta 1 for macOS"
+                >
+                  Download RelayBar beta <span aria-hidden="true">↓</span>
+                </a>
+                <a
+                  class="notes-link"
+                  href="https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.1"
+                  aria-label="RelayBar 2.0.0 Beta 1 release notes"
+                >
+                  Release notes <span aria-hidden="true">↗</span>
+                </a>
+              </div>
+            </div>
+          </article>
+          <article class="beta-app">
+            <img
+              src="./frame-icon.png"
+              alt="Frame icon: viewfinder corners around an amber dot"
+              width="72"
+              height="72"
+            >
+            <div>
+              <h3>Frame 2.0.0 Beta 1</h3>
+              <p>
+                A reader for folders of mixed files, on your Mac or on your
+                server: a folder tree, an outline for Markdown and a mark on
+                files changed since you last opened them. Needs macOS 14 or
+                later.
+              </p>
+              <div class="beta-links">
+                <a
+                  class="button primary"
+                  href="https://github.com/lx2026/RelayBar/releases/download/frame-v2.0.0-beta.1/Frame.zip"
+                  aria-label="Download Frame 2.0.0 Beta 1 for macOS"
+                >
+                  Download Frame beta <span aria-hidden="true">↓</span>
+                </a>
+                <a
+                  class="notes-link"
+                  href="https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1"
+                  aria-label="Frame 2.0.0 Beta 1 release notes"
+                >
+                  Release notes <span aria-hidden="true">↗</span>
+                </a>
+              </div>
+            </div>
+          </article>
+        </div>
+
+        <ul class="beta-facts">
+          <li>This is a beta. Both apps are signed and notarized.</li>
+          <li>RelayBar needs macOS 13 or later. Frame needs macOS 14 or later.</li>
+          <li>
+            The two betas work together. Frame’s remote folders need the
+            RelayBar beta; an older RelayBar is refused.
+          </li>
+          <li>
+            Frame has no in-app updater: to update it, download a new build.
+            Homebrew and RelayBar’s in-app updater stay on 1.6.0 during the beta.
+          </li>
+        </ul>
+
+        <div class="preview-renders">
+          <figure>
+            <div class="media-frame">
+              <div class="frame-bar"><span>RelayBar · popover</span><span>dark appearance</span></div>
+              <img
+                src="./screenshots/relaybar-2.0-popover-dark.png"
+                alt="RelayBar popover in dark paper colours: grouped tunnels, Start All and Stop All beside the group names, and Remote Files and Quit at the bottom"
+                width="760"
+                height="880"
+                loading="lazy"
+              >
+            </div>
+            <figcaption>
+              One line per tunnel: a status mark that differs by shape, the port
+              mapping, then the host or what went wrong. Each group has Start All
+              or Stop All.
+            </figcaption>
+          </figure>
+          <figure>
+            <div class="media-frame">
+              <div class="frame-bar"><span>RelayBar · Settings</span><span>dark · Paper Appearance on</span></div>
+              <img
+                src="./screenshots/relaybar-2.0-settings-dark.png"
+                alt="RelayBar Settings window in dark paper colours: Launch at Login, Automatic Updates, SSH Retry Limit and Plugins, then a size limit and switch for each preview format"
+                width="960"
+                height="1010"
+                loading="lazy"
+              >
+            </div>
+            <figcaption>
+              Settings has its own window, opened with Command-comma from the
+              popover. Plugins is one row away.
+            </figcaption>
+          </figure>
+        </div>
+      </section>
+
       <section class="section shell" id="remote-files">
         <div class="section-heading split-heading">
           <div>
@@ -166,13 +310,13 @@
         <div class="media-frame remote-frame">
           <div class="frame-bar">
             <span>remote_files.workspace</span>
-            <span>revisit · browse · upload</span>
+            <span>revisit · browse · preview</span>
           </div>
           <img
-            src="./screenshots/remote-files-workspace.png"
-            alt="RelayBar 1.6 Remote Files workspace showing recent folders, recent hosts, folder contents, Add Path, and Upload"
-            width="1840"
-            height="1200"
+            src="./screenshots/relaybar-2.0-remote-files-light.png"
+            alt="RelayBar Remote Files window previewing an image, with Download and Delete above it and the folder’s files, recent folders and a recent host in the sidebar"
+            width="1280"
+            height="836"
             loading="lazy"
           >
         </div>
@@ -208,74 +352,89 @@
       <section class="section preview-section shell" id="frame" aria-labelledby="frame-title">
         <div class="section-heading split-heading">
           <div>
-            <span class="section-kicker">In testing · next paired update</span>
+            <img
+              class="app-mark"
+              src="./frame-icon.png"
+              alt="Frame icon: viewfinder corners around an amber dot"
+              width="64"
+              height="64"
+            >
+            <span class="section-kicker frame-kicker">Frame 2.0.0 Beta 1 · macOS 14+</span>
             <h2 id="frame-title">Browse here.<br>Review in Frame.</h2>
           </div>
           <p>
-            Frame adds a folder workspace for images, video and documents.
-            Open local folders on their own, or use RelayBar to reach files on
-            your server. Nothing is imported.
+            Frame reads folders of images, video, Markdown and HTML. Open a
+            folder on your Mac, or choose Open in Frame in RelayBar’s Remote
+            Files to read one on your server through RelayBar’s connection.
+            Nothing is imported.
           </p>
         </div>
         <p class="preview-notice">
-          These features are in the current source, under test. They are not in
-          the stable RelayBar 1.6.0 download. Frame has no public release yet and
-          requires macOS 14 or newer. Remote access needs compatible versions
-          of both apps; update them together.
+          Frame is in beta:
+          <a href="https://github.com/lx2026/RelayBar/releases/download/frame-v2.0.0-beta.1/Frame.zip">download Frame 2.0.0 Beta 1</a>
+          or read its
+          <a href="https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1">release notes</a>.
+          It needs macOS 14 or later. Its remote folders need RelayBar 2.0.0
+          Beta 1; an older RelayBar is refused.
         </p>
-        <div class="feature-grid preview-features">
+        <figure class="frame-figure">
+          <div class="media-frame">
+            <div class="frame-bar"><span>Frame · Files</span><span>Markdown, rendered</span></div>
+            <img
+              src="./screenshots/frame-2.0-markdown-outline-light.png"
+              alt="Frame reading a Markdown release checklist with a checklist, a code block with Copy and a table, beside a folder tree on the left and an On this page outline on the right"
+              width="1280"
+              height="800"
+              loading="lazy"
+            >
+          </div>
+          <figcaption>Files mode reads one file. Beside Markdown, the outline marks the section you are reading.</figcaption>
+        </figure>
+        <div class="feature-grid preview-features frame-features">
           <article>
             <span class="feature-number">01 · Frame</span>
-            <h3>Keep the folder in view</h3>
+            <h3>Read a mixed folder</h3>
             <p>
-              A folder tree, contact sheet, file previews and companion metadata.
-              Search filenames and prompt text, mark favorites, and export exact
-              copies of related files together.
+              A folder tree beside the file on show. Files mode reads one file;
+              Icons mode shows the folder as thumbnails. Sidecar files fold into
+              the file they describe.
             </p>
           </article>
           <article>
-            <span class="feature-number">02 · Both apps</span>
-            <h3>Read the whole note</h3>
+            <span class="feature-number">02 · Frame</span>
+            <h3>See what changed</h3>
             <p>
-              Highlighted code with Copy, typeset math, callouts, footnotes and
-              tables that fit. One Markdown reading design, in each app’s palette.
+              An outline beside rendered Markdown, a Source view for Markdown and
+              HTML, and a dot on each file changed since you last opened it.
             </p>
           </article>
           <article>
-            <span class="feature-number">03 · Plugins</span>
-            <h3>Choose the useful extras</h3>
+            <span class="feature-number">03 · Both apps</span>
+            <h3>Plugins and paper</h3>
             <p>
-              Reconnect on Wake and Prompt Search start on. Service Labels starts
-              off; enable it to check forwarded web services. Switch built-in
-              features in the Plugins window.
+              Switch optional features in each app’s Plugins window and see what
+              each one needs. Paper Appearance, on by default, gives both apps
+              the same warm colours; turn it off for standard macOS colours.
             </p>
           </article>
         </div>
-        <div class="preview-renders">
-          <figure>
-            <div class="media-frame">
-              <div class="frame-bar"><span>RelayBar · Markdown</span><span>light appearance</span></div>
-              <img src="./verification/assets/063-markdown/after-relaybar-ordinary.png"
-                alt="RelayBar test note with a checklist, aligned results table and highlighted Python code"
-                width="820" height="1232" loading="lazy">
-            </div>
-            <figcaption>RelayBar keeps document images unloaded.</figcaption>
-          </figure>
-          <figure>
-            <div class="media-frame">
-              <div class="frame-bar"><span>Frame · Markdown</span><span>light appearance</span></div>
-              <img src="./verification/assets/063-markdown/after-frame-ordinary.png"
-                alt="The same test note in Frame’s green palette, with its sample image loaded"
-                width="820" height="1373" loading="lazy">
-            </div>
-            <figcaption>Frame can show images and follow neighbouring documents.</figcaption>
-          </figure>
-        </div>
-        <p class="preview-caption">Current renderer captures using the same synthetic document.</p>
+        <figure class="frame-figure">
+          <div class="media-frame">
+            <div class="frame-bar"><span>Frame · Icons</span><span>folder overview</span></div>
+            <img
+              src="./screenshots/frame-2.0-icons-light.png"
+              alt="Frame in Icons mode: subfolders first, then thumbnails of images, a video with its duration and documents marked MD, JSON and HTML, with kind filters above"
+              width="1280"
+              height="800"
+              loading="lazy"
+            >
+          </div>
+          <figcaption>Icons mode shows the whole folder, filtered by kind.</figcaption>
+        </figure>
         <p class="preview-detail">
           Markdown HTML stays literal text. HTML-file previews are different:
           they can run page scripts and load online resources.
-          <a href="https://github.com/lx2026/RelayBar/blob/main/README.md#current-source-frame-plugins-and-documents">Read about the current source <span aria-hidden="true">↗</span></a>
+          <a href="https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1">Read the Frame release notes <span aria-hidden="true">↗</span></a>
         </p>
       </section>
 
@@ -326,11 +485,11 @@
         <div class="media-frame editor-frame">
           <div class="frame-bar">
             <span>quick_add.profile</span>
-            <span>actual app screenshot</span>
+            <span>new profile</span>
           </div>
           <img
-            src="./relaybar-add-tunnel.png?v=20260929"
-            alt="RelayBar new profile screen with mixed SSH forwarding import and an optional Work group"
+            src="./screenshots/relaybar-2.0-new-profile-light.png"
+            alt="RelayBar New Profile screen with a Quick Add field holding a pasted ssh command, then Name, Group and SSH host fields"
             width="760"
             height="880"
             loading="lazy"
@@ -424,7 +583,7 @@
 
       <section class="cta shell">
         <div class="cta-stripes" aria-hidden="true"></div>
-        <img src="./relaybar-icon.png" alt="" width="88" height="88">
+        <img src="./relaybar-icon.png?v=20261117" alt="RelayBar icon" width="88" height="88">
         <div class="cta-copy">
           <span>Ready when you are.</span>
           <h2>Keep the tunnel.<br>Lose the terminal tab.</h2>
@@ -441,7 +600,7 @@
 
     <footer class="footer shell">
       <a class="brand footer-brand" href="#top">
-        <img src="./favicon.png" alt="" width="26" height="26">
+        <img src="./favicon.png?v=20261117" alt="" width="26" height="26">
         <span>RelayBar</span>
       </a>
       <p>SSH tunnels, one click away.</p>
