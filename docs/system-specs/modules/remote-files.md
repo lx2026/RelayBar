@@ -41,12 +41,16 @@ without adding search, indexing, mounting, or editing.
   unrelated hosts.
 - OpenSSH config discovery reads at most 1 MiB from `~/.ssh/config`, exposes at most 256 concrete `Host` aliases, and ignores wildcard, character-pattern, and negated aliases. Config aliases remain read-only and are not copied into RelayBar storage.
 - Missing-path output from SFTP is normalized to a short user-facing error while preserving the entered path and server for retry.
-- When an entered path identifies a supported image, Markdown, JSON, or MP4 file, RelayBar
+- When an entered path identifies a supported image, Markdown, HTML, JSON, or MP4 file, RelayBar
   opens the existing bounded preview with that exact file selected. Back returns
   through a single-file browser context to the welcome workspace. Another regular file
   is shown selected in that context without starting a download automatically.
 
 ## Folder browser
+
+Local builds offer **Open in Frame** in folder and preview toolbars only while the Open in Frame plugin runs; it is on by default only if Frame was installed when RelayBar launched. Switching the plugin adds or removes both buttons in an open window without reopening it. See the [authenticated companion contract](frame-viewer.md). RelayBar retains connection ownership and its own upload/delete behavior.
+
+Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfolder opens. Host-side previews/metadata, direct permanent Delete without confirmation, and separate Archive/Restore are supported; originals transfer only on explicit request, bounded only by the bridge's 100 MiB per-file limit rather than RelayBar's own preview limits. RelayBar's own browser still owns recent-history updates.
 
 - The top bar contains **Back**, the exact current path, **Refresh**, **Select**,
   and **Upload…**. **Select** appears only when the folder contains a regular
@@ -60,7 +64,7 @@ without adding search, indexing, mounting, or editing.
 - Back follows navigation history, reselects the folder that was left, and
   returns to the quiet welcome detail from the initial folder. That transition
   clears the active root, snapshots, preview content, and SSH session.
-- Supported images, Markdown documents, JSON documents, and MP4 videos open a split preview workspace. Other files begin destination selection for download.
+- Supported images, Markdown documents, HTML pages, JSON documents, and MP4 videos open a split preview workspace. Other files begin destination selection for download.
 - Search, filters, indexing, workspace discovery, rename, move, folder
   or multi-file upload, synchronization, and remote editing are absent.
 
@@ -161,7 +165,7 @@ without adding search, indexing, mounting, or editing.
 
 - Preview reuses the workspace's one draggable leading sidebar. **In This
   Folder** appears above Recent Folders and Recent Hosts and contains only
-  previewable image, Markdown, JSON, and MP4 siblings from the current in-memory folder
+  previewable image, Markdown, HTML, JSON, and MP4 siblings from the current in-memory folder
   snapshot; opening preview performs no additional listing, recursive
   discovery, search, or eager sibling download.
 - The active file stays selected. Clicking a sibling or pressing Left or Right starts that preview through the active server and SSH master. Superseded retrieval and decoding work is cancelled, generation-guarded, and cleaned before stale content can publish.
@@ -180,10 +184,18 @@ without adding search, indexing, mounting, or editing.
 - Preview retrieval is limited to 100 MiB.
 - Bounded native ImageIO thumbnail decoding runs off the main actor from private temporary storage; only the completed immutable image is published back to the UI.
 - Leaving the preview or closing the window removes preview content, including when cancellation happens after retrieval but during decoding.
-- The detail uses an adaptive quiet canvas, keeps intrinsic aspect ratio, and never enlarges an image beyond its decoded dimensions.
+- The detail sits on the house palette's stage colour, keeps intrinsic aspect ratio, and never enlarges an image beyond its decoded dimensions. With Paper Appearance on, the window's sidebar is on the panel colour and its file list and other content on paper; with it off, the sidebar is translucent and the list and previews keep their system backgrounds ([House style](../shared/house-style.md)).
 - Preview has no thumbnails, metadata inspector, markup, or editing behavior.
 
 Empty folders show a single focused empty state with an explicit accessibility description.
+
+## HTML preview
+
+- `.html` and `.htm` render in one ephemeral WKWebView, with HTML keyboard focus protected from file shortcuts.
+- Relative CSS, scripts, images and data load on demand through the existing SSH service and root-contained helper. There is no recursive download or dependency history entry. Each resource's local name comes from the requested path, never from the helper's reply. Temporary transfer files are removed after reading; preview memory and requests are released on close.
+- Online resources are allowed per the user’s 2026-11-07 approval. macOS transport protections remain unchanged; HTTPS works normally, while insecure HTTP may be rejected. No native mutation bridge is exposed to HTML.
+- Four concurrent resource transfers, 128 paths, 10 MiB documents, 32 MiB individual resources and 64 MiB total preview bytes bound the work.
+- Build 20 is installed and running. Real WebKit/model tests pass; the user confirmed the installed Remote Files check works on 2026-11-07.
 
 ## Markdown preview
 

@@ -1,0 +1,483 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		400000000000000000000001 /* RelayBarApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000001 /* RelayBarApp.swift */; };
+		400000000000000000000002 /* RelayBarRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000002 /* RelayBarRootView.swift */; };
+		400000000000000000000003 /* SSHArgumentPolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000003 /* SSHArgumentPolicy.swift */; };
+		400000000000000000000004 /* SSHCommandParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000004 /* SSHCommandParser.swift */; };
+		400000000000000000000005 /* Tunnel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000005 /* Tunnel.swift */; };
+		400000000000000000000006 /* TunnelEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000006 /* TunnelEditorView.swift */; };
+		400000000000000000000007 /* TunnelStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000007 /* TunnelStore.swift */; };
+		400000000000000000000039 /* TunnelProfileRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000039 /* TunnelProfileRuntime.swift */; };
+		400000000000000000000008 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000008 /* Assets.xcassets */; };
+		40000000000000000000000B /* RemoteFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000B /* RemoteFile.swift */; };
+		40000000000000000000000C /* SFTPRemoteFileService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000C /* SFTPRemoteFileService.swift */; };
+		40000000000000000000000D /* RemoteFilesModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000D /* RemoteFilesModel.swift */; };
+		40000000000000000000000E /* RemoteFilesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000E /* RemoteFilesView.swift */; };
+		40000000000000000000000F /* RemoteFilesWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000000F /* RemoteFilesWindowController.swift */; };
+		400000000000000000000010 /* MarkdownPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000010 /* MarkdownPreview.swift */; };
+		400000000000000000000016 /* THIRD_PARTY_NOTICES.txt in Resources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000013 /* THIRD_PARTY_NOTICES.txt */; };
+		400000000000000000000017 /* RemoteServerCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000015 /* RemoteServerCatalog.swift */; };
+		400000000000000000000018 /* LaunchAtLogin.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000016 /* LaunchAtLogin.swift */; };
+		400000000000000000000019 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000017 /* SettingsView.swift */; };
+		40000000000000000000001A /* RemoteFileSSHSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000018 /* RemoteFileSSHSession.swift */; };
+		40000000000000000000001B /* PopoverScrollContainer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000019 /* PopoverScrollContainer.swift */; };
+		40000000000000000000001C /* ApplicationAbout.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000001A /* ApplicationAbout.swift */; };
+		40000000000000000000001D /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000004 /* Sparkle */; };
+		40000000000000000000001E /* Updates.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000001B /* Updates.swift */; };
+		40000000000000000000001F /* RemoteVideoPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000001C /* RemoteVideoPreview.swift */; };
+		400000000000000000000031 /* FrameBridgeBroker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000031 /* FrameBridgeBroker.swift */; };
+		400000000000000000000032 /* FrameRemoteHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000032 /* FrameRemoteHelper.swift */; };
+		400000000000000000000033 /* HTMLPreview.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000033 /* HTMLPreview.swift */; };
+		400000000000000000000045 /* BridgeProtocol in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000005 /* BridgeProtocol */; };
+		400000000000000000000046 /* AssetGrouping in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000006 /* AssetGrouping */; };
+		400000000000000000000034 /* RemotePreviewPlugins.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000034 /* RemotePreviewPlugins.swift */; };
+		400000000000000000000035 /* RelayBarComposition.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000035 /* RelayBarComposition.swift */; };
+		400000000000000000000036 /* RelayPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 300000000000000000000036 /* RelayPreferences.swift */; };
+		40000000000000000000003A /* RelayPlugins.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003A /* RelayPlugins.swift */; };
+		40000000000000000000003B /* ReconnectOnWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003B /* ReconnectOnWake.swift */; };
+		40000000000000000000003C /* ServiceLabels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003C /* ServiceLabels.swift */; };
+		40000000000000000000003D /* StatusItemGlyph.swift in Sources */ = {isa = PBXBuildFile; fileRef = 30000000000000000000003D /* StatusItemGlyph.swift */; };
+		400000000000000000000047 /* Composition in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000007 /* Composition */; };
+		400000000000000000000048 /* PreviewSupport in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000008 /* PreviewSupport */; };
+		400000000000000000000049 /* MarkdownRendering in Frameworks */ = {isa = PBXBuildFile; productRef = 700000000000000000000009 /* MarkdownRendering */; };
+		40000000000000000000004A /* HouseStyle in Frameworks */ = {isa = PBXBuildFile; productRef = 70000000000000000000000A /* HouseStyle */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		300000000000000000000000 /* RelayBar.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RelayBar.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		300000000000000000000001 /* RelayBarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayBarApp.swift; sourceTree = "<group>"; };
+		300000000000000000000002 /* RelayBarRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayBarRootView.swift; sourceTree = "<group>"; };
+		300000000000000000000003 /* SSHArgumentPolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHArgumentPolicy.swift; sourceTree = "<group>"; };
+		300000000000000000000004 /* SSHCommandParser.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SSHCommandParser.swift; sourceTree = "<group>"; };
+		300000000000000000000005 /* Tunnel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Tunnel.swift; sourceTree = "<group>"; };
+		300000000000000000000006 /* TunnelEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelEditorView.swift; sourceTree = "<group>"; };
+		300000000000000000000007 /* TunnelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelStore.swift; sourceTree = "<group>"; };
+		300000000000000000000039 /* TunnelProfileRuntime.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TunnelProfileRuntime.swift; sourceTree = "<group>"; };
+		300000000000000000000008 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		30000000000000000000000A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		30000000000000000000000B /* RemoteFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFile.swift; sourceTree = "<group>"; };
+		30000000000000000000000C /* SFTPRemoteFileService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SFTPRemoteFileService.swift; sourceTree = "<group>"; };
+		30000000000000000000000D /* RemoteFilesModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesModel.swift; sourceTree = "<group>"; };
+		30000000000000000000000E /* RemoteFilesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesView.swift; sourceTree = "<group>"; };
+		30000000000000000000000F /* RemoteFilesWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFilesWindowController.swift; sourceTree = "<group>"; };
+		300000000000000000000010 /* MarkdownPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarkdownPreview.swift; sourceTree = "<group>"; };
+		300000000000000000000013 /* THIRD_PARTY_NOTICES.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = Resources/THIRD_PARTY_NOTICES.txt; sourceTree = "<group>"; };
+		300000000000000000000014 /* prune-renderer-resources.sh */ = {isa = PBXFileReference; lastKnownFileType = text.script.sh; path = "prune-renderer-resources.sh"; sourceTree = "<group>"; };
+		300000000000000000000015 /* RemoteServerCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteServerCatalog.swift; sourceTree = "<group>"; };
+		300000000000000000000016 /* LaunchAtLogin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LaunchAtLogin.swift; sourceTree = "<group>"; };
+		300000000000000000000017 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		300000000000000000000018 /* RemoteFileSSHSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteFileSSHSession.swift; sourceTree = "<group>"; };
+		300000000000000000000019 /* PopoverScrollContainer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PopoverScrollContainer.swift; sourceTree = "<group>"; };
+		30000000000000000000001A /* ApplicationAbout.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApplicationAbout.swift; sourceTree = "<group>"; };
+		30000000000000000000001B /* Updates.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Updates.swift; sourceTree = "<group>"; };
+		30000000000000000000001C /* RemoteVideoPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteVideoPreview.swift; sourceTree = "<group>"; };
+		300000000000000000000031 /* FrameBridgeBroker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameBridgeBroker.swift; sourceTree = "<group>"; };
+		300000000000000000000032 /* FrameRemoteHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FrameRemoteHelper.swift; sourceTree = "<group>"; };
+		300000000000000000000033 /* HTMLPreview.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HTMLPreview.swift; sourceTree = "<group>"; };
+		300000000000000000000034 /* RemotePreviewPlugins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemotePreviewPlugins.swift; sourceTree = "<group>"; };
+		300000000000000000000035 /* RelayBarComposition.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayBarComposition.swift; sourceTree = "<group>"; };
+		300000000000000000000036 /* RelayPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayPreferences.swift; sourceTree = "<group>"; };
+		30000000000000000000003A /* RelayPlugins.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RelayPlugins.swift; sourceTree = "<group>"; };
+		30000000000000000000003B /* ReconnectOnWake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReconnectOnWake.swift; sourceTree = "<group>"; };
+		30000000000000000000003C /* ServiceLabels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServiceLabels.swift; sourceTree = "<group>"; };
+		30000000000000000000003D /* StatusItemGlyph.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemGlyph.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		220000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				400000000000000000000045 /* BridgeProtocol in Frameworks */,
+				400000000000000000000046 /* AssetGrouping in Frameworks */,
+				400000000000000000000047 /* Composition in Frameworks */,
+				400000000000000000000048 /* PreviewSupport in Frameworks */,
+				400000000000000000000049 /* MarkdownRendering in Frameworks */,
+				40000000000000000000004A /* HouseStyle in Frameworks */,
+				40000000000000000000001D /* Sparkle in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		120000000000000000000000 = {
+			isa = PBXGroup;
+			children = (
+				140000000000000000000000 /* Sources */,
+				160000000000000000000000 /* Packaging */,
+				170000000000000000000000 /* Scripts */,
+				300000000000000000000008 /* Assets.xcassets */,
+				130000000000000000000000 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		130000000000000000000000 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000000 /* RelayBar.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		140000000000000000000000 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000016 /* LaunchAtLogin.swift */,
+				300000000000000000000017 /* SettingsView.swift */,
+				30000000000000000000001A /* ApplicationAbout.swift */,
+				30000000000000000000001B /* Updates.swift */,
+				300000000000000000000019 /* PopoverScrollContainer.swift */,
+				300000000000000000000001 /* RelayBarApp.swift */,
+				300000000000000000000002 /* RelayBarRootView.swift */,
+				300000000000000000000003 /* SSHArgumentPolicy.swift */,
+				300000000000000000000004 /* SSHCommandParser.swift */,
+				300000000000000000000005 /* Tunnel.swift */,
+				300000000000000000000006 /* TunnelEditorView.swift */,
+				300000000000000000000007 /* TunnelStore.swift */,
+				300000000000000000000039 /* TunnelProfileRuntime.swift */,
+				30000000000000000000000B /* RemoteFile.swift */,
+				30000000000000000000001C /* RemoteVideoPreview.swift */,
+				300000000000000000000031 /* FrameBridgeBroker.swift */,
+				300000000000000000000032 /* FrameRemoteHelper.swift */,
+		300000000000000000000033 /* HTMLPreview.swift */,
+		300000000000000000000034 /* RemotePreviewPlugins.swift */,
+		300000000000000000000035 /* RelayBarComposition.swift */,
+		300000000000000000000036 /* RelayPreferences.swift */,
+				30000000000000000000003A /* RelayPlugins.swift */,
+				30000000000000000000003B /* ReconnectOnWake.swift */,
+				30000000000000000000003C /* ServiceLabels.swift */,
+				30000000000000000000003D /* StatusItemGlyph.swift */,
+				300000000000000000000018 /* RemoteFileSSHSession.swift */,
+				30000000000000000000000C /* SFTPRemoteFileService.swift */,
+				30000000000000000000000D /* RemoteFilesModel.swift */,
+				30000000000000000000000E /* RemoteFilesView.swift */,
+				30000000000000000000000F /* RemoteFilesWindowController.swift */,
+				300000000000000000000015 /* RemoteServerCatalog.swift */,
+				300000000000000000000010 /* MarkdownPreview.swift */,
+				300000000000000000000013 /* THIRD_PARTY_NOTICES.txt */,
+			);
+			name = Sources;
+			path = Sources/RelayBar;
+			sourceTree = "<group>";
+		};
+		160000000000000000000000 /* Packaging */ = {
+			isa = PBXGroup;
+			children = (
+				30000000000000000000000A /* Info.plist */,
+			);
+			name = Packaging;
+			path = Packaging;
+			sourceTree = "<group>";
+		};
+		170000000000000000000000 /* Scripts */ = {
+			isa = PBXGroup;
+			children = (
+				300000000000000000000014 /* prune-renderer-resources.sh */,
+			);
+			name = Scripts;
+			path = scripts;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		210000000000000000000000 /* RelayBar */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 510000000000000000000000 /* Build configuration list for PBXNativeTarget "RelayBar" */;
+			buildPhases = (
+				220000000000000000000001 /* Sources */,
+				220000000000000000000003 /* Frameworks */,
+				220000000000000000000002 /* Resources */,
+				220000000000000000000004 /* Prune unused renderer resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RelayBar;
+			packageProductDependencies = (
+				700000000000000000000008 /* PreviewSupport */,
+				700000000000000000000009 /* MarkdownRendering */,
+				70000000000000000000000A /* HouseStyle */,
+				700000000000000000000007 /* Composition */,
+				700000000000000000000006 /* AssetGrouping */,
+				700000000000000000000005 /* BridgeProtocol */,
+				700000000000000000000004 /* Sparkle */,
+			);
+			productName = RelayBar;
+			productReference = 300000000000000000000000 /* RelayBar.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		110000000000000000000000 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					210000000000000000000000 = {
+						CreatedOnToolsVersion = 26.6;
+					};
+				};
+			};
+			buildConfigurationList = 500000000000000000000000 /* Build configuration list for PBXProject "RelayBar" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 120000000000000000000000;
+			packageReferences = (
+				800000000000000000000005 /* AppComposition */,
+				800000000000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */,
+			);
+			productRefGroup = 130000000000000000000000 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				210000000000000000000000 /* RelayBar */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		220000000000000000000002 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				400000000000000000000008 /* Assets.xcassets in Resources */,
+				400000000000000000000016 /* THIRD_PARTY_NOTICES.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		220000000000000000000004 /* Prune unused renderer resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/scripts/prune-renderer-resources.sh",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/Highlighter_Highlighter.bundle",
+				"$(TARGET_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/SwiftMath_SwiftMath.bundle",
+			);
+			name = "Prune unused renderer resources";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/bash;
+			shellScript = "\"${SRCROOT}/scripts/prune-renderer-resources.sh\"";
+			showEnvVarsInLog = 0;
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		220000000000000000000001 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				400000000000000000000018 /* LaunchAtLogin.swift in Sources */,
+				400000000000000000000019 /* SettingsView.swift in Sources */,
+				40000000000000000000001C /* ApplicationAbout.swift in Sources */,
+				40000000000000000000001E /* Updates.swift in Sources */,
+				40000000000000000000001B /* PopoverScrollContainer.swift in Sources */,
+				400000000000000000000001 /* RelayBarApp.swift in Sources */,
+				400000000000000000000002 /* RelayBarRootView.swift in Sources */,
+				400000000000000000000003 /* SSHArgumentPolicy.swift in Sources */,
+				400000000000000000000004 /* SSHCommandParser.swift in Sources */,
+				400000000000000000000005 /* Tunnel.swift in Sources */,
+				400000000000000000000006 /* TunnelEditorView.swift in Sources */,
+				400000000000000000000007 /* TunnelStore.swift in Sources */,
+				400000000000000000000039 /* TunnelProfileRuntime.swift in Sources */,
+				40000000000000000000000B /* RemoteFile.swift in Sources */,
+				40000000000000000000001F /* RemoteVideoPreview.swift in Sources */,
+				400000000000000000000031 /* FrameBridgeBroker.swift in Sources */,
+				400000000000000000000032 /* FrameRemoteHelper.swift in Sources */,
+		400000000000000000000033 /* HTMLPreview.swift in Sources */,
+		400000000000000000000034 /* RemotePreviewPlugins.swift in Sources */,
+		400000000000000000000035 /* RelayBarComposition.swift in Sources */,
+		400000000000000000000036 /* RelayPreferences.swift in Sources */,
+				40000000000000000000003A /* RelayPlugins.swift in Sources */,
+				40000000000000000000003B /* ReconnectOnWake.swift in Sources */,
+				40000000000000000000003C /* ServiceLabels.swift in Sources */,
+				40000000000000000000003D /* StatusItemGlyph.swift in Sources */,
+				40000000000000000000001A /* RemoteFileSSHSession.swift in Sources */,
+				40000000000000000000000C /* SFTPRemoteFileService.swift in Sources */,
+				40000000000000000000000D /* RemoteFilesModel.swift in Sources */,
+				40000000000000000000000E /* RemoteFilesView.swift in Sources */,
+				40000000000000000000000F /* RemoteFilesWindowController.swift in Sources */,
+				400000000000000000000017 /* RemoteServerCatalog.swift in Sources */,
+				400000000000000000000010 /* MarkdownPreview.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		800000000000000000000005 /* AppComposition */ = {isa = XCLocalSwiftPackageReference; relativePath = ../../Packages/AppComposition; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		800000000000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle.git";
+			requirement = {
+				kind = exactVersion;
+				version = 2.9.4;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		700000000000000000000004 /* Sparkle */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 800000000000000000000004 /* XCRemoteSwiftPackageReference "Sparkle" */;
+			productName = Sparkle;
+		};
+		700000000000000000000005 /* BridgeProtocol */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = BridgeProtocol; };
+		700000000000000000000006 /* AssetGrouping */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = AssetGrouping; };
+		700000000000000000000007 /* Composition */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = Composition; };
+		700000000000000000000008 /* PreviewSupport */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = PreviewSupport; };
+		700000000000000000000009 /* MarkdownRendering */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = MarkdownRendering; };
+		70000000000000000000000A /* HouseStyle */ = {isa = XCSwiftPackageProductDependency; package = 800000000000000000000005; productName = HouseStyle; };
+/* End XCSwiftPackageProductDependency section */
+
+/* Begin XCBuildConfiguration section */
+		600000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+		};
+			name = Debug;
+		};
+		600000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+		};
+			name = Release;
+		};
+		610000000000000000000001 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = Packaging/RelayBar.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 25;
+				DEAD_CODE_STRIPPING = YES;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_HARDENED_RUNTIME = YES;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Packaging/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 2.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		610000000000000000000002 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_ENTITLEMENTS = Packaging/RelayBar.entitlements;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 25;
+				DEAD_CODE_STRIPPING = YES;
+				DEPLOYMENT_POSTPROCESSING = YES;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Packaging/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks";
+				MACOSX_DEPLOYMENT_TARGET = 13.0;
+				MARKETING_VERSION = 2.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_STRICT_CONCURRENCY = complete;
+				SWIFT_TREAT_WARNINGS_AS_ERRORS = YES;
+				SWIFT_VERSION = 5.0;
+				STRIP_INSTALLED_PRODUCT = YES;
+				STRIP_STYLE = "non-global";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		500000000000000000000000 /* Build configuration list for PBXProject "RelayBar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				600000000000000000000001 /* Debug */,
+				600000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		510000000000000000000000 /* Build configuration list for PBXNativeTarget "RelayBar" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				610000000000000000000001 /* Debug */,
+				610000000000000000000002 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 110000000000000000000000 /* Project object */;
+}

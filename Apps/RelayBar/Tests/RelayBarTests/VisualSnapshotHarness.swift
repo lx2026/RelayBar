@@ -1,0 +1,2079 @@
+// Renders the menu window offscreen so a change to the saved list can be
+// reviewed in both appearances without a screen-capture permission. Skipped
+// unless RELAYBAR_SNAPSHOT_DIR is set, following the opt-in pattern the live
+// SSH tests use.
+import AppKit
+import Composition
+import CompositionFixtures
+import CompositionUI
+import HouseStyle
+import SwiftUI
+import XCTest
+@testable import RelayBar
+
+@MainActor
+final class VisualSnapshotHarness: XCTestCase {
+    private var outputDirectory: URL {
+        URL(fileURLWithPath: ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] ?? "")
+    }
+
+    func testCaptureTunnelListSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let suiteName = "RelayBarSnapshot.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = TunnelStore(defaults: defaults)
+
+        let fixtures: [(name: String, group: String?)] = [
+            ("Hermes Dashboard", "Work"),
+            ("Virtual Desktop", "Work"),
+            ("Photos", "Personal"),
+            ("Scratch", nil)
+        ]
+        for (index, fixture) in fixtures.enumerated() {
+            store.add(
+                Tunnel(
+                    name: fixture.name,
+                    localPort: 8_000 + index,
+                    destinationHost: "localhost",
+                    destinationPort: 3_000 + index,
+                    sshHost: "preview-\(index + 1).example.com",
+                    groupTag: fixture.group
+                )
+            )
+        }
+
+        // A local Unix-socket rule exercises the Task 014 Reveal path.
+        store.add(
+            Tunnel(
+                name: "Socket Forward",
+                sshHost: "gateway.example.com",
+                rules: [
+                    ForwardingRule(
+                        kind: .local,
+                        listen: .unix(path: "/tmp/relaybar-visual.sock"),
+                        destination: .tcp(host: "localhost", port: 5_432)
+                    )
+                ],
+                groupTag: "Work"
+            )
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            try capture(
+                view: RelayBarRootView()
+                    .environmentObject(store),
+                appearance: appearanceName,
+                to: outputDirectory.appendingPathComponent("tunnel-list-\(label).png")
+            )
+        }
+    }
+
+    func testCaptureTask038GroupControlSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        enum FixtureState: String, CaseIterable {
+            case stopped
+            case active
+            case mixed
+            case longName = "long-name"
+        }
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let appearanceLabel = appearanceName == .aqua ? "light" : "dark"
+
+            for state in FixtureState.allCases {
+                let suiteName = "RelayBarTask038.\(UUID().uuidString)"
+                let defaults = UserDefaults(suiteName: suiteName)!
+                defer { defaults.removePersistentDomain(forName: suiteName) }
+                let store = TunnelStore(defaults: defaults)
+                let groupName = state == .longName
+                    ? "Group " + String(repeating: "🌐", count: 26)
+                    : "Work"
+                let first = Tunnel(
+                    name: "Hermes Dashboard",
+                    localPort: 8_000,
+                    destinationHost: "localhost",
+                    destinationPort: 3_000,
+                    sshHost: "preview-1.example.com",
+                    groupTag: groupName
+                )
+                let second = Tunnel(
+                    name: "Virtual Desktop",
+                    localPort: 8_001,
+                    destinationHost: "localhost",
+                    destinationPort: 3_001,
+                    sshHost: "preview-2.example.com",
+                    groupTag: groupName
+                )
+                store.add(first)
+                store.add(second)
+
+                switch state {
+                case .stopped, .longName:
+                    break
+                case .active:
+                    store.setPreviewPhase(.running, for: first)
+                    store.setPreviewPhase(.starting, for: second)
+                case .mixed:
+                    store.setPreviewPhase(.running, for: first)
+                }
+
+                try capture(
+                    view: RelayBarRootView()
+                        .environmentObject(store),
+                    appearance: appearanceName,
+                    assertHorizontalContainment: true,
+                    to: outputDirectory.appendingPathComponent(
+                        "task-038-group-controls-\(state.rawValue)-\(appearanceLabel).png"
+                    )
+                )
+            }
+        }
+    }
+
+    /// The popover as the approved mock draws it: grouped and flat lists with
+    /// every row state and one hovered row, six rows and two headers fitting
+    /// without scrolling, an overflowing list with scroll bars set to Always,
+    /// the empty list and the top of the profile editor.
+    func testCaptureSwitchboardPopoverSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        let mixed = switchboardStore(grouped: true)
+        let flat = switchboardStore(grouped: false)
+        let short = switchboardStore(grouped: true, only: [
+            "Photos", "Home Assistant", "Hermes Dashboard", "Virtual Desktop", "PostgreSQL", "Grafana"
+        ])
+        let empty = switchboardStore(grouped: true, only: [])
+        let editTunnel = try XCTUnwrap(mixed.store.tunnels.first { $0.name == "PostgreSQL" })
+
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearance == .aqua ? "light" : "dark"
+            func file(_ name: String) -> URL {
+                outputDirectory.appendingPathComponent("popover-\(name)-\(label).png")
+            }
+            for (name, fixture) in [("grouped", mixed), ("flat", flat)] {
+                try capture(
+                    view: RelayBarRootView()
+                        .environmentObject(fixture.store)
+                        .environment(\.previewHoveredTunnel, fixture.hovered),
+                    appearance: appearance,
+                    assertHorizontalContainment: true,
+                    to: file(name)
+                )
+            }
+            try capture(
+                view: RelayBarRootView().environmentObject(short.store),
+                appearance: appearance,
+                assertHorizontalContainment: true,
+                inspect: { host in
+                    let scrollView = try XCTUnwrap(self.firstScrollView(in: host))
+                    let document = try XCTUnwrap(scrollView.documentView).bounds.height
+                    let layout = RelayBarPopoverLayout.self
+                    XCTAssertEqual(
+                        document,
+                        layout.listTopInset + layout.groupHeaderHeight * 2 + layout.groupSpacing
+                            + layout.rowHeight * 6 + layout.listBottomInset,
+                        accuracy: 0.5
+                    )
+                    XCTAssertLessThanOrEqual(
+                        document - layout.listBottomInset, scrollView.contentView.bounds.height,
+                        "All six rows are inside the viewport"
+                    )
+                    XCTAssertEqual(scrollView.contentView.bounds.minY, 0, accuracy: 0.5)
+                },
+                to: file("six-rows")
+            )
+            try withScrollBarsAlwaysShown {
+                for (position, offset) in [("top", nil), ("bottom", 1_000)] as [(String, CGFloat?)] {
+                    try capture(
+                        view: RelayBarRootView()
+                            .environmentObject(mixed.store)
+                            .environment(\.previewHoveredTunnel, mixed.hovered),
+                        appearance: appearance,
+                        scrollOffsetY: offset,
+                        assertHorizontalContainment: true,
+                        inspect: { host in
+                            let scrollView = try XCTUnwrap(self.firstScrollView(in: host))
+                            XCTAssertEqual(scrollView.scrollerStyle, .overlay)
+                            XCTAssertEqual(scrollView.contentView.bounds.width, scrollView.bounds.width, accuracy: 0.5)
+                        },
+                        to: file("scroll-bars-always-\(position)")
+                    )
+                }
+            }
+            try capture(
+                view: RelayBarRootView().environmentObject(empty.store),
+                appearance: appearance,
+                to: file("empty")
+            )
+            for (name, tunnel) in [("editor-new", nil), ("editor-edit", editTunnel)] as [(String, Tunnel?)] {
+                try capture(
+                    view: TunnelEditorView(
+                        tunnel: tunnel,
+                        availableGroups: ["Personal", "Work"],
+                        onCancel: {},
+                        onSave: { _ in }
+                    )
+                    .foregroundStyle(HouseColor.ink)
+                    .background(HouseColor.paper),
+                    appearance: appearance,
+                    assertHorizontalContainment: true,
+                    to: file(name)
+                )
+            }
+        }
+    }
+
+    /// Task 069: the popover with every row state, the profile editor, Settings, Remote Files (a folder and an image
+    /// in its well) and the Plugins window, with Paper Appearance on and off, light and dark.
+    func testCaptureTask069PaperAppearanceSnapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        defer { HousePalette.apply(.paper) }
+
+        let mixed = switchboardStore(grouped: true)
+        let editTunnel = try XCTUnwrap(mixed.store.tunnels.first { $0.name == "PostgreSQL" })
+        let settings = try await settingsFixture()
+        let composition = settings.composition
+
+        let image = RemoteFileEntry(name: "01-dashboard.png", path: "/srv/releases/01-dashboard.png", kind: .file,
+                                    size: 84_120, modificationText: "Aug 30 12:00")
+        let entries = [
+            RemoteFileEntry(name: "builds", path: "/srv/releases/builds", kind: .directory, size: nil,
+                            modificationText: "Aug 24 14:08"),
+            RemoteFileEntry(name: "README.md", path: "/srv/releases/README.md", kind: .file, size: 8_420,
+                            modificationText: "Aug 24 13:42"),
+            image
+        ]
+        let folder = try task037WorkspaceFixture(entries: entries)
+        folder.model.activate(try XCTUnwrap(folder.model.recentLocations.first))
+        try await waitUntil { folder.model.screen == .browser && !folder.model.isLoading }
+        folder.model.select(entries[1])
+        let hostID = try XCTUnwrap(folder.model.servers(from: .recent).first?.id)
+        let preview = try task037WorkspaceFixture(entries: entries)
+        let imageDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("RelayBarTask069-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: imageDirectory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: imageDirectory) }
+        let imageURL = imageDirectory.appendingPathComponent(image.name)
+        try task027ImageData().write(to: imageURL)
+        preview.service.previewURL = imageURL
+        preview.model.activate(try XCTUnwrap(preview.model.recentLocations.first))
+        try await waitUntil { preview.model.screen == .browser && !preview.model.isLoading }
+        preview.model.preview(image)
+        try await waitUntil(timeout: 5) { preview.model.previewImage != nil && !preview.model.isLoadingPreview }
+
+        for form in HouseForm.allCases {
+            // Switched through the plugin, as the Plugins window does, so its switch shows the choice too.
+            try await composition.setPlugin(RelayPlugins.paperAppearance, enabled: form == .paper)
+            XCTAssertEqual(HousePalette.form, form)
+            let composer = PluginComposer(runtime: composition.runtime, plugins: composition.plugins,
+                                          isEnabled: { composition.isPluginEnabled($0) },
+                                          setEnabled: { try await composition.setPlugin($0, enabled: $1) })
+            composer.selection = "tunnels"
+            let plugin = form == .paper ? "on" : "off"
+            for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+                let label = appearance == .aqua ? "light" : "dark"
+                func file(_ name: String) -> URL {
+                    outputDirectory.appendingPathComponent("069-\(name)-paper-\(plugin)-\(label).png")
+                }
+                try capture(
+                    view: RelayBarRootView()
+                        .environmentObject(mixed.store)
+                        .environment(\.previewHoveredTunnel, mixed.hovered),
+                    appearance: appearance,
+                    to: file("popover")
+                )
+                try capture(
+                    view: TunnelEditorView(tunnel: editTunnel, availableGroups: ["Personal", "Work"],
+                                           onCancel: {}, onSave: { _ in })
+                        .foregroundStyle(HouseColor.ink)
+                        .background(HouseColor.paper),
+                    appearance: appearance,
+                    to: file("editor")
+                )
+                _ = try captureSettingsWindow(settings.controller, appearance: appearance, to: file("settings"))
+                try capture(
+                    view: RemoteFilesView(model: folder.model, expandedHostIDs: [hostID]),
+                    appearance: appearance,
+                    size: RemoteFilesWindowSizing.workspace,
+                    to: file("remote-files")
+                )
+                try capture(
+                    view: RemoteFilesView(model: preview.model),
+                    appearance: appearance,
+                    size: RemoteFilesWindowSizing.previewPreferred,
+                    to: file("remote-preview")
+                )
+                try capture(
+                    view: PluginComposerView(composer: composer),
+                    appearance: appearance,
+                    size: NSSize(width: 1_180, height: 720),
+                    to: file("plugins")
+                )
+            }
+        }
+        folder.model.cancelAll()
+        preview.model.cancelAll()
+    }
+
+    private struct SwitchboardFixture {
+        let store: TunnelStore
+        let hovered: UUID?
+    }
+
+    /// The mock's tunnels and states. Hermes Dashboard is the hovered row.
+    private func switchboardStore(grouped: Bool, only names: [String]? = nil) -> SwitchboardFixture {
+        let suiteName = "RelayBarSwitchboard.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        addTeardownBlock { UserDefaults.standard.removePersistentDomain(forName: suiteName) }
+        let store = TunnelStore(defaults: defaults)
+
+        func web(_ name: String, _ local: Int, _ remote: Int, _ host: String, _ group: String?) -> Tunnel {
+            Tunnel(name: name, localPort: local, destinationHost: "localhost", destinationPort: remote,
+                   sshHost: host, groupTag: grouped ? group : nil)
+        }
+        let socks = Tunnel(
+            name: "SOCKS Proxy", sshHost: "bastion.example.com",
+            rules: [ForwardingRule(kind: .localDynamic, listen: .tcp(bindAddress: "localhost", port: 1_080))],
+            groupTag: grouped ? "Work" : nil
+        )
+        let fixtures: [(Tunnel, TunnelPhase)] = [
+            (web("Photos", 8_002, 3_002, "photos.example.com", "Personal"), .failed("Operation timed out")),
+            (web("Home Assistant", 8_123, 8_123, "nas.example.com", "Personal"), .stopped),
+            (web("Hermes Dashboard", 8_000, 3_000, "preview-1.example.com", "Work"), .running),
+            (web("Virtual Desktop", 8_001, 3_001, "preview-2.example.com", "Work"), .retrying(
+                attempt: 2, maxAttempts: 10, delay: 4, message: "Connection refused"
+            )),
+            (web("PostgreSQL", 5_432, 5_432, "bastion.example.com", "Work"), .running),
+            (socks, .stopped),
+            (web("Grafana", 3_100, 3_000, "bastion.example.com", "Work"), .running),
+            (web("Scratch", 9_000, 9_000, "dev.example.com", nil), .stopped),
+            (web("Build Cache", 8_080, 8_080, "cache.example.com", nil), .starting)
+        ]
+        for (tunnel, phase) in fixtures where names?.contains(tunnel.name) ?? true {
+            store.add(tunnel)
+            store.setPreviewPhase(phase, for: tunnel)
+        }
+        let hovered = store.tunnels.first { $0.name == "Hermes Dashboard" }?.id
+        return SwitchboardFixture(store: store, hovered: names == nil ? hovered : nil)
+    }
+
+    /// Runs `body` as if "Show scroll bars" were set to Always.
+    private func withScrollBarsAlwaysShown(_ body: () throws -> Void) throws {
+        var arguments = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+        let previous = arguments["AppleShowScrollBars"]
+        arguments["AppleShowScrollBars"] = "Always"
+        UserDefaults.standard.setVolatileDomain(arguments, forName: UserDefaults.argumentDomain)
+        NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
+        defer {
+            var restored = UserDefaults.standard.volatileDomain(forName: UserDefaults.argumentDomain)
+            restored["AppleShowScrollBars"] = previous
+            UserDefaults.standard.setVolatileDomain(restored, forName: UserDefaults.argumentDomain)
+            NotificationCenter.default.post(name: NSScroller.preferredScrollerStyleDidChangeNotification, object: nil)
+        }
+        XCTAssertEqual(NSScroller.preferredScrollerStyle, .legacy)
+        try body()
+    }
+
+    /// The Settings window's content at its fixed width in every state that
+    /// changes its height. Each capture is exactly the content's fitting
+    /// height, so nothing scrolls or clips.
+    func testCaptureSettingsWindowSnapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        let standard = try await settingsFixture()
+        let approval = try await settingsFixture(loginStatus: .requiresApproval)
+        let frame = try await settingsFixture(frameAccess: true)
+        XCTAssertNotNil(frame.composition.frameHost)
+        let checked = try await settingsFixture(copied: true)
+        checked.composition.updates.checkForUpdates()
+        checked.updates.complete(with: .upToDate)
+        XCTAssertEqual(checked.composition.updates.state, .upToDate)
+        // Also a three-digit retry limit and a preview format switched off.
+        let waiting = try await settingsFixture()
+        waiting.updates.deferredInstallTunnelCount = 2
+        waiting.composition.updates.refresh()
+        try await waiting.composition.setRetryLimit(100)
+        try await waiting.composition.setPreviewEnabled("html", false)
+
+        let fixtures = [
+            ("default", standard), ("login-approval", approval), ("frame-access", frame),
+            ("update-status", checked), ("update-waiting", waiting)
+        ]
+        var heights: [String: CGFloat] = [:]
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearance == .aqua ? "light" : "dark"
+            for (name, fixture) in fixtures {
+                heights[name] = try captureSettingsWindow(
+                    fixture.controller,
+                    appearance: appearance,
+                    to: outputDirectory.appendingPathComponent("settings-\(name)-\(label).png")
+                )
+            }
+        }
+        let base = try XCTUnwrap(heights["default"])
+        for name in ["login-approval", "frame-access", "update-status", "update-waiting"] {
+            XCTAssertGreaterThan(try XCTUnwrap(heights[name]), base, "\(name) adds a line or a box to Settings")
+        }
+    }
+
+    /// Idle, active and failed menu-bar glyphs on the menu bar's light and
+    /// dark strips, at actual size and enlarged eight times.
+    func testCaptureStatusItemGlyphSnapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+
+        let states: [(String, StatusItemGlyph.State)] = [("Idle", .idle), ("Active", .active), ("Failed", .failed)]
+        let enlargement: CGFloat = 8, column: CGFloat = 25 * enlargement + 40, inset: CGFloat = 24
+        let canvas = NSSize(width: inset * 2 + column * 3, height: 290)
+        let strips: [(String, NSColor, NSColor)] = [
+            ("light", NSColor(srgbRed: 0.89, green: 0.898, blue: 0.918, alpha: 1),
+             NSColor(srgbRed: 0.114, green: 0.114, blue: 0.122, alpha: 1)),
+            ("dark", NSColor(srgbRed: 0.165, green: 0.169, blue: 0.188, alpha: 1),
+             NSColor(srgbRed: 0.949, green: 0.949, blue: 0.957, alpha: 1))
+        ]
+        for (label, background, foreground) in strips {
+            let rep = try XCTUnwrap(NSBitmapImageRep(
+                bitmapDataPlanes: nil, pixelsWide: Int(canvas.width * 2), pixelsHigh: Int(canvas.height * 2),
+                bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+                colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+            ))
+            rep.size = canvas
+            NSGraphicsContext.saveGraphicsState()
+            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+            background.setFill()
+            NSRect(origin: .zero, size: canvas).fill()
+            let caption: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 12), .foregroundColor: foreground.withAlphaComponent(0.7)
+            ]
+            for (index, (title, state)) in states.enumerated() {
+                let glyph = StatusItemGlyph.makeImage(for: state)
+                XCTAssertTrue(glyph.isTemplate)
+                let tinted = NSImage(size: glyph.size, flipped: false) { rect in
+                    glyph.draw(in: rect)
+                    foreground.setFill()
+                    rect.fill(using: .sourceAtop)
+                    return true
+                }
+                let x = inset + CGFloat(index) * column
+                tinted.draw(in: NSRect(
+                    x: x, y: 96,
+                    width: glyph.size.width * enlargement, height: glyph.size.height * enlargement
+                ))
+                tinted.draw(in: NSRect(x: x, y: 52, width: glyph.size.width, height: glyph.size.height))
+                (title as NSString).draw(at: NSPoint(x: x, y: 20), withAttributes: caption)
+            }
+            NSGraphicsContext.restoreGraphicsState()
+            let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+            try data.write(to: outputDirectory.appendingPathComponent("menu-bar-glyph-\(label).png"))
+        }
+    }
+
+    private struct SettingsFixture {
+        let composition: RelayBarComposition
+        let controller: RelaySettingsWindowController
+        let updates: SnapshotUpdateService
+    }
+
+    private func settingsFixture(
+        loginStatus: LoginItemStatus = .enabled,
+        frameAccess: Bool = false,
+        copied: Bool = false
+    ) async throws -> SettingsFixture {
+        let suite = "RelayBarSettingsWindow.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        // Short, because a socket's path is limited to 104 bytes.
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("rbs-\(UUID().uuidString.prefix(8))")
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        defaults.set(frameAccess, forKey: "frameViewer.readAccess.v1")
+        let updates = SnapshotUpdateService()
+        let composition = RelayBarComposition(
+            defaults: defaults, startsBridge: frameAccess, showsWindows: false,
+            makeCatalog: { RemoteServerCatalog(defaults: defaults, sshConfigURL: URL(fileURLWithPath: "/nonexistent")) },
+            makeTunnels: { TunnelStore(defaults: defaults, persistsRetryLimit: false) },
+            makeUpdates: { _ in updates },
+            loginService: LoginItemServiceSpy(status: loginStatus),
+            recoveryEvents: SilentRecoveryEvents(),
+            frameInstalled: frameAccess,
+            bridgeRoot: { root }
+        )
+        addTeardownBlock {
+            await composition.stop()
+            UserDefaults.standard.removePersistentDomain(forName: suite)
+            try? FileManager.default.removeItem(at: root)
+        }
+        await composition.start()
+        XCTAssertNil(composition.errorMessage)
+        let controller = RelaySettingsWindowController(
+            composition: composition,
+            about: previewAboutModel(copied: copied),
+            windowType: QuietSettingsWindow.self
+        )
+        return SettingsFixture(composition: composition, controller: controller, updates: updates)
+    }
+
+    /// Writes the window's content and returns its height.
+    private func captureSettingsWindow(
+        _ controller: RelaySettingsWindowController,
+        appearance: NSAppearance.Name,
+        to url: URL
+    ) throws -> CGFloat {
+        let window = try XCTUnwrap(controller.window as? QuietSettingsWindow)
+        window.appearance = NSAppearance(named: appearance)
+        window.orderInOffscreen()
+        defer { window.orderOut(nil) }
+        let deadline = Date().addingTimeInterval(1)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+        window.layoutIfNeeded()
+
+        let content = try XCTUnwrap(window.contentView)
+        XCTAssertFalse(window.styleMask.contains(.resizable))
+        XCTAssertEqual(content.frame.width, SettingsLayout.width)
+        XCTAssertEqual(
+            content.frame.height, content.fittingSize.height, accuracy: 0.5,
+            "The window is exactly as tall as its content"
+        )
+        XCTAssertNil(firstScrollView(in: content), "Settings never scrolls")
+
+        let rep = try XCTUnwrap(content.bitmapImageRepForCachingDisplay(in: content.bounds))
+        content.cacheDisplay(in: content.bounds, to: rep)
+        let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        try data.write(to: url)
+        XCTAssertGreaterThan(data.count, 2_000, "snapshot looks empty")
+        return content.frame.height
+    }
+
+    private func previewAboutModel(copied: Bool = false) -> ApplicationAboutModel {
+        let model = ApplicationAboutModel(
+            metadata: ApplicationMetadata(
+                infoDictionary: [
+                    "CFBundleName": "RelayBar",
+                    "CFBundleShortVersionString": "2.0.0",
+                    "CFBundleVersion": "22"
+                ]
+            ),
+            pasteboardWriter: SnapshotPasteboardWriter(),
+            announcer: SnapshotAccessibilityAnnouncer(),
+            confirmationDuration: .seconds(30)
+        )
+        if copied { model.copyVersion() }
+        return model
+    }
+
+    func testCaptureTask021Snapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let catalog = RemoteServerCatalog()
+        _ = try catalog.add(name: "Development server", sshHost: "devbox.local")
+        let remoteFilesModel = RemoteFilesModel(
+            tunnels: [],
+            serverCatalog: catalog
+        )
+        let editTunnel = Tunnel(
+            name: "PostgreSQL through bastion",
+            localPort: 5_432,
+            destinationHost: "database.internal",
+            destinationPort: 5_432,
+            sshHost: "developer@bastion.example.com",
+            groupTag: "Work"
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            try capture(
+                view: TunnelEditorView(
+                    tunnel: nil,
+                    availableGroups: ["Personal", "Work"],
+                    onCancel: {},
+                    onSave: { _ in }
+                )
+                .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearanceName,
+                size: NSSize(width: 380, height: 440),
+                assertHorizontalContainment: true,
+                to: outputDirectory.appendingPathComponent(
+                    "task-021-new-profile-\(label).png"
+                )
+            )
+            try capture(
+                view: TunnelEditorView(
+                    tunnel: editTunnel,
+                    availableGroups: ["Personal", "Work"],
+                    onCancel: {},
+                    onSave: { _ in }
+                )
+                .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearanceName,
+                size: NSSize(width: 380, height: 440),
+                assertHorizontalContainment: true,
+                to: outputDirectory.appendingPathComponent(
+                    "task-031-edit-profile-\(label).png"
+                )
+            )
+            try capture(
+                view: RemoteFilesView(model: remoteFilesModel),
+                appearance: appearanceName,
+                size: NSSize(width: 360, height: 300),
+                to: outputDirectory.appendingPathComponent(
+                    "task-021-remote-files-\(label).png"
+                )
+            )
+        }
+    }
+
+    func testCaptureTask025Snapshots() throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            try capture(
+                view: TunnelEditorView(
+                    tunnel: nil,
+                    availableGroups: ["Personal", "Work"],
+                    onCancel: {},
+                    onSave: { _ in }
+                )
+                .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearanceName,
+                size: NSSize(width: 380, height: 440),
+                scrollOffsetY: 300,
+                assertHorizontalContainment: true,
+                to: outputDirectory.appendingPathComponent(
+                    "task-025-rule-type-\(label).png"
+                )
+            )
+        }
+    }
+
+    func testCaptureTask026Snapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            let service = Task026SnapshotService()
+            let output = RemoteFileEntry(
+                name: "output",
+                path: "/srv/app/output",
+                kind: .directory,
+                size: nil,
+                modificationText: "Jul 29 12:00"
+            )
+            let report = RemoteFileEntry(
+                name: "report.md",
+                path: "/srv/app/output/report.md",
+                kind: .file,
+                size: 8_420,
+                modificationText: "Jul 29 12:01"
+            )
+            service.setListing([output], for: "/srv/app")
+            service.setListing([report], for: output.path)
+            let tunnel = Tunnel(
+                name: "Development",
+                localPort: 8_080,
+                destinationHost: "localhost",
+                destinationPort: 3_000,
+                sshHost: "devbox.local"
+            )
+            let model = RemoteFilesModel(
+                tunnels: [tunnel],
+                service: service,
+                serverCatalog: RemoteServerCatalog()
+            )
+            model.remotePath = "/srv/app"
+            model.openRemotePath()
+            try await waitUntil {
+                model.screen == .browser && !model.isLoading
+            }
+
+            service.setSuspended(true, for: output.path)
+            model.activate(output)
+            XCTAssertTrue(model.isLoading)
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: NSSize(width: 780, height: 520),
+                to: outputDirectory.appendingPathComponent(
+                    "task-026-opening-\(label).png"
+                )
+            )
+
+            model.goBack()
+            service.setSuspended(false, for: output.path)
+            model.activate(output)
+            try await waitUntil {
+                model.currentPath == output.path && !model.isLoading
+            }
+
+            service.setSuspended(true, for: "/srv/app")
+            model.goBack()
+            XCTAssertTrue(model.isRefreshing)
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: NSSize(width: 780, height: 520),
+                to: outputDirectory.appendingPathComponent(
+                    "task-026-cached-refresh-\(label).png"
+                )
+            )
+
+            service.setError(
+                RemoteFileError.commandFailed("The connection was lost."),
+                for: "/srv/app"
+            )
+            service.setSuspended(false, for: "/srv/app")
+            try await waitUntil {
+                model.errorMessage == "The connection was lost."
+                    && !model.isRefreshing
+            }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: NSSize(width: 780, height: 520),
+                to: outputDirectory.appendingPathComponent(
+                    "task-026-revalidation-failure-\(label).png"
+                )
+            )
+            model.cancelAll()
+        }
+    }
+
+    func testCaptureTask037RemoteFilesWorkspaceSnapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let entries = [
+            RemoteFileEntry(
+                name: "builds",
+                path: "/srv/releases/builds",
+                kind: .directory,
+                size: nil,
+                modificationText: "Aug 24 14:08"
+            ),
+            RemoteFileEntry(
+                name: "README.md",
+                path: "/srv/releases/README.md",
+                kind: .file,
+                size: 8_420,
+                modificationText: "Aug 24 13:42"
+            ),
+            RemoteFileEntry(
+                name: "release.zip",
+                path: "/srv/releases/release.zip",
+                kind: .file,
+                size: 3_842_100,
+                modificationText: "Aug 24 13:40"
+            )
+        ]
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            let fixture = try task037WorkspaceFixture(entries: entries)
+            let model = fixture.model
+            let recentHostID = try XCTUnwrap(model.servers(from: .recent).first?.id)
+            let firstLocationID = try XCTUnwrap(model.recentLocations.first?.id)
+
+            try capture(
+                view: RemoteFilesView(
+                    model: model,
+                    expandedHostIDs: [recentHostID],
+                    initialFocusedSidebarItem: .location(firstLocationID)
+                ),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-keyboard-focus-\(label).png"
+                )
+            )
+
+            let longPathFixture = try task037WorkspaceFixture(entries: entries)
+            let longLocation = try XCTUnwrap(
+                longPathFixture.model.recentLocations.first(where: {
+                    $0.path.contains("a-very-long-project-name")
+                })
+            )
+            longPathFixture.model.activate(longLocation)
+            try await waitUntil {
+                longPathFixture.model.screen == .browser
+                    && !longPathFixture.model.isLoading
+            }
+            try capture(
+                view: RemoteFilesView(model: longPathFixture.model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.browserMinimum,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-long-path-\(label).png"
+                ),
+            )
+            longPathFixture.model.cancelAll()
+
+            try capture(
+                view: RemoteFilesView(
+                    model: model,
+                    expandedHostIDs: [recentHostID]
+                ),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-welcome-expanded-host-\(label).png"
+                )
+            )
+
+            model.activate(try XCTUnwrap(model.recentLocations.first))
+            try await waitUntil { model.screen == .browser && !model.isLoading }
+            try capture(
+                view: RemoteFilesView(
+                    model: model,
+                    expandedHostIDs: [recentHostID]
+                ),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-folder-\(label).png"
+                )
+            )
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.browserMinimum,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-narrow-\(label).png"
+                )
+            )
+
+            let uploadDirectory = FileManager.default.temporaryDirectory
+                .appendingPathComponent("RelayBarTask037-\(UUID().uuidString)")
+            try FileManager.default.createDirectory(
+                at: uploadDirectory,
+                withIntermediateDirectories: false
+            )
+            defer { try? FileManager.default.removeItem(at: uploadDirectory) }
+            let uploadFile = uploadDirectory.appendingPathComponent("notes.txt")
+            try Data("release notes".utf8).write(to: uploadFile)
+            fixture.presenter.uploadFile = uploadFile
+            fixture.service.setUploadSuspended(true)
+            model.beginUpload()
+            try await waitUntil { model.upload?.phase == .active }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-upload-progress-\(label).png"
+                )
+            )
+            model.cancelUpload()
+            try await waitUntil { model.upload?.phase == .cancelled }
+            fixture.service.setUploadSuspended(false)
+            model.dismissUpload()
+
+            let markdownDirectory = uploadDirectory.appendingPathComponent("preview")
+            try FileManager.default.createDirectory(
+                at: markdownDirectory,
+                withIntermediateDirectories: false
+            )
+            let markdownURL = markdownDirectory.appendingPathComponent("README.md")
+            try Data("# Release workspace\n\nPreview remains beside recent locations.".utf8)
+                .write(to: markdownURL)
+            fixture.service.previewURL = markdownURL
+            model.preview(entries[1])
+            try await waitUntil { model.previewMarkdown != nil }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-preview-\(label).png"
+                )
+            )
+            model.closePreview()
+
+            fixture.presenter.uploadFile = uploadFile
+            fixture.service.uploadError = RemoteFileError.uploadConflict
+            model.beginUpload()
+            try await waitUntil {
+                model.upload?.phase == .failed && !model.isRefreshing
+            }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-upload-conflict-\(label).png"
+                )
+            )
+            model.cancelAll()
+
+            let emptyModel = RemoteFilesModel(
+                tunnels: [],
+                serverCatalog: RemoteServerCatalog()
+            )
+            try capture(
+                view: RemoteFilesView(model: emptyModel),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-empty-history-\(label).png"
+                )
+            )
+            emptyModel.remotePath = "relative/path"
+            try capture(
+                view: AddRemotePathView(model: emptyModel),
+                appearance: appearanceName,
+                size: NSSize(width: 430, height: 360),
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-add-path-validation-\(label).png"
+                )
+            )
+
+            let failedFixture = try task037WorkspaceFixture(entries: entries)
+            let failedPath = try XCTUnwrap(failedFixture.model.recentLocations.first).path
+            failedFixture.service.setError(
+                RemoteFileError.commandFailed("The remote path wasn’t found."),
+                for: failedPath
+            )
+            failedFixture.model.activate(
+                try XCTUnwrap(failedFixture.model.recentLocations.first)
+            )
+            try await waitUntil { failedFixture.model.failedLocationID != nil }
+            try capture(
+                view: RemoteFilesView(model: failedFixture.model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-stale-path-\(label).png"
+                )
+            )
+            failedFixture.model.cancelAll()
+
+            let largeTextFixture = try task037WorkspaceFixture(entries: entries)
+            let largeInterfaceScale = 1.25
+            try capture(
+                view: RemoteFilesView(model: largeTextFixture.model)
+                    .frame(
+                        width: RemoteFilesWindowSizing.workspace.width
+                            / largeInterfaceScale,
+                        height: RemoteFilesWindowSizing.workspace.height
+                            / largeInterfaceScale
+                    )
+                    .scaleEffect(largeInterfaceScale, anchor: .topLeading)
+                    .frame(
+                        width: RemoteFilesWindowSizing.workspace.width,
+                        height: RemoteFilesWindowSizing.workspace.height,
+                        alignment: .topLeading
+                    ),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-037-larger-text-\(label).png"
+                )
+            )
+            largeTextFixture.model.cancelAll()
+        }
+    }
+
+    func testCaptureTask040And041RemoteFileSnapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let firstImage = RemoteFileEntry(
+            name: "01-dashboard.png",
+            path: "/srv/releases/01-dashboard.png",
+            kind: .file,
+            size: 84_120,
+            modificationText: "Aug 30 12:00"
+        )
+        let json = RemoteFileEntry(
+            name: "deployment-status.json",
+            path: "/srv/releases/deployment-status.json",
+            kind: .file,
+            size: 1_284,
+            modificationText: "Aug 30 12:01"
+        )
+        let nextImage = RemoteFileEntry(
+            name: "02-metrics.png",
+            path: "/srv/releases/02-metrics.png",
+            kind: .file,
+            size: 92_440,
+            modificationText: "Aug 30 12:02"
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            let fixture = try task037WorkspaceFixture(
+                entries: [firstImage, json, nextImage]
+            )
+            let model = fixture.model
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "RelayBarTask040041-\(UUID().uuidString)",
+                isDirectory: true
+            )
+            let jsonDirectory = root.appendingPathComponent("json", isDirectory: true)
+            let firstImageDirectory = root.appendingPathComponent("first", isDirectory: true)
+            let nextImageDirectory = root.appendingPathComponent("next", isDirectory: true)
+            let uploadDirectory = root.appendingPathComponent("upload", isDirectory: true)
+            for directory in [jsonDirectory, firstImageDirectory, nextImageDirectory, uploadDirectory] {
+                try FileManager.default.createDirectory(
+                    at: directory,
+                    withIntermediateDirectories: true
+                )
+            }
+            defer { try? FileManager.default.removeItem(at: root) }
+            let jsonURL = jsonDirectory.appendingPathComponent(json.name)
+            try Data(
+                #"{"environment":"production","healthy":true,"instances":[{"name":"api-1","requests":1284},{"name":"api-2","requests":1179}]}"#.utf8
+            ).write(to: jsonURL)
+            let imageData = try task027ImageData()
+            let firstImageURL = firstImageDirectory.appendingPathComponent(firstImage.name)
+            let nextImageURL = nextImageDirectory.appendingPathComponent(nextImage.name)
+            try imageData.write(to: firstImageURL)
+            try imageData.write(to: nextImageURL)
+            let uploadURL = uploadDirectory.appendingPathComponent("release-notes.txt")
+            try Data(repeating: 0x41, count: 2_048).write(to: uploadURL)
+
+            model.activate(try XCTUnwrap(model.recentLocations.first))
+            try await waitUntil { model.screen == .browser && !model.isLoading }
+            model.select(firstImage)
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-041-browser-delete-\(label).png"
+                )
+            )
+
+            fixture.service.previewURL = jsonURL
+            model.preview(json)
+            try await waitUntil { model.previewJSON != nil && !model.isLoadingPreview }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-040-json-preview-\(label).png"
+                )
+            )
+
+            model.closePreview()
+            fixture.presenter.uploadFile = uploadURL
+            fixture.service.setUploadSuspended(true)
+            model.beginUpload()
+            try await waitUntil { (model.upload?.completedBytes ?? 0) > 0 }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-040-upload-percent-\(label).png"
+                )
+            )
+            model.cancelUpload()
+            try await waitUntil { model.upload?.phase == .cancelled }
+            fixture.service.setUploadSuspended(false)
+            model.dismissUpload()
+
+            fixture.service.previewURL = firstImageURL
+            model.preview(firstImage)
+            try await waitUntil { model.previewImage != nil && !model.isLoadingPreview }
+            fixture.service.setDeletionSuspended(true)
+            model.deletePreviewEntry()
+            try await waitUntil(timeout: 7) { model.deletion?.phase == .active }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-041-preview-deleting-\(label).png"
+                )
+            )
+
+            fixture.service.previewURL = nextImageURL
+            fixture.service.setDeletionSuspended(false)
+            try await waitUntil(timeout: 3) {
+                model.deletion == nil
+                    && model.previewEntry == nextImage
+                    && model.previewImage != nil
+                    && !model.isLoadingPreview
+            }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-041-preview-next-image-\(label).png"
+                )
+            )
+            model.cancelAll()
+        }
+    }
+
+    func testCaptureTask042To044RemoteFileSnapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        let folder = RemoteFileEntry(
+            name: "archive",
+            path: "/srv/releases/archive",
+            kind: .directory,
+            size: nil,
+            modificationText: "Aug 30 14:00"
+        )
+        let json = RemoteFileEntry(
+            name: "long-status.json",
+            path: "/srv/releases/long-status.json",
+            kind: .file,
+            size: 6_400,
+            modificationText: "Aug 30 14:01"
+        )
+        let video = RemoteFileEntry(
+            name: "release-demo.MP4",
+            path: "/srv/releases/release-demo.MP4",
+            kind: .file,
+            size: 18_400_000,
+            modificationText: "Aug 30 14:02"
+        )
+        let notes = RemoteFileEntry(
+            name: "release-notes.txt",
+            path: "/srv/releases/release-notes.txt",
+            kind: .file,
+            size: 2_048,
+            modificationText: "Aug 30 14:03"
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            let fixture = try task037WorkspaceFixture(
+                entries: [folder, json, video, notes],
+                videoValidator: { _ in }
+            )
+            let model = fixture.model
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent(
+                "RelayBarTask042044-\(UUID().uuidString)",
+                isDirectory: true
+            )
+            let jsonDirectory = root.appendingPathComponent("json", isDirectory: true)
+            let videoDirectory = root.appendingPathComponent("video", isDirectory: true)
+            try FileManager.default.createDirectory(
+                at: jsonDirectory,
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.createDirectory(
+                at: videoDirectory,
+                withIntermediateDirectories: true
+            )
+            defer { try? FileManager.default.removeItem(at: root) }
+
+            let jsonURL = jsonDirectory.appendingPathComponent(json.name)
+            let longValue = String(repeating: "deployment-candidate-", count: 28)
+            let rows = (0..<20).map { index in
+                #"{"name":"worker-\#(index)","artifact":"\#(longValue)"}"#
+            }.joined(separator: ",")
+            try Data("{\"deployments\":[\(rows)]}".utf8).write(to: jsonURL)
+            let videoURL = videoDirectory.appendingPathComponent(video.name)
+            try await writePlayableTestMP4(to: videoURL)
+
+            model.activate(try XCTUnwrap(model.recentLocations.first))
+            try await waitUntil { model.screen == .browser && !model.isLoading }
+            model.beginFileSelection()
+            model.toggleFileSelection(json)
+            model.toggleFileSelection(video)
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.workspace,
+                to: outputDirectory.appendingPathComponent(
+                    "task-042-file-selection-\(label).png"
+                )
+            )
+
+            model.cancelFileSelection()
+            fixture.service.previewURL = jsonURL
+            model.preview(json)
+            try await waitUntil { model.previewJSON != nil && !model.isLoadingPreview }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: NSSize(width: 760, height: 520),
+                to: outputDirectory.appendingPathComponent(
+                    "task-043-json-wrap-scroll-\(label).png"
+                )
+            )
+            let interfaceScale = 1.2
+            try capture(
+                view: RemoteFilesView(model: model)
+                    .frame(
+                        width: 760 / interfaceScale,
+                        height: 520 / interfaceScale
+                    )
+                    .scaleEffect(interfaceScale, anchor: .topLeading)
+                    .frame(width: 760, height: 520, alignment: .topLeading),
+                appearance: appearanceName,
+                size: NSSize(width: 760, height: 520),
+                to: outputDirectory.appendingPathComponent(
+                    "task-043-json-larger-text-\(label).png"
+                )
+            )
+
+            model.closePreview()
+            fixture.service.previewURL = videoURL
+            fixture.service.setPreviewSuspended(true)
+            model.preview(video)
+            try await waitUntil { (model.previewProgress?.completedBytes ?? 0) > 0 }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-044-video-progress-\(label).png"
+                )
+            )
+            fixture.service.setPreviewSuspended(false)
+            try await waitUntil { model.previewVideoURL != nil && !model.isLoadingPreview }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-044-video-preview-\(label).png"
+                )
+            )
+            model.cancelAll()
+        }
+    }
+
+    func testCaptureTasks046To048Snapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+        for appearance in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearance == .aqua ? "light" : "dark"
+            let files = ["notes.txt", "report.json"].map {
+                RemoteFileEntry(name: $0, path: "/srv/releases/\($0)", kind: .file,
+                                size: 128, modificationText: "Sep 28 12:00")
+            }
+            let fixture = try task037WorkspaceFixture(entries: files)
+            let model = fixture.model
+            let longPath = try XCTUnwrap(model.recentLocations.first { $0.path.contains("build-artifacts") })
+            model.activate(longPath)
+            try await waitUntil { model.screen == .browser && !model.isLoading }
+            try capture(
+                view: RemoteFilesView(model: model), appearance: appearance,
+                size: RemoteFilesWindowSizing.browserMinimum,
+                to: outputDirectory.appendingPathComponent("task-047-narrow-path-\(label).png")
+            )
+            model.activate(try XCTUnwrap(model.recentLocations.first { $0.path == "/srv/releases" }))
+            try await waitUntil { model.screen == .browser && !model.isLoading }
+            model.beginFileSelection()
+            files.forEach(model.toggleFileSelection)
+            try capture(
+                view: RemoteFilesView(model: model), appearance: appearance,
+                size: RemoteFilesWindowSizing.browserMinimum,
+                to: outputDirectory.appendingPathComponent("task-046-bulk-delete-\(label).png")
+            )
+            model.deleteSelectedFiles()
+            XCTAssertEqual(model.deletion?.phase, .pendingUndo)
+            try capture(
+                view: RemoteFilesView(model: model), appearance: appearance,
+                size: RemoteFilesWindowSizing.browserMinimum,
+                to: outputDirectory.appendingPathComponent("task-046-undo-\(label).png")
+            )
+            model.undoDeletion()
+            XCTAssertEqual(model.entries, files)
+            model.cancelAll()
+
+            let invalid = Tunnel(name: "Database", localPort: 0,
+                                 destinationHost: "db", destinationPort: 5432,
+                                 sshHost: "user@bastion.example.com")
+            try capture(
+                view: TunnelEditorView(tunnel: invalid, availableGroups: [], onCancel: {}, onSave: { _ in })
+                    .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearance, assertHorizontalContainment: true,
+                to: outputDirectory.appendingPathComponent("task-048-invalid-port-\(label).png")
+            )
+            let remoteSOCKS = Tunnel(
+                name: "SOCKS", sshHost: "user@bastion.example.com",
+                rules: [ForwardingRule(kind: .remoteDynamic, listen: .tcp(port: 1080))],
+                reverseSOCKSPolicy: .any
+            )
+            try capture(
+                view: TunnelEditorView(tunnel: remoteSOCKS, availableGroups: [], onCancel: {}, onSave: { _ in })
+                    .background(Color(nsColor: .windowBackgroundColor)),
+                appearance: appearance, scrollOffsetY: 180, assertHorizontalContainment: true,
+                to: outputDirectory.appendingPathComponent("task-048-remote-socks-\(label).png")
+            )
+        }
+    }
+
+    private func task037WorkspaceFixture(
+        entries: [RemoteFileEntry],
+        videoValidator: @escaping (URL) async throws -> Void = {
+            try await RemoteVideoPreview.validate(contentsOf: $0)
+        }
+    ) throws -> (
+        model: RemoteFilesModel,
+        service: Task037SnapshotService,
+        presenter: Task037SnapshotPresenter
+    ) {
+        let catalog = RemoteServerCatalog()
+        let server = try catalog.add(name: "Production builds", sshHost: "deploy@prod.example")
+        _ = catalog.recordSuccessfulOpen(
+            server,
+            path: "/srv/releases/teams/platform/a-very-long-project-name/build-artifacts"
+        )
+        _ = catalog.recordSuccessfulOpen(server, path: "/srv/releases/archive/2026")
+        _ = catalog.recordSuccessfulOpen(server, path: "/srv/releases/archive/2025")
+        _ = catalog.recordSuccessfulOpen(server, path: "/srv/releases/archive/2024")
+        _ = catalog.recordSuccessfulOpen(server, path: "/srv/releases/archive/2023")
+        _ = catalog.recordSuccessfulOpen(server, path: "/srv/releases/archive/2022")
+        _ = catalog.recordSuccessfulOpen(server, path: "/srv/releases/archive/2021")
+        _ = catalog.recordSuccessfulOpen(server, path: "/srv/releases")
+        let service = Task037SnapshotService(entries: entries)
+        let presenter = Task037SnapshotPresenter()
+        return (
+            RemoteFilesModel(
+                tunnels: [],
+                service: service,
+                presenter: presenter,
+                videoValidator: videoValidator,
+                serverCatalog: catalog
+            ),
+            service,
+            presenter
+        )
+    }
+
+    func testCaptureTask027Snapshots() async throws {
+        try XCTSkipIf(
+            ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"] == nil,
+            "Set RELAYBAR_SNAPSHOT_DIR to capture snapshots."
+        )
+
+        for appearanceName in [NSAppearance.Name.aqua, .darkAqua] {
+            let label = appearanceName == .aqua ? "light" : "dark"
+            let imageEntry = RemoteFileEntry(
+                name: "launch-concept.png",
+                path: "/srv/app/design/launch-concept.png",
+                kind: .file,
+                size: 84_120,
+                modificationText: "Jul 30 09:42"
+            )
+            let readmeEntry = RemoteFileEntry(
+                name: "README.md",
+                path: "/srv/app/design/README.md",
+                kind: .file,
+                size: 4_862,
+                modificationText: "Jul 30 10:18"
+            )
+            let architectureEntry = RemoteFileEntry(
+                name: "preview-architecture.md",
+                path: "/srv/app/design/preview-architecture.md",
+                kind: .file,
+                size: 12_540,
+                modificationText: "Jul 29 18:05"
+            )
+            let alternateImageEntry = RemoteFileEntry(
+                name: "navigation-study.jpg",
+                path: "/srv/app/design/navigation-study.jpg",
+                kind: .file,
+                size: 118_300,
+                modificationText: "Jul 29 16:32"
+            )
+            let notesEntry = RemoteFileEntry(
+                name: "notes.txt",
+                path: "/srv/app/design/notes.txt",
+                kind: .file,
+                size: 930,
+                modificationText: "Jul 28 11:04"
+            )
+            let entries = [
+                imageEntry,
+                readmeEntry,
+                architectureEntry,
+                alternateImageEntry,
+                notesEntry
+            ]
+
+            let fixtureRoot = FileManager.default.temporaryDirectory
+                .appendingPathComponent(
+                    "RelayBarTask027-\(UUID().uuidString)",
+                    isDirectory: true
+                )
+            let imageDirectory = fixtureRoot.appendingPathComponent(
+                "image-preview",
+                isDirectory: true
+            )
+            let markdownDirectory = fixtureRoot.appendingPathComponent(
+                "markdown-preview",
+                isDirectory: true
+            )
+            try FileManager.default.createDirectory(
+                at: imageDirectory,
+                withIntermediateDirectories: true
+            )
+            try FileManager.default.createDirectory(
+                at: markdownDirectory,
+                withIntermediateDirectories: true
+            )
+            defer { try? FileManager.default.removeItem(at: fixtureRoot) }
+
+            let imageURL = imageDirectory.appendingPathComponent(imageEntry.name)
+            try task027ImageData().write(to: imageURL)
+            let markdownURL = markdownDirectory.appendingPathComponent(readmeEntry.name)
+            try Data(
+                """
+                # Remote Preview
+
+                A focused workspace keeps nearby files in reach while the current
+                document remains calm and readable.
+
+                ## Release checklist
+
+                - Reuse the active SSH connection
+                - Preserve keyboard navigation
+                - Keep temporary preview data private
+                - Verify Aqua and Dark Aqua
+
+                > The best interaction is the one that feels obvious after the
+                > first click.
+
+                ## Keyboard
+
+                Use the left and right arrow keys to move between previewable files.
+                Press Escape to return to the complete folder.
+                """.utf8
+            ).write(to: markdownURL)
+
+            let service = Task027SnapshotService(
+                entries: entries,
+                previewURLs: [
+                    imageEntry.id: imageURL,
+                    readmeEntry.id: markdownURL
+                ]
+            )
+            let tunnel = Tunnel(
+                name: "Design server",
+                localPort: 8_080,
+                destinationHost: "localhost",
+                destinationPort: 3_000,
+                sshHost: "studio.local"
+            )
+            let model = RemoteFilesModel(
+                tunnels: [tunnel],
+                service: service,
+                serverCatalog: RemoteServerCatalog()
+            )
+            model.remotePath = "/srv/app/design"
+            model.openRemotePath()
+            try await waitUntil {
+                model.screen == .browser && !model.isLoading
+            }
+
+            model.preview(imageEntry)
+            try await waitUntil {
+                model.previewImage != nil && !model.isLoadingPreview
+            }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-027-image-sidebar-\(label).png"
+                )
+            )
+
+            model.selectPreviewEntry(id: readmeEntry.id)
+            try await waitUntil {
+                model.previewMarkdown != nil && !model.isLoadingPreview
+            }
+            try capture(
+                view: RemoteFilesView(model: model),
+                appearance: appearanceName,
+                size: RemoteFilesWindowSizing.previewPreferred,
+                to: outputDirectory.appendingPathComponent(
+                    "task-027-markdown-sidebar-\(label).png"
+                )
+            )
+            try capture(
+                view: RemoteFilesView(
+                    model: model,
+                    previewSidebarVisible: false
+                ),
+                appearance: appearanceName,
+                size: NSSize(width: 780, height: 520),
+                to: outputDirectory.appendingPathComponent(
+                    "task-027-focused-\(label).png"
+                )
+            )
+            model.cancelAll()
+        }
+    }
+
+    private func task027ImageData() throws -> Data {
+        let size = NSSize(width: 720, height: 480)
+        let image = NSImage(size: size)
+        image.lockFocus()
+        let context = try XCTUnwrap(NSGraphicsContext.current?.cgContext)
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let gradient = try XCTUnwrap(
+            CGGradient(
+                colorsSpace: colorSpace,
+                colors: [
+                    CGColor(red: 0.08, green: 0.12, blue: 0.24, alpha: 1),
+                    CGColor(red: 0.24, green: 0.20, blue: 0.48, alpha: 1)
+                ] as CFArray,
+                locations: [0, 1]
+            )
+        )
+        context.drawLinearGradient(
+            gradient,
+            start: CGPoint(x: 0, y: size.height),
+            end: CGPoint(x: size.width, y: 0),
+            options: []
+        )
+
+        context.setFillColor(
+            CGColor(red: 0.40, green: 0.82, blue: 0.96, alpha: 0.72)
+        )
+        context.fillEllipse(in: CGRect(x: 420, y: 170, width: 250, height: 250))
+
+        context.addPath(
+            CGPath(
+                roundedRect: CGRect(x: 72, y: 72, width: 400, height: 310),
+                cornerWidth: 28,
+                cornerHeight: 28,
+                transform: nil
+            )
+        )
+        context.setFillColor(
+            CGColor(red: 0.96, green: 0.97, blue: 0.99, alpha: 0.93)
+        )
+        context.fillPath()
+
+        context.addPath(
+            CGPath(
+                roundedRect: CGRect(x: 112, y: 280, width: 190, height: 22),
+                cornerWidth: 11,
+                cornerHeight: 11,
+                transform: nil
+            )
+        )
+        context.setFillColor(
+            CGColor(red: 0.24, green: 0.36, blue: 0.94, alpha: 1)
+        )
+        context.fillPath()
+
+        for index in 0..<3 {
+            context.addPath(
+                CGPath(
+                    roundedRect: CGRect(
+                        x: 112,
+                        y: 222 - CGFloat(index * 50),
+                        width: index == 2 ? 210 : 310,
+                        height: 12
+                    ),
+                    cornerWidth: 6,
+                    cornerHeight: 6,
+                    transform: nil
+                )
+            )
+            let brightness = 0.76 + CGFloat(index) * 0.04
+            context.setFillColor(
+                CGColor(
+                    red: brightness,
+                    green: brightness,
+                    blue: brightness,
+                    alpha: 1
+                )
+            )
+            context.fillPath()
+        }
+
+        image.unlockFocus()
+        let representation = try XCTUnwrap(
+            NSBitmapImageRep(data: try XCTUnwrap(image.tiffRepresentation))
+        )
+        return try XCTUnwrap(
+            representation.representation(using: .png, properties: [:])
+        )
+    }
+
+    private func capture(
+        view: some View,
+        appearance: NSAppearance.Name,
+        size: NSSize = RelayBarPopoverLayout.size,
+        scrollOffsetY: CGFloat? = nil,
+        assertHorizontalContainment: Bool = false,
+        assertFitsViewport: Bool = false,
+        inspect: (NSView) throws -> Void = { _ in },
+        to url: URL
+    ) throws {
+        let hosting = NSHostingView(rootView: view)
+        hosting.frame = NSRect(origin: .zero, size: size)
+        hosting.appearance = NSAppearance(named: appearance)
+
+        let window = QuietWindow(size: size, styleMask: [.titled])
+        window.appearance = NSAppearance(named: appearance)
+        window.contentView = hosting
+        window.orderInOffscreen()
+        hosting.layoutSubtreeIfNeeded()
+
+        // SwiftUI resolves its first layout pass on the run loop.
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline {
+            RunLoop.current.run(mode: .default, before: Date().addingTimeInterval(0.05))
+        }
+
+        if let scrollOffsetY {
+            let scrollView = try XCTUnwrap(
+                firstScrollableView(in: hosting),
+                "Expected the captured view to contain a vertical scroll view."
+            )
+            let documentView = try XCTUnwrap(scrollView.documentView)
+            let maximumOffset = max(
+                0,
+                documentView.bounds.height - scrollView.contentView.bounds.height
+            )
+            let offset = min(max(0, scrollOffsetY), maximumOffset)
+            let targetY = documentView.isFlipped
+                ? documentView.bounds.minY + offset
+                : documentView.bounds.minY + maximumOffset - offset
+            scrollView.contentView.scroll(to: NSPoint(x: 0, y: targetY))
+            scrollView.reflectScrolledClipView(scrollView.contentView)
+
+            let scrollDeadline = Date().addingTimeInterval(0.25)
+            while Date() < scrollDeadline {
+                RunLoop.current.run(
+                    mode: .default,
+                    before: Date().addingTimeInterval(0.05)
+                )
+            }
+        }
+
+        if assertHorizontalContainment || assertFitsViewport {
+            let scrollView = try XCTUnwrap(
+                firstScrollView(in: hosting),
+                "Expected the captured view to contain a scroll view."
+            )
+            let documentView = try XCTUnwrap(scrollView.documentView)
+            XCTAssertFalse(scrollView.hasHorizontalScroller)
+            XCTAssertEqual(
+                scrollView.contentView.bounds.minX,
+                0,
+                accuracy: 0.5
+            )
+            XCTAssertLessThanOrEqual(
+                documentView.bounds.width,
+                scrollView.contentView.bounds.width + 1
+            )
+            if assertFitsViewport {
+                XCTAssertLessThanOrEqual(
+                    documentView.bounds.height,
+                    scrollView.contentView.bounds.height + 1,
+                    "Default Settings should fit without vertical scrolling."
+                )
+            }
+        }
+
+        try inspect(hosting)
+
+        let rep = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
+        hosting.cacheDisplay(in: hosting.bounds, to: rep)
+        let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))
+        try data.write(to: url)
+        XCTAssertGreaterThan(data.count, 2_000, "snapshot looks empty")
+    }
+
+    private func firstScrollableView(in view: NSView) -> NSScrollView? {
+        if
+            let scrollView = view as? NSScrollView,
+            let documentView = scrollView.documentView,
+            documentView.bounds.height > scrollView.contentView.bounds.height + 1
+        {
+            return scrollView
+        }
+        for subview in view.subviews {
+            if let match = firstScrollableView(in: subview) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func firstScrollView(in view: NSView) -> NSScrollView? {
+        if let scrollView = view as? NSScrollView {
+            return scrollView
+        }
+        for subview in view.subviews {
+            if let match = firstScrollView(in: subview) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private func waitUntil(
+        timeout: TimeInterval = 1,
+        condition: @escaping @MainActor () -> Bool
+    ) async throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition(), Date() < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        _ = try XCTUnwrap(
+            condition() ? true : nil,
+            "Timed out waiting for snapshot fixture state."
+        )
+    }
+}
+
+@MainActor
+private final class SnapshotUpdateService: UpdateServicing {
+    let isAvailable = true
+    var automaticallyChecksForUpdates = false
+    var canCheckForUpdates = true
+    var deferredInstallTunnelCount: Int?
+    var stateDidChange: (@MainActor () -> Void)?
+    private var completion: (@MainActor (UpdateCheckResult) -> Void)?
+
+    func start() {}
+    func stop() async { completion = nil; stateDidChange = nil }
+    func checkForUpdates(
+        completion: @escaping @MainActor (UpdateCheckResult) -> Void
+    ) {
+        self.completion = completion
+    }
+    func complete(with result: UpdateCheckResult) {
+        completion?(result)
+        completion = nil
+    }
+    func prepareForApplicationTermination() -> Bool { false }
+}
+
+/// Never delivers an event.
+private struct SilentRecoveryEvents: RecoveryEvents {
+    func events() -> AsyncStream<Void> {
+        AsyncStream { _ in }
+    }
+}
+
+@MainActor
+private struct SnapshotPasteboardWriter: PasteboardWriting {
+    func write(_ string: String) -> Bool { true }
+}
+
+@MainActor
+private struct SnapshotAccessibilityAnnouncer: AccessibilityAnnouncing {
+    func announce(_ message: String) {}
+}
+
+@MainActor
+private final class Task037SnapshotPresenter: RemoteFilePresenting {
+    var uploadFile: URL?
+
+    func chooseDestination(for entry: RemoteFileEntry) -> URL? { nil }
+    func chooseUploadFile() -> URL? { uploadFile }
+    func confirmUploadReplacement(name: String) -> Bool { true }
+    func revealInFinder(_ destination: URL) {}
+}
+
+private final class Task037SnapshotService: RemoteFileServing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var entries: [RemoteFileEntry]
+    private var errors: [String: Error] = [:]
+    private var isUploadSuspended = false
+    private var isDeletionSuspended = false
+    private var isPreviewSuspended = false
+    var previewURL: URL?
+    var uploadError: Error?
+
+    init(entries: [RemoteFileEntry]) {
+        self.entries = entries
+    }
+
+    func setError(_ error: Error, for path: String) {
+        lock.lock()
+        errors[path] = error
+        lock.unlock()
+    }
+
+    func setUploadSuspended(_ suspended: Bool) {
+        lock.lock()
+        isUploadSuspended = suspended
+        lock.unlock()
+    }
+
+    func setDeletionSuspended(_ suspended: Bool) {
+        lock.lock()
+        isDeletionSuspended = suspended
+        lock.unlock()
+    }
+
+    func setPreviewSuspended(_ suspended: Bool) {
+        lock.lock()
+        isPreviewSuspended = suspended
+        lock.unlock()
+    }
+
+    func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
+        let error = withLock { errors[path] }
+        if let error { throw error }
+        return withLock { entries }
+    }
+
+    func download(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        to destination: URL,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws {
+        throw RemoteFileError.commandFailed("Download was not expected.")
+    }
+
+    func preparePreview(
+        server: RemoteServer,
+        entry: RemoteFileEntry
+    ) async throws -> URL {
+        guard let previewURL else {
+            throw RemoteFileError.commandFailed("Preview fixture was not found.")
+        }
+        return previewURL
+    }
+
+    func preparePreviewWithProgress(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws -> URL {
+        progress(max((entry.size ?? 0) / 2, 1))
+        while previewIsSuspended {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        guard let previewURL else {
+            throw RemoteFileError.commandFailed("Preview fixture was not found.")
+        }
+        progress(entry.size ?? 0)
+        return previewURL
+    }
+
+    func upload(
+        server: RemoteServer,
+        localFile: URL,
+        remoteDirectory: String,
+        replaceExisting: Bool,
+        phase: @escaping @Sendable (RemoteUploadPhase) -> Void
+    ) async throws {
+        phase(.staging)
+        while uploadIsSuspended {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        if let uploadError { throw uploadError }
+        phase(.publishing)
+    }
+
+    func uploadWithProgress(
+        server: RemoteServer,
+        localFile: URL,
+        remoteDirectory: String,
+        replaceExisting: Bool,
+        update: @escaping @Sendable (RemoteUploadUpdate) -> Void
+    ) async throws {
+        let total = Int64(
+            (try? localFile.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        )
+        update(
+            RemoteUploadUpdate(
+                phase: .staging,
+                completedBytes: total / 2,
+                totalBytes: total
+            )
+        )
+        while uploadIsSuspended {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        if let uploadError { throw uploadError }
+        update(
+            RemoteUploadUpdate(
+                phase: .staging,
+                completedBytes: total,
+                totalBytes: total,
+                isStagingComplete: true
+            )
+        )
+        update(
+            RemoteUploadUpdate(
+                phase: .publishing,
+                completedBytes: total,
+                totalBytes: total,
+                isStagingComplete: true
+            )
+        )
+    }
+
+    func delete(server: RemoteServer, entry: RemoteFileEntry) async throws {
+        while deletionIsSuspended {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        withLock { entries.removeAll { $0.id == entry.id } }
+    }
+
+    private var uploadIsSuspended: Bool {
+        withLock { isUploadSuspended }
+    }
+
+    private var deletionIsSuspended: Bool {
+        withLock { isDeletionSuspended }
+    }
+
+    private var previewIsSuspended: Bool {
+        withLock { isPreviewSuspended }
+    }
+
+    private func withLock<Result>(_ body: () -> Result) -> Result {
+        lock.lock()
+        defer { lock.unlock() }
+        return body()
+    }
+}
+
+private final class Task027SnapshotService: RemoteFileServing, @unchecked Sendable {
+    let entries: [RemoteFileEntry]
+    let previewURLs: [String: URL]
+
+    init(entries: [RemoteFileEntry], previewURLs: [String: URL]) {
+        self.entries = entries
+        self.previewURLs = previewURLs
+    }
+
+    func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
+        entries
+    }
+
+    func download(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        to destination: URL,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws {
+        throw RemoteFileError.commandFailed("Download was not expected.")
+    }
+
+    func preparePreview(
+        server: RemoteServer,
+        entry: RemoteFileEntry
+    ) async throws -> URL {
+        guard let url = previewURLs[entry.id] else {
+            throw RemoteFileError.commandFailed("Preview fixture was not found.")
+        }
+        return url
+    }
+}
+
+private final class Task026SnapshotService: RemoteFileServing, @unchecked Sendable {
+    private let lock = NSLock()
+    private var listings: [String: [RemoteFileEntry]] = [:]
+    private var suspendedPaths: Set<String> = []
+    private var errors: [String: Error] = [:]
+
+    func setListing(_ entries: [RemoteFileEntry], for path: String) {
+        lock.lock()
+        listings[path] = entries
+        lock.unlock()
+    }
+
+    func setSuspended(_ suspended: Bool, for path: String) {
+        lock.lock()
+        if suspended {
+            suspendedPaths.insert(path)
+        } else {
+            suspendedPaths.remove(path)
+        }
+        lock.unlock()
+    }
+
+    func setError(_ error: Error, for path: String) {
+        lock.lock()
+        errors[path] = error
+        lock.unlock()
+    }
+
+    func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
+        while state(for: path).isSuspended {
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        let state = state(for: path)
+        if let error = state.error {
+            throw error
+        }
+        return state.entries
+    }
+
+    func download(
+        server: RemoteServer,
+        entry: RemoteFileEntry,
+        to destination: URL,
+        progress: @escaping @Sendable (Int64) -> Void
+    ) async throws {
+        throw RemoteFileError.commandFailed("Download was not expected.")
+    }
+
+    func preparePreview(
+        server: RemoteServer,
+        entry: RemoteFileEntry
+    ) async throws -> URL {
+        throw RemoteFileError.commandFailed("Preview was not expected.")
+    }
+
+    private func state(
+        for path: String
+    ) -> (isSuspended: Bool, error: Error?, entries: [RemoteFileEntry]) {
+        lock.lock()
+        defer { lock.unlock() }
+        return (
+            suspendedPaths.contains(path),
+            errors[path],
+            listings[path] ?? []
+        )
+    }
+}

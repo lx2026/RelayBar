@@ -6,7 +6,7 @@ APPCAST="${1:-}"
 ARCHIVE="${2:-}"
 PORT="${3:-}"
 SPARKLE_ACCOUNT="${SPARKLE_ACCOUNT:-com.lx2026.RelayBar}"
-EXPECTED_KEY="$(plutil -extract SUPublicEDKey raw "$ROOT/Packaging/Info.plist")"
+EXPECTED_KEY="$(plutil -extract SUPublicEDKey raw "$ROOT/Apps/RelayBar/Packaging/Info.plist")"
 
 if [[ -z "$APPCAST" || -z "$ARCHIVE" || -z "$PORT" ]]; then
   echo "Usage: $0 <private-appcast.xml> <RelayBar.zip> <loopback-port>" >&2

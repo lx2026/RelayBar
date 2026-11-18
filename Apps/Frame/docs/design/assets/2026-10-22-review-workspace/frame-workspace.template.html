@@ -1,0 +1,234 @@
+<style>
+#frame-workspace {font-family:-apple-system,BlinkMacSystemFont,"Helvetica Neue",sans-serif;-webkit-font-smoothing:antialiased}
+#frame-workspace * {box-sizing:border-box}
+#frame-workspace [hidden] {display:none!important}
+#frame-workspace .frame {color-scheme:light dark;--paper:light-dark(#fafaf8,#202222);--chrome:light-dark(#f1f2ef,#282a29);--rail:light-dark(#eeefeb,#252725);--stage:light-dark(#e9eae6,#171918);--ink:light-dark(#242923,#edf0e9);--muted:light-dark(#686f65,#adb5a8);--line:light-dark(#dcded7,#3a4039);--soft:light-dark(#e3e7de,#394136);--active:light-dark(#344b38,#c4d2bf);--onactive:light-dark(#fff,#1b271b);--gold:light-dark(#97671d,#eccb83);--danger:light-dark(#ae3d32,#f5a59a);--photos:url('__FRAME_MEDIA_DATA__');background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:12px;overflow:clip;font-size:13px;line-height:1.45;position:relative;container-type:inline-size;min-height:780px}
+#frame-workspace button,#frame-workspace input {font:inherit;color:inherit}
+#frame-workspace button {border:0;background:transparent;border-radius:6px;min-height:30px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:5px 9px}
+#frame-workspace button:hover:not(:disabled){background:var(--soft)}
+#frame-workspace button:disabled {opacity:.4}
+#frame-workspace button:focus-visible,#frame-workspace input:focus-visible,#frame-workspace summary:focus-visible {outline:2px solid var(--active);outline-offset:2px}
+#frame-workspace svg.lucide {width:16px;height:16px;stroke-width:1.7;flex-shrink:0}
+#frame-workspace .icon {width:30px;padding:5px}
+#frame-workspace .solid {background:var(--active);color:var(--onactive)}
+#frame-workspace .solid:hover:not(:disabled) {background:var(--active);filter:brightness(.93)}
+#frame-workspace .bordered {box-shadow:inset 0 0 0 1px var(--line);background:var(--paper)}
+#frame-workspace .danger {color:var(--danger)}
+#frame-workspace .muted {color:var(--muted)}
+#frame-workspace .small {font-size:11px}
+#frame-workspace .grow {flex:1;min-width:0}
+#frame-workspace .top {height:54px;display:flex;align-items:center;gap:8px;padding:0 14px;border-bottom:1px solid var(--line);background:var(--chrome)}
+#frame-workspace .lights {display:flex;gap:8px;margin-right:12px;flex-shrink:0}
+#frame-workspace .lights span {width:11px;height:11px;border-radius:50%;background:#ff6159}.lights span:nth-child(2){background:#ffbd2e!important}.lights span:nth-child(3){background:#28c840!important}
+#frame-workspace .wordmark {font-weight:600;letter-spacing:-.4px;margin-right:13px;font-size:15px}
+#frame-workspace .crumb {display:flex;align-items:center;gap:9px;margin-left:10px;min-width:0;font-size:12px}
+#frame-workspace .crumb span {white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px}
+#frame-workspace .crumb strong {font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#frame-workspace .source {display:flex;align-items:center;gap:6px;font-size:11px;color:var(--muted);white-space:nowrap;margin-right:90px}
+#frame-workspace .body {display:flex;min-height:724px}
+#frame-workspace .locations {width:174px;flex-shrink:0;background:var(--rail);border-right:1px solid var(--line);padding:17px 9px 12px;display:flex;flex-direction:column;gap:3px}
+#frame-workspace .locations .heading {margin:18px 9px 6px;color:var(--muted);font-size:11px;font-weight:500;letter-spacing:.2px}
+#frame-workspace .locations .heading:first-of-type {margin-top:12px}
+#frame-workspace .locations button {justify-content:flex-start;min-height:32px;text-align:left;width:100%;font-size:12px}
+#frame-workspace .locations .location {flex-wrap:wrap;gap:2px 7px;margin-bottom:2px}
+#frame-workspace .location .secondary {width:100%;margin-left:23px;font-size:11px;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#frame-workspace .locations .active {background:var(--soft);font-weight:500}
+#frame-workspace .locations .count {margin-left:auto;font-size:11px;color:var(--muted)}
+#frame-workspace .locations .child {padding-left:25px;color:var(--muted)}
+#frame-workspace .rail-footer {margin-top:auto;padding:22px 9px 3px;font-size:11px;color:var(--muted)}
+#frame-workspace .content {flex:1;min-width:0;display:flex;flex-direction:column}
+#frame-workspace .actions {min-height:45px;display:flex;align-items:center;gap:4px;padding:6px 13px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+#frame-workspace .selection {font-size:12px;font-weight:500;display:flex;align-items:center;gap:9px;margin-right:auto}
+#frame-workspace .selection small {font-size:11px;font-weight:400;color:var(--muted)}
+#frame-workspace .action-separator {width:1px;height:16px;background:var(--line);margin:0 5px}
+#frame-workspace .actions button {font-size:12px}
+#frame-workspace .review {display:grid;grid-template-columns:minmax(0,1fr) 6px minmax(235px,var(--meta-width,278px));min-height:367px;height:var(--review-height,367px)}
+#frame-workspace .viewer {display:flex;flex-direction:column;min-width:0;background:var(--stage)}
+#frame-workspace .viewer-head {padding:9px 15px 0;display:flex;align-items:center;gap:7px;font-size:12px;min-height:36px}
+#frame-workspace .viewer-head .filename {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+#frame-workspace .viewer-head .small {margin-left:auto;white-space:nowrap}
+#frame-workspace .canvas {flex:1;min-height:0;display:flex;justify-content:center;align-items:center;padding:14px 23px 9px}
+#frame-workspace .photo {background-image:var(--photos);background-size:300% 300%;background-position:var(--px) var(--py);background-repeat:no-repeat;aspect-ratio:3/2}
+#frame-workspace .hero-photo {height:auto;max-width:min(100%,calc(var(--hero-height,276px) * 1.5));width:100%;aspect-ratio:3/2;box-shadow:0 5px 18px #00000010;position:relative}
+#frame-workspace .viewer-foot {height:32px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:11px;color:var(--muted);padding:4px 12px}
+#frame-workspace .viewer-foot button {font-size:11px;min-height:24px;padding:2px 7px}
+#frame-workspace .divider {border:0;border-radius:0;padding:0;min-width:6px;min-height:6px;background:var(--paper);position:relative;cursor:col-resize;touch-action:none}
+#frame-workspace .divider:after {content:'';position:absolute;left:2px;top:calc(50% - 15px);width:2px;height:30px;background:var(--line);border-radius:2px}
+#frame-workspace .divider.horizontal {height:7px;width:100%;cursor:row-resize;box-shadow:0 -1px 0 var(--line),0 1px 0 var(--line);z-index:1}
+#frame-workspace .divider.horizontal:after {width:30px;height:2px;left:calc(50% - 15px);top:2px}
+#frame-workspace .metadata {padding:17px 18px 10px;min-width:0;overflow:auto;background:var(--paper)}
+#frame-workspace .metadata h2 {font-size:13px;font-weight:600;margin:0 0 2px}
+#frame-workspace .metadata h3 {font-size:12px;font-weight:500;margin:17px 0 6px;display:flex;align-items:center;gap:5px}
+#frame-workspace .metadata p {font-size:12px;line-height:1.55;margin:8px 0 13px;user-select:text}
+#frame-workspace .metadata .origin {font-size:11px;color:var(--muted);overflow-wrap:anywhere}
+#frame-workspace .metadata dl {display:grid;grid-template-columns:73px minmax(0,1fr);font-size:11px;gap:7px 8px;margin:0}
+#frame-workspace .metadata dt {color:var(--muted)}
+#frame-workspace .metadata dd {margin:0;overflow-wrap:anywhere;user-select:text}
+#frame-workspace .metadata details {font-size:11px;border-top:1px solid var(--line);padding:10px 0;margin-top:12px}
+#frame-workspace .metadata summary {color:var(--muted)}
+#frame-workspace .metadata pre {white-space:pre-wrap;overflow-wrap:anywhere;font-size:11px}
+#frame-workspace .chip {font-size:10px;padding:1px 4px;background:var(--soft);border-radius:3px;color:var(--muted);white-space:nowrap}
+#frame-workspace .gallery {flex:1;min-width:0;background:var(--paper)}
+#frame-workspace .gallery-head {min-height:44px;display:flex;align-items:center;gap:10px;padding:7px 15px}
+#frame-workspace .gallery-head strong {font-weight:500;font-size:12px}
+#frame-workspace .gallery-head .scope {color:var(--muted);font-size:11px}
+#frame-workspace .sizing {margin-left:auto;display:flex;align-items:center;gap:8px;color:var(--muted);font-size:11px;white-space:nowrap}
+#frame-workspace .sizing input {width:100px;accent-color:var(--active);height:16px}
+#frame-workspace .tiles {display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--thumb-width,132px)),1fr));gap:14px 12px;padding:3px 15px 12px;max-height:214px;overflow:auto;align-content:start}
+#frame-workspace .tile {display:block;text-align:left;padding:4px;border-radius:6px;min-width:0;border:2px solid transparent;position:relative;align-self:start}
+#frame-workspace .tile[aria-pressed=true] {border-color:var(--active);background:var(--soft)}
+#frame-workspace .tile.current {box-shadow:0 0 0 1px var(--paper),0 0 0 2px var(--active)}
+#frame-workspace .tile.current .tile-name {background:var(--active);color:var(--onactive);padding:3px 4px;border-radius:3px}
+#frame-workspace .tile.current .tile-name svg {color:inherit}
+#frame-workspace .tile .photo {width:100%;border-radius:2px;position:relative}
+#frame-workspace .tile-name {display:flex;align-items:center;gap:4px;margin:6px 1px 0;font-size:11px;min-width:0}
+#frame-workspace .tile-name .name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+#frame-workspace .tile-name svg {width:12px;height:12px;color:var(--muted)}
+#frame-workspace .tile .check {position:absolute;right:5px;top:5px;width:17px;height:17px;display:flex;align-items:center;justify-content:center;background:var(--active);color:var(--onactive);border-radius:50%;font-size:11px}
+#frame-workspace .tile .star {position:absolute;left:5px;top:5px;color:#fff6dd;background:#1b221ab5;border-radius:3px;padding:2px 4px;font-size:11px}
+#frame-workspace .video-tag {position:absolute;bottom:5px;right:5px;background:#171b18d9;color:#fff;border-radius:3px;padding:1px 5px;display:flex;align-items:center;gap:3px;font-size:10px}
+#frame-workspace .video-tag svg {width:10px;height:10px}
+#frame-workspace .bottom {min-height:32px;padding:6px 15px;border-top:1px solid var(--line);display:flex;align-items:center;gap:10px;font-size:11px;color:var(--muted);margin-top:auto}
+#frame-workspace .bottom span:last-child {margin-left:auto}
+#frame-workspace .notice {position:absolute;bottom:40px;left:50%;transform:translateX(-50%);max-width:calc(100% - 32px);background:var(--ink);color:var(--paper);padding:8px 13px;box-shadow:0 4px 18px #0002;border-radius:8px;display:flex;align-items:center;gap:20px;z-index:8;font-size:12px}
+#frame-workspace .notice button {color:inherit;text-decoration:underline}
+#frame-workspace .shade {position:absolute;inset:0;background:#1015104d;z-index:10;display:flex;justify-content:center;align-items:flex-start;padding:108px 20px 30px}
+#frame-workspace .sheet {width:440px;max-width:100%;padding:26px;background:var(--paper);border:1px solid var(--line);border-radius:12px;box-shadow:0 20px 80px #0003}
+#frame-workspace .sheet h2 {font-size:20px;font-weight:500;letter-spacing:-.4px;margin:0 0 8px}
+#frame-workspace .sheet p {font-size:13px;line-height:1.6;margin:8px 0 20px;color:var(--muted)}
+#frame-workspace .sheet .sheet-actions {display:flex;justify-content:flex-end;gap:8px;margin-top:22px;flex-wrap:wrap}
+#frame-workspace .sheet .file-row {padding:10px 0;border-top:1px solid var(--line);font-size:12px;display:flex;gap:9px}
+#frame-workspace .sheet .file-row small {display:block;color:var(--muted);font-size:11px;margin-top:3px}
+#frame-workspace .sheet .recent {display:flex;justify-content:flex-start;width:100%;padding:12px 9px;text-align:left;gap:12px}
+#frame-workspace .sheet .recent small {display:block;color:var(--muted);font-size:11px}
+#frame-workspace .welcome {min-height:724px;display:flex;align-items:center;justify-content:center;padding:40px 20px;width:100%}
+#frame-workspace .welcome-inner {width:410px;max-width:100%}
+#frame-workspace .welcome h1 {font-size:29px;font-weight:500;letter-spacing:-.8px;margin:0 0 10px}
+#frame-workspace .welcome p {color:var(--muted);margin:0 0 23px}
+#frame-workspace .welcome .primary-row {display:flex;gap:10px;margin-bottom:34px;flex-wrap:wrap}
+#frame-workspace .welcome h2 {font-size:11px;font-weight:500;color:var(--muted);margin-bottom:7px}
+#frame-workspace .welcome .recent {width:100%;display:flex;justify-content:flex-start;text-align:left;padding:12px 6px;gap:12px;border-bottom:1px solid var(--line)}
+#frame-workspace .welcome .recent small {display:block;color:var(--muted);font-size:11px}
+#frame-workspace .remote-intro {padding:80px 34px;flex:1;min-height:600px;display:flex;align-items:center;justify-content:center}
+#frame-workspace .remote-intro h1 {font-size:24px;letter-spacing:-.5px;font-weight:500;margin:0 0 12px}
+#frame-workspace .remote-intro p {color:var(--muted);max-width:450px}
+#frame-workspace .remote-intro ol {padding-left:18px;line-height:1.9;margin:22px 0}
+#frame-workspace .empty {display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:240px;color:var(--muted);gap:12px;text-align:center;padding:20px}
+#frame-workspace .video-open {position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;background:#0c160b50;gap:8px;color:#fff}
+#frame-workspace .video-open button {background:#fbfcf7;color:#202820}
+#frame-workspace .grid-layout .content {display:grid;grid-template-columns:minmax(0,1fr) 6px minmax(320px,var(--grid-width,41%));grid-template-rows:auto 1fr auto}
+#frame-workspace .outer-split {display:none}
+#frame-workspace .grid-layout .outer-split {display:block;grid-column:2;grid-row:2}
+#frame-workspace .grid-layout .actions {grid-column:1/-1}
+#frame-workspace .grid-layout .review {grid-column:3;grid-row:2;height:100%;display:flex;flex-direction:column;border-left:1px solid var(--line)}
+#frame-workspace .grid-layout .viewer {height:var(--grid-image-height,360px);flex-shrink:0}
+#frame-workspace .grid-layout .hero-photo {--hero-height:291px}
+#frame-workspace .grid-layout .review > .divider {height:6px;min-height:6px;cursor:row-resize}
+#frame-workspace .grid-layout .review > .divider:after {width:30px;height:2px;left:calc(50% - 15px);top:2px}
+#frame-workspace .grid-layout .metadata {flex:1;max-height:347px}
+#frame-workspace .grid-layout .gallery {grid-column:1;grid-row:2}
+#frame-workspace .grid-layout .tiles {max-height:600px;grid-template-columns:repeat(auto-fill,minmax(min(100%,var(--thumb-width,132px)),1fr))}
+#frame-workspace .grid-layout .horizontal {display:none}
+#frame-workspace .grid-layout .bottom {grid-column:1/-1;grid-row:3}
+#frame-workspace .focus .gallery,#frame-workspace .focus .horizontal {display:none}
+#frame-workspace .focus .review {height:644px}
+#frame-workspace .focus .hero-photo {--hero-height:550px}
+@container (max-width:1050px) {#frame-workspace .locations {width:156px}#frame-workspace .wordmark {display:none}#frame-workspace .review {grid-template-columns:minmax(0,1fr) 6px 248px}#frame-workspace .canvas {padding:12px}#frame-workspace .source {margin-right:0}#frame-workspace .actions .selection small {display:none}#frame-workspace .sizing input {width:70px}#frame-workspace .grid-layout .locations {display:none}}
+@container (max-width:830px) {#frame-workspace .outer-split {display:none!important}#frame-workspace .locations {display:none}#frame-workspace .review {grid-template-columns:minmax(0,1fr) 6px 245px}#frame-workspace .crumb span {display:none}#frame-workspace .source {display:none}#frame-workspace .body {min-height:724px}#frame-workspace .grid-layout .content {display:flex}#frame-workspace .grid-layout .review {display:grid;grid-template-columns:minmax(0,1fr) 6px 245px;min-height:367px;height:367px;border:0}#frame-workspace .grid-layout .viewer {height:auto}#frame-workspace .grid-layout .metadata {max-height:none}#frame-workspace .grid-layout .tiles {max-height:214px}#frame-workspace .grid-layout .horizontal {display:block}#frame-workspace .gallery-head .scope {display:none}}
+@container (max-width:560px) {#frame-workspace .top {height:auto;min-height:54px;flex-wrap:wrap;padding:10px}#frame-workspace .lights {display:none}#frame-workspace .crumb {margin-left:0;order:5;flex-basis:100%}#frame-workspace .actions {padding:8px}#frame-workspace .selection {flex-basis:100%}#frame-workspace .review,#frame-workspace .grid-layout .review {height:auto!important;display:flex;flex-direction:column}#frame-workspace .viewer,#frame-workspace .grid-layout .viewer {height:300px}#frame-workspace .hero-photo {--hero-height:220px}#frame-workspace .metadata {max-height:none!important;overflow:visible}#frame-workspace .divider {display:none!important}#frame-workspace .tiles {max-height:none!important}#frame-workspace .bottom {flex-wrap:wrap}#frame-workspace .bottom span:last-child {margin-left:0}#frame-workspace .sizing input {width:66px}#frame-workspace .sheet {padding:20px}#frame-workspace .shade {padding:90px 12px 20px}#frame-workspace .action-separator {display:none}}
+</style>
+<div id="frame-workspace" class="viz-carousel" aria-label="Frame workspace directions">
+  <section data-variant="Grid-led"><div class="frame grid-layout" data-layout="grid" aria-label="Grid-led review workspace"></div></section>
+  <section data-variant="Image-led" hidden><div class="frame" data-layout="review" aria-label="Image-led review workspace"></div></section>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('frame-workspace');
+  const icon = n => `<i data-lucide="${n}" aria-hidden="true"></i>`;
+  const esc = s => String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const originals = [
+    {id:0,name:'Sea pavilion.png',paired:true,ai:true,favorite:true,size:'4.2 MB'},
+    {id:1,name:'Travertine steps.jpg',size:'5.1 MB'},
+    {id:2,name:'Dunes at dawn.png',paired:true,ai:true,size:'3.8 MB'},
+    {id:3,name:'Coast walk.mov',video:true,size:'38.6 MB'},
+    {id:4,name:'Afternoon room.png',paired:true,ai:true,size:'4.6 MB'},
+    {id:5,name:'Olive shadows.jpg',favorite:true,size:'2.9 MB'},
+    {id:6,name:'Blue hour.jpg',size:'6.8 MB'},
+    {id:7,name:'Limestone light.jpg',size:'4.3 MB'},
+    {id:8,name:'Forest path.mp4',video:true,size:'21.4 MB'}
+  ];
+  const photo = (item,cls='') => `<div class="photo ${cls}" role="img" aria-label="Synthetic sample: ${esc(item.name)}" style="--px:${item.id%3*50}%;--py:${Math.floor(item.id/3)*50}%"></div>`;
+  const rows = entries => `<dl>${entries.map(([k,v])=>`<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join('')}</dl>`;
+  root.querySelectorAll('.frame').forEach(app => {
+    const key=app.dataset.layout;
+    const state = {screen:'Browse',appearance:'System',rail:true,thumb:130,meta:278,gridWidth:400,gridHeight:360,reviewHeight:367,folder:null,scope:'All files',location:'Studio studies',selected:[0],active:0,anchor:0,focus:false,modal:null,notice:null,remote:false,playing:false,archived:[],trashed:[],undo:[],...window.openai?.widgetState?.privateContent?.[key]};
+    const items=originals.map(i=>({...i}));
+    const visible = () => items.filter(i=>(!state.folder||(state.folder==='Architecture'?[0,1,4,7]:[2,3,5,6,8]).includes(i.id))&&!state.trashed.includes(i.id) && (state.scope==='Archive'?state.archived.includes(i.id):!state.archived.includes(i.id)) && (state.scope!=='Favorites'||i.favorite));
+    const current = () => items.find(i=>i.id===state.active && visible().some(v=>v.id===i.id));
+    const selectedItems = () => visible().filter(i=>state.selected.includes(i.id));
+    const remember = () => {const old=window.openai?.widgetState?.privateContent||{};window.openai?.setWidgetState?.({modelContent:{direction:key==='review'?'Image-led':'Grid-led',screen:state.screen,location:state.location,scope:state.scope,thumbnailSize:state.thumb,appearance:state.appearance},privateContent:{...old,[key]:{screen:state.screen,appearance:state.appearance,rail:state.rail,thumb:state.thumb,meta:state.meta,reviewHeight:state.reviewHeight}}}).catch(()=>{});};
+    const choose = id => {state.active=id;state.selected=[id];state.anchor=id;state.playing=false;};
+    function resetScope(scope){state.scope=scope;const first=visible()[0];state.active=first?.id??null;state.selected=first?[first.id]:[];state.anchor=first?.id??null;state.playing=false;}
+    function location(remote=false) {state.remote=remote;state.folder=null;state.location=remote?'Render box':'Studio studies';state.screen=remote?'Remote':'Browse';state.focus=false;resetScope('All files');state.modal=null;}
+    function metadata(item) {
+      if(!item)return '<aside class="metadata"><div class="empty">Select an asset to see its details.</div></aside>';
+      return `<aside class="metadata" aria-label="Metadata for ${esc(item.name)}"><h2>Details</h2><div class="origin">${item.video?'Video':item.ai?'AI-generated image':'Photograph'} · ${item.name.split('.').pop().toUpperCase()} · ${item.size}</div><h3>${item.ai?'Prompt':item.video?'Video':'Camera'}</h3>${item.ai?`<p>${item.id===0?'An ivory stone pavilion overlooking a still sea. Warm afternoon light, quiet architecture, natural textures.':item.id===2?'Wind-sculpted dunes in soft dawn light. Fine sand, distant horizon, warm neutral tones.':'Sunlight across a quiet plaster interior, an olive tree, soft shadows and warm stone.'}</p><div class="origin">From paired JSON · not embedded</div><h3>Generation</h3>${rows([['Model','FLUX.1 dev'],['Seed','4038251'],['Steps','28'],['Guidance','3.5']])}`:item.video?rows([['Duration','0:24'],['Frame rate','30 fps'],['Codec','H.264'],['Audio','AAC · Stereo']]):rows([['Camera','FUJIFILM X-T5'],['Lens','35 mm'],['Exposure','1/250 s · ƒ/4'],['ISO','400']])}<h3>File</h3>${rows([['Dimensions',item.video?'3840 × 2160':'2400 × 1600'],['Created','Oct 18, 2026']])}${item.paired?`<details><summary>Paired JSON · ${esc(item.name)}.json</summary><pre>${esc(JSON.stringify({prompt:item.name,model:'FLUX.1 dev',seed:4038251,steps:28,guidance:3.5},null,2))}</pre><span class="origin">Moves with this image. Embedded metadata is separate.</span></details>`:''}<details><summary>All embedded metadata</summary><pre>${esc(JSON.stringify({format:item.name.split('.').pop(),width:2400,height:1600},null,2))}</pre></details></aside>`;
+    }
+    function rail(){return `<nav class="locations" aria-label="Folders and locations" ${state.rail?'':'hidden'}><div class="heading">RECENT FOLDERS</div><button class="location" data-action="local">${icon('folder')}<span>Studio studies</span><span class="secondary">Pictures · On this Mac</span></button>${state.screen!=='First remote use'?`<button class="location ${state.remote?'active':''}" data-action="remote">${icon('server')}<span>Render box</span><span class="secondary">outputs · Connected</span></button>`:''}${state.screen!=='First remote use'?'<div class="heading">THIS FOLDER</div>':''}${!state.remote&&state.screen!=='First remote use'?`<button class="${state.scope==='All files'&&!state.folder?'active':''}" data-folder="">${icon('grid-2x2')}All files</button><button class="${state.folder==='Architecture'?'active':''}" data-folder="Architecture">${icon('folder')}Architecture</button><button class="${state.folder==='Outdoors'?'active':''}" data-folder="Outdoors">${icon('folder')}Outdoors</button><hr style="border:0;border-top:1px solid var(--line);width:100%;margin:10px 0"><button class="${state.scope==='Archive'?'active':''}" data-scope="Archive">${icon('archive')}Archive <span class="count">${state.archived.length}</span></button>`:state.remote?'<span class="small muted" style="padding:9px">outputs · Read-only</span>':''}<div class="rail-footer"></div><button data-action="connect">${icon('arrow-up-right')}Open from RelayBar…</button></nav>`;}
+    function actions(){let sel=selectedItems();return `<div class="actions"><div class="selection">${sel.length?`${sel.length} selected`:'No selection'}${sel.length>1?`<small>· ${esc(current()?.name||'')}</small><button class="icon" data-action="clear" aria-label="Clear selection">${icon('x')}</button>`:`<small>${sel[0]?.paired?'Image + JSON':sel[0]?.video?'Video':'Image'}</small>`}</div><button data-action="favorite" ${sel.length?'':'disabled'}>${icon('star')}Favorite${sel.length>1?' '+sel.length:''}</button><button data-action="export" ${sel.length===1?'':'disabled'} data-tooltip="${sel.length>1?'Export one asset at a time':'Copy original and replace destination metadata'}">${icon('share')}Export…</button>${state.remote?`<span class="action-separator"></span><span class="muted small">${icon('lock-keyhole')} Read-only originals</span>`:`<span class="action-separator"></span><button data-action="archive" ${sel.length?'':'disabled'}>${icon(state.scope==='Archive'?'archive-restore':'archive')}${state.scope==='Archive'?'Restore':sel.length>1?'Archive '+sel.length:'Archive'}</button><button data-action="trash" ${sel.length?'':'disabled'}>${icon('trash-2')}${sel.length>1?`Move ${sel.length} to Trash`:'Move to Trash'}</button>`}</div>`;}
+    function review(){const item=current();return `<div class="review"><section class="viewer" aria-label="Selected image preview"><div class="viewer-head"><span class="filename">${esc(item?.name||'No asset selected')}</span>${item?.paired?'<span class="chip">JSON</span>':''}<button class="small" style="margin-left:auto" data-action="focus">${icon(state.focus?'minimize':'maximize')}${state.focus?'Back':'Enlarge'}</button></div><div class="canvas">${item?`<div class="photo hero-photo" role="img" aria-label="Large synthetic preview: ${esc(item.name)}" style="--px:${item.id%3*50}%;--py:${Math.floor(item.id/3)*50}%">${item.video?`<div class="video-open"><button data-action="play">${icon(state.playing?'pause':'play')}${state.playing?'Pause':state.remote?'Load video':'Play'}</button><span class="small">${state.remote?'Downloads on open · up to 100 MB':'0:00 / 0:24 · prototype'}</span></div>`:''}</div>`:''}</div></section><button class="divider" data-resize="meta" aria-label="Resize preview and metadata; arrow keys adjust"></button>${metadata(item)}</div>`;}
+    function gallery(){const shown=visible();return `<section class="gallery" aria-label="Contact sheet"><div class="gallery-head"><strong>${state.scope==='Archive'?'Archive':'Contact sheet'}</strong><span class="scope">${shown.length} assets${state.scope==='Favorites'?' · Favorites':''}</span>${state.scope!=='Archive'?`<button class="small" data-action="filter-favorites" aria-pressed="${state.scope==='Favorites'}">${icon('star')}Favorites</button>`:''}<label class="sizing">Size <input type="range" min="100" max="360" step="4" value="${state.thumb}" aria-label="Thumbnail size"></label></div>${shown.length?`<div class="tiles" aria-label="Asset thumbnails">${shown.map(i=>`<button class="tile ${state.active===i.id?'current':''}" data-item="${i.id}" aria-pressed="${state.selected.includes(i.id)}" aria-label="${esc(i.name)}${i.paired?', paired JSON':''}${i.video?', video':''}"><div class="photo" role="img" aria-label="${esc(i.name)}" style="--px:${i.id%3*50}%;--py:${Math.floor(i.id/3)*50}%">${state.selected.includes(i.id)?'<span class="check">✓</span>':''}${i.favorite?'<span class="star">★</span>':''}${i.video?`<span class="video-tag">${icon('play')}0:24</span>`:''}</div><span class="tile-name"><span class="name">${esc(i.name)}</span>${i.paired?icon('file-json'):''}</span></button>`).join('')}</div>`:`<div class="empty">${icon(state.scope==='Archive'?'archive':'folder')}<span>${state.scope==='Archive'?'Nothing archived in Studio studies.':'No assets in this view.'}</span><button class="bordered" data-scope="All files">Back to all files</button></div>`}</section>`;}
+    function sheet(){let body='';let title='';let buttons='';const sel=selectedItems();const memberCount=sel.reduce((n,i)=>n+(i.paired?2:1),0);
+      if(state.modal==='open'){title='Open a folder';body=`<p>No import. Browse the files where they are.</p><button class="recent" data-action="local">${icon('folder')}<span>Studio studies<small>Pictures · local demo folder</small></span></button><button class="recent" data-action="remote">${icon('server')}<span>Render box<small>/home/demo/outputs · via RelayBar</small></span></button>`;buttons='<button data-action="cancel">Cancel</button><button class="solid" data-action="local">Choose folder…</button>';}
+      if(state.modal==='connect'){title='Remote folders, via RelayBar';body='<p>Use the hosts and folders already saved in RelayBar. Your SSH setup stays there.</p><div class="file-row">1 <span>Choose a folder in RelayBar.</span></div><div class="file-row">2 <span>Click Open in Frame.<small>Allow read-only access once. Frame opens automatically.</small></span></div>';buttons='<button data-action="cancel">Cancel</button><button class="solid" data-action="handoff">Continue in RelayBar</button>';}
+      if(state.modal==='handoff'){title='RelayBar · Open in Frame';body='<p>Allow Frame to view remote files through RelayBar?</p><div class="file-row">'+icon('folder')+'<span>/home/demo/outputs<small>Render box · read-only access · illustrative host</small></span></div><p>You can revoke access in RelayBar Settings.</p>';buttons='<button data-action="cancel">Cancel</button><button class="solid" data-action="remote">Allow & Open</button>';}
+      if(state.modal==='archive'){title=`${state.scope==='Archive'?'Restore':'Archive'} ${sel.length} assets?`;body='<p>Selected images and paired JSON move together. Restore returns archived assets to their original folders.</p>';buttons='<button data-action="cancel">Cancel</button><button class="solid" data-action="confirm-archive">Continue</button>';}
+      if(state.modal==='trash'){title=`Move ${sel.length} ${sel.length===1?'asset':'assets'} to Trash?`;body=`<p>${memberCount} ${memberCount===1?'file':'files'} including paired JSON. You can undo this in Frame.</p>${sel.map(i=>`<div class="file-row">${icon('file-image')}<span>${esc(i.name)}${i.paired?'<small>+ '+esc(i.name)+'.json</small>':''}</span></div>`).join('')}`;buttons='<button data-action="cancel">Cancel</button><button class="solid" data-action="confirm-trash">Move to Trash</button>';}
+      if(state.modal==='export'){title='Export original';body=`<p>A byte-for-byte copy. Existing destination metadata is replaced, never merged.</p><div class="file-row">${icon('folder')}<span>Exports<small>Illustrative destination · no files are written</small></span></div>${sel.map(i=>`<div class="file-row">${icon('file-image')}<span>${esc(i.name)}${i.paired?'<small>Paired JSON is included.</small>':''}</span></div>`).join('')}`;buttons='<button data-action="cancel">Cancel</button><button class="solid" data-action="confirm-export">Choose destination…</button>';}
+      return `<div class="shade"><section class="sheet" role="dialog" aria-modal="true" aria-label="${esc(title)}"><h2>${title}</h2>${body}<div class="sheet-actions">${buttons}</div></section></div>`;
+    }
+    function welcome(){return `<div class="welcome"><section class="welcome-inner"><h1>Your folders. A clearer view.</h1><p>Open a folder of images and videos. Nothing to import.</p><div class="primary-row"><button class="solid" data-action="open">${icon('folder-open')}Open folder…</button><button class="bordered" data-action="connect">${icon('server')}Remote folder…</button></div><h2>RECENT FOLDERS</h2><button class="recent" data-action="local">${icon('folder')}<span>Studio studies<small>Pictures · On this Mac</small></span><span class="grow"></span>${icon('arrow-right')}</button><button class="recent" data-action="remote">${icon('server')}<span>Render box<small>/home/demo/outputs · via RelayBar</small></span><span class="grow"></span>${icon('arrow-right')}</button><p class="small" style="margin-top:20px">Or drop a folder here.</p></section></div>`;}
+    function render(){app.style.colorScheme=state.appearance==='System'?'':state.appearance.toLowerCase();app.style.setProperty('--thumb-width',state.thumb+'px');app.style.setProperty('--meta-width',state.meta+'px');app.style.setProperty('--review-height',state.reviewHeight+'px');app.style.setProperty('--grid-width',state.gridWidth+'px');app.style.setProperty('--grid-image-height',state.gridHeight+'px');app.classList.toggle('focus',state.focus);app.innerHTML=`<header class="top"><div class="lights" aria-hidden="true"><span></span><span></span><span></span></div><span class="wordmark">Frame</span>${state.screen==='Start'?'':`<button class="icon" data-action="rail" aria-label="Show or hide folders">${icon('panel-left')}</button><button data-action="open" class="small">${icon('folder-open')}Open folder…</button><div class="crumb"><span class="muted">${state.remote?'Render box':'Pictures'}</span>${icon('chevron-right')}<strong>${state.remote?'outputs':state.location}${state.scope==='All files'?'':' / '+state.scope}</strong></div><span class="grow"></span><span class="source">${icon(state.remote?'server':'hard-drive')}${state.remote?'via RelayBar · Read-only':'On this Mac'}</span>`}</header>${state.screen==='Start'?welcome():`<div class="body">${rail()}<main class="content">${state.screen==='First remote use'?remoteIntro():`${actions()}${review()}<button class="divider outer-split" data-resize="grid" aria-label="Resize contact sheet and preview"></button><button class="divider horizontal" data-resize="height" aria-label="Resize contact sheet and preview; arrow keys adjust"></button>${gallery()}`}<footer class="bottom"><span>${state.remote?'/home/demo/outputs':'Studio studies · includes subfolders'}</span><span>⌘ click to add · ⇧ click for a range</span></footer></main></div>`}${state.modal?sheet():''}${state.notice?`<div class="notice" role="status">${esc(state.notice)}${state.undo.length?'<button data-action="undo">Undo</button>':'<button data-action="dismiss">Dismiss</button>'}</div>`:''}`;globalThis.lucide?.createIcons({attrs:{width:16,height:16}});}
+    app.addEventListener('click',e=>{const tile=e.target.closest('[data-item]');if(tile){let id=Number(tile.dataset.item);if(e.shiftKey&&state.anchor!==null){let ids=visible().map(i=>i.id),a=ids.indexOf(state.anchor),b=ids.indexOf(id);let range=ids.slice(Math.min(a,b),Math.max(a,b)+1);state.selected=e.metaKey?[...new Set([...state.selected,...range])]:range;state.active=id;}else if(e.metaKey){state.selected=state.selected.includes(id)?state.selected.filter(v=>v!==id):[...state.selected,id];state.active=state.selected.includes(id)?id:state.selected.at(-1)??null;state.anchor=id;}else choose(id);state.playing=false;render();remember();return;}
+      const folder=e.target.closest('[data-folder]');if(folder){state.folder=folder.dataset.folder||null;state.remote=false;state.screen='Browse';resetScope('All files');render();remember();return;}const scope=e.target.closest('[data-scope]');if(scope){state.folder=null;resetScope(scope.dataset.scope);render();remember();return;}
+      const action=e.target.closest('[data-action]')?.dataset.action;if(!action)return;
+      if(action==='rail')state.rail=!state.rail;
+      if(action==='open')state.modal='open';
+      if(action==='local')location();
+      if(action==='remote')location(true);
+      if(action==='connect'){state.screen='First remote use';state.modal=null;}
+      if(action==='handoff')state.modal='handoff';
+      if(action==='cancel')state.modal=null;
+      if(action==='focus')state.focus=!state.focus;
+      if(action==='clear'){state.selected=[];state.active=null;}
+      if(action==='favorite'){const set=selectedItems(),on=set.some(i=>!i.favorite);set.forEach(i=>i.favorite=on);if(state.scope==='Favorites')resetScope('Favorites');}
+      if(action==='play')state.playing=!state.playing;
+      if(action==='archive'&&selectedItems().length>1&&!state.remote)state.modal='archive';
+      if(action==='trash'&&!state.remote&&selectedItems().length)state.modal='trash';
+      if(action==='export'&&selectedItems().length===1)state.modal='export';
+      if(action==='confirm-export'){state.modal=null;state.notice='Prototype only · a native destination picker opens here';}
+      if((action==='confirm-archive'||(action==='archive'&&selectedItems().length===1))&&!state.remote&&selectedItems().length){let ids=[...state.selected],restore=state.scope==='Archive';state.undo.push({archived:[...state.archived],trashed:[...state.trashed],ids,scope:state.scope});state.archived=restore?state.archived.filter(id=>!ids.includes(id)):[...state.archived,...ids];resetScope(state.scope);state.modal=null;state.notice=`${ids.length} ${ids.length===1?'asset':'assets'} ${restore?'restored':'archived'} · paired files stay together`;}
+      if(action==='confirm-trash'&&!state.remote&&selectedItems().length){let ids=[...state.selected];state.undo.push({archived:[...state.archived],trashed:[...state.trashed],ids,scope:state.scope});state.trashed.push(...ids);resetScope(state.scope);state.modal=null;state.notice=`${ids.length} ${ids.length===1?'asset':'assets'} moved to Trash`;}
+      if(action==='undo'&&state.undo.length){let last=state.undo.pop();state.archived=last.archived;state.trashed=last.trashed;state.scope=last.scope;state.selected=last.ids;state.active=last.ids[0];state.notice='Action undone';}
+      if(action==='dismiss')state.notice=null;
+      render();remember();
+    });
+    app.addEventListener('dblclick',e=>{if(e.target.closest('[data-item]')){state.focus=true;render();}});
+    app.addEventListener('input',e=>{if(e.target.matches('input[type=range]')){state.thumb=Number(e.target.value);app.style.setProperty('--thumb-width',state.thumb+'px');remember();}});
+    app.addEventListener('keydown',e=>{if(e.target.matches('input,textarea,summary')||e.target.closest('details'))return;if(e.key==='Escape'){e.preventDefault();if(state.modal)state.modal=null;else if(state.focus)state.focus=false;else{state.selected=[];state.active=null;}render();return;}if(state.modal)return;
+      if(e.target.dataset.resize){if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();let delta=['ArrowRight','ArrowDown'].includes(e.key)?16:-16;if(e.target.dataset.resize==='height')state.reviewHeight=Math.max(260,Math.min(520,state.reviewHeight+delta));else state.meta=Math.max(235,Math.min(380,state.meta-delta));app.style.setProperty('--review-height',state.reviewHeight+'px');app.style.setProperty('--meta-width',state.meta+'px');remember();}return;}
+      if(e.metaKey&&e.key.toLowerCase()==='a'){e.preventDefault();state.selected=e.shiftKey?[]:visible().map(i=>i.id);state.active=state.selected[0]??null;render();}
+      if(e.metaKey&&e.key==='Backspace'&&!state.remote&&selectedItems().length){e.preventDefault();state.modal='trash';render();}
+      if(e.key==='Enter'&&e.target.closest('[data-item]')){e.preventDefault();state.focus=true;render();}
+      if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)&&e.target.closest('[data-item]')){e.preventDefault();let ids=visible().map(i=>i.id),next=Math.max(0,Math.min(ids.length-1,ids.indexOf(state.active)+(['ArrowLeft','ArrowUp'].includes(e.key)?-1:1)));if(e.shiftKey){let anchor=ids.indexOf(state.anchor);state.selected=ids.slice(Math.min(anchor,next),Math.max(anchor,next)+1);state.active=ids[next];}else choose(ids[next]);render();app.querySelector(`[data-item="${state.active}"]`)?.focus();}
+    });
+    app.addEventListener('pointerdown',e=>{const handle=e.target.closest('[data-resize]');if(!handle)return;e.preventDefault();const startX=e.clientX,startY=e.clientY,m=state.meta,h=state.reviewHeight,gw=state.gridWidth,gh=state.gridHeight;handle.setPointerCapture(e.pointerId);const move=ev=>{if(handle.dataset.resize==='grid')state.gridWidth=Math.max(320,Math.min(620,gw+startX-ev.clientX));else if(handle.dataset.resize==='meta'&&key==='grid')state.gridHeight=Math.max(210,Math.min(440,gh+ev.clientY-startY));else if(handle.dataset.resize==='height')state.reviewHeight=Math.max(260,Math.min(520,h+ev.clientY-startY));else state.meta=Math.max(235,Math.min(380,m+startX-ev.clientX));app.style.setProperty('--grid-width',state.gridWidth+'px');app.style.setProperty('--grid-image-height',state.gridHeight+'px');app.style.setProperty('--review-height',state.reviewHeight+'px');app.style.setProperty('--meta-width',state.meta+'px');};const end=()=>{handle.removeEventListener('pointermove',move);handle.removeEventListener('pointerup',end);remember();};handle.addEventListener('pointermove',move);handle.addEventListener('pointerup',end);});
+    function scenario(){state.modal=null;state.notice=null;state.focus=false;state.archived=[];state.trashed=[];state.undo=[];state.remote=state.screen==='Remote';state.location=state.remote?'Render box':'Studio studies';resetScope('All files');if(state.screen==='Batch'){state.selected=[0,1,2];state.active=0;}if(state.screen==='Archive'){state.archived=[0,2];resetScope('Archive');}render();remember();}
+    function remoteIntro(){return `<section class="remote-intro"><div><h1>Your remote folders, via RelayBar</h1><p>Use your saved hosts and paths. Your SSH setup stays in RelayBar.</p><ol><li>Choose a folder in RelayBar.</li><li>Click Open in Frame and allow access once.</li></ol><button class="solid" data-action="handoff">Continue in RelayBar</button><p class="small">Frame opens automatically after approval.</p></div></section>`;}
+    app.addEventListener('click',e=>{if(e.target.closest('[data-action="filter-favorites"]')){resetScope(state.scope==='Favorites'?'All files':'Favorites');render();remember();}});
+    render();
+    if(globalThis.Tweak){const tweak=new Tweak({container:app,onChange:scenario});tweak.addSelect(state,'screen',{label:'Flow state',options:['Browse','Batch','Archive','Remote','First remote use','Start']});tweak.addSelect(state,'appearance',{label:'Appearance',options:['System','Light','Dark']});tweak.addToggle(state,'rail',{label:'Folders visible'});tweak.addSlider(state,'meta',{label:'Details width',min:235,max:380,unit:'px'});}
+    window.addEventListener('openai:set_globals',event=>{const saved=event.detail?.globals?.widgetState?.privateContent?.[key];if(saved){Object.assign(state,saved);scenario();}});
+  });
+})();
+</script>

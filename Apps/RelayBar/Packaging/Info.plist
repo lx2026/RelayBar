@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleExecutable</key>
+    <string>RelayBar</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.lx2026.RelayBar</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>RelayBar</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>2.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>25</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>13.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>CFBundleIconName</key>
+    <string>AppIcon</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>RelayBar connects to SSH hosts on your local network to create tunnels.</string>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 RelayBar</string>
+    <key>SUFeedURL</key>
+    <string>https://lx2026.github.io/RelayBar/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>YU2cxOZU33vQR5b4HHuNCl2KBlrqgVuz2Hi9Fows8w0=</string>
+    <key>SURequireSignedFeed</key>
+    <true/>
+    <key>SUEnableAutomaticChecks</key>
+    <false/>
+    <key>SUAutomaticallyUpdate</key>
+    <false/>
+    <key>SUAllowsAutomaticUpdates</key>
+    <false/>
+    <key>SUScheduledCheckInterval</key>
+    <integer>604800</integer>
+    <key>SUVerifyUpdateBeforeExtraction</key>
+    <true/>
+</dict>
+</plist>

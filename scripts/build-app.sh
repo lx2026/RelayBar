@@ -36,7 +36,7 @@ if [[ -z "$SIGNING_IDENTITY" ]]; then
 fi
 
 xcodebuild \
-  -project RelayBar.xcodeproj \
+  -project Apps/RelayBar/RelayBar.xcodeproj \
   -scheme RelayBar \
   -configuration "$XCODE_CONFIGURATION" \
   -destination "$DESTINATION" \
@@ -82,6 +82,7 @@ codesign \
   --sign "$SIGNING_IDENTITY" \
   --options runtime \
   --timestamp \
+  --entitlements "$ROOT/Apps/RelayBar/Packaging/RelayBar.entitlements" \
   "$APP" >/dev/null
 codesign --verify --deep --strict --verbose=2 "$APP"
 

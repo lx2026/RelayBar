@@ -1,0 +1,294 @@
+<style>
+  #frame-redesign { font-family: -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif; -webkit-font-smoothing: antialiased; }
+  #frame-redesign * { box-sizing: border-box; }
+  #frame-redesign .frame-window {
+    color-scheme: light dark;
+    --surface: light-dark(#f8f8f6, #242526); --chrome: light-dark(#f0f0ed, #292a2b);
+    --stage: light-dark(#e4e5e1, #17191a); --text: light-dark(#252823, #eeefeb);
+    --secondary: light-dark(#62675e, #b5b9b0); --line: light-dark(#d8dbd3, #3c3f39);
+    --hover: light-dark(#e5e6e1, #373a36); --selected: light-dark(#dedfd9, #3d403b);
+    --accent: light-dark(#30332f, #e1e4dd); --on-accent: light-dark(#fff, #252823);
+    --gold: light-dark(#886115, #e8be63); --popup: light-dark(#ffffff, #30322e);
+    color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 13px;
+    overflow: clip; position: relative; font-size: 13px; line-height: 1.45; min-height: 680px;
+  }
+  #frame-redesign button, #frame-redesign input { font: inherit; }
+  #frame-redesign button { color: inherit; border: 0; background: transparent; border-radius: 6px; cursor: pointer; }
+  #frame-redesign button:disabled { opacity: .4; cursor: default; }
+  #frame-redesign button:hover:not(:disabled) { background: var(--hover); }
+  #frame-redesign button:focus-visible, #frame-redesign input:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+  #frame-redesign [hidden] { display: none !important; }
+  #frame-redesign svg.lucide { width: 16px; height: 16px; stroke-width: 1.6; flex: 0 0 auto; }
+  #frame-redesign .titlebar { height: 34px; display: flex; align-items: center; justify-content: center; position: relative; background: var(--chrome); color: var(--secondary); font-size: 11px; }
+  #frame-redesign .traffic { display: flex; gap: 7px; position: absolute; left: 15px; }
+  #frame-redesign .traffic span { width: 11px; height: 11px; border-radius: 100%; background: #ff6259; }
+  #frame-redesign .traffic span:nth-child(2) { background: #ffc044; } #frame-redesign .traffic span:nth-child(3) { background: #2bc747; }
+  #frame-redesign .toolbar { display: flex; align-items: center; min-height: 58px; padding: 10px 16px; gap: 10px; border-bottom: 1px solid var(--line); background: var(--chrome); }
+  #frame-redesign .folder-trigger { display: flex; gap: 10px; align-items: center; text-align: left; padding: 5px 9px; min-width: 0; max-width: 290px; }
+  #frame-redesign .folder-trigger strong { font-weight: 600; display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #frame-redesign .folder-trigger span { min-width: 0; }
+  #frame-redesign .folder-trigger small { font-size: 11px; color: var(--secondary); display: block; }
+  #frame-redesign .spacer { flex: 1; }
+  #frame-redesign .icon-button { width: 32px; height: 32px; display: inline-flex; align-items: center; justify-content: center; }
+  #frame-redesign .labeled { min-height: 32px; padding: 6px 10px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; white-space: nowrap; }
+  #frame-redesign .export { background: var(--popup); box-shadow: inset 0 0 0 1px var(--line); }
+  #frame-redesign .primary { background: var(--accent); color: var(--on-accent); padding: 9px 16px; font-weight: 500; }
+  #frame-redesign .primary:hover { background: var(--accent) !important; filter: brightness(.96); }
+  #frame-redesign .workspace { display: flex; min-height: 585px; }
+  #frame-redesign .sidebar { width: 172px; flex-shrink: 0; padding: 18px 10px; background: var(--chrome); border-right: 1px solid var(--line); }
+  #frame-redesign .section-label { color: var(--secondary); font-size: 11px; margin: 0 10px 8px; font-weight: 500; }
+  #frame-redesign .folder-row { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px; text-align: left; font-size: 12px; }
+  #frame-redesign .folder-row span { flex: 1; }
+  #frame-redesign .folder-row small { color: var(--secondary); font-size: 11px; }
+  #frame-redesign .folder-row.active { background: var(--selected); }
+  #frame-redesign .viewer { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  #frame-redesign .scopebar { display: flex; align-items: center; justify-content: space-between; padding: 10px 15px; min-height: 49px; gap: 10px; }
+  #frame-redesign .scope-label { display: flex; gap: 6px; align-items: center; color: var(--secondary); font-size: 12px; min-width: 0; }
+  #frame-redesign .scope-label button { padding: 5px 7px; display: flex; align-items: center; gap: 6px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+  #frame-redesign .segmented { display: flex; border: 1px solid var(--line); border-radius: 7px; padding: 2px; gap: 2px; flex-shrink: 0; }
+  #frame-redesign .segmented button { padding: 4px 10px; font-size: 11px; }
+  #frame-redesign .segmented button[aria-pressed=true] { background: var(--selected); font-weight: 600; }
+  #frame-redesign .stage { background: var(--stage); min-height: 360px; flex: 1; display: flex; align-items: center; justify-content: center; padding: 26px 30px; position: relative; }
+  #frame-redesign .art { aspect-ratio: 3 / 2; width: 100%; max-width: 700px; overflow: hidden; position: relative; background: #d9bb92; box-shadow: 0 12px 24px #00000018; }
+  #frame-redesign .art.video-art { aspect-ratio: 16 / 9; }
+  #frame-redesign .art::before { content: ''; position: absolute; width: 17%; aspect-ratio: 1; background: #e4a03e; border-radius: 100%; left: 32%; top: 17%; }
+  #frame-redesign .art::after { content: ''; position: absolute; inset: 0; background: #aa6845; clip-path: polygon(0 67%, 20% 52%, 41% 48%, 64% 62%, 85% 74%, 100% 68%, 100% 100%, 0 100%); }
+  #frame-redesign .art .land { position: absolute; inset: 0; z-index: 1; background: #704d3b; clip-path: polygon(0 79%, 18% 85%, 40% 75%, 61% 64%, 78% 61%, 100% 66%, 100% 100%, 0 100%); }
+  #frame-redesign .art.coast { background: #b6cbd0; }
+  #frame-redesign .art.coast::before { background: #e9e4ca; width: 11%; left: 68%; top: 18%; }
+  #frame-redesign .art.coast::after { background: #6d929a; clip-path: polygon(0 48%, 100% 48%, 100% 100%, 0 100%); }
+  #frame-redesign .art.coast .land { background: #384e4a; clip-path: polygon(0 43%, 18% 47%, 27% 63%, 46% 70%, 53% 90%, 75% 100%, 0 100%); }
+  #frame-redesign .art.forest { background: #b9c8af; }
+  #frame-redesign .art.forest::before { background: #e9deac; left: 57%; }
+  #frame-redesign .art.forest::after { background: #5d7662; clip-path: polygon(0 64%, 18% 33%, 36% 70%, 54% 27%, 83% 68%, 100% 38%, 100% 100%, 0 100%); }
+  #frame-redesign .art.forest .land { background: #324e40; clip-path: polygon(0 84%, 23% 57%, 49% 90%, 69% 60%, 100% 87%, 100% 100%, 0 100%); }
+  #frame-redesign .art.terrace { background: #c9c5b6; }
+  #frame-redesign .art.terrace::before { border-radius: 0; left: 24%; top: 18%; width: 47%; background: #777d70; }
+  #frame-redesign .art.terrace::after { background: #e0dccc; clip-path: polygon(33% 32%, 62% 32%, 62% 100%, 33% 100%); }
+  #frame-redesign .art.terrace .land { background: #3b4540; clip-path: polygon(40% 43%, 56% 43%, 56% 100%, 40% 100%); }
+  #frame-redesign .player { display: flex; gap: 10px; padding: 9px 15px; align-items: center; background: var(--chrome); border-top: 1px solid var(--line); }
+  #frame-redesign .time { font-size: 11px; font-variant-numeric: tabular-nums; color: var(--secondary); white-space: nowrap; }
+  #frame-redesign .player input { min-width: 30px; flex: 1; accent-color: var(--accent); }
+  #frame-redesign .stage-footer { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 7px 14px; background: var(--surface); }
+  #frame-redesign .stage-footer .position { font-size: 11px; color: var(--secondary); }
+  #frame-redesign .filmstrip { display: flex; gap: 10px; padding: 12px 15px 16px; border-top: 1px solid var(--line); overflow: auto; background: var(--chrome); }
+  #frame-redesign .thumb { flex: 0 0 86px; width: 86px; padding: 3px; text-align: left; position: relative; }
+  #frame-redesign .thumb .art { height: 57px; aspect-ratio: auto; box-shadow: none; border-radius: 3px; }
+  #frame-redesign .thumb[aria-current=true] { box-shadow: inset 0 0 0 2px var(--accent); }
+  #frame-redesign .thumb .name { display: block; font-size: 11px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; margin-top: 6px; }
+  #frame-redesign .video-badge { position: absolute; display: flex; align-items: center; gap: 3px; right: 5px; top: 34px; color: #fff; background: #172020de; border-radius: 3px; padding: 1px 4px; font-size: 11px; }
+  #frame-redesign .video-badge svg { width: 9px; height: 9px; }
+  #frame-redesign .thumb-star { position: absolute; top: 5px; left: 7px; color: #f2cc73; text-shadow: 0 1px 2px #000; }
+  #frame-redesign .inspector { width: 284px; flex-shrink: 0; border-left: 1px solid var(--line); background: var(--surface); }
+  #frame-redesign .identity { padding: 22px 21px 18px; }
+  #frame-redesign .type-line { display: flex; align-items: center; justify-content: space-between; color: var(--secondary); font-size: 11px; margin-bottom: 7px; }
+  #frame-redesign .identity h2 { margin: 0 0 5px; font-size: 17px; font-weight: 600; word-break: break-word; }
+  #frame-redesign .path { color: var(--secondary); font-size: 11px; overflow-wrap: anywhere; }
+  #frame-redesign .favorite[aria-pressed=true] { color: var(--gold); }
+  #frame-redesign .favorite[aria-pressed=true] svg { fill: currentColor; }
+  #frame-redesign .metadata-section { padding: 16px 21px; border-top: 1px solid var(--line); }
+  #frame-redesign .metadata-section h3 { font-size: 12px; font-weight: 600; margin: 0 0 13px; display: flex; align-items: center; justify-content: space-between; }
+  #frame-redesign .metadata-section h3 button { width: 25px; height: 25px; display: grid; place-items: center; color: var(--secondary); }
+  #frame-redesign dl { margin: 0; display: grid; grid-template-columns: 90px 1fr; column-gap: 8px; row-gap: 10px; font-size: 11px; }
+  #frame-redesign dt { color: var(--secondary); } #frame-redesign dd { margin: 0; overflow-wrap: anywhere; user-select: text; }
+  #frame-redesign .prompt { font-size: 12px; line-height: 1.6; margin: 0 0 15px; }
+  #frame-redesign .embedded { border-top: 1px solid var(--line); padding: 15px 21px; font-size: 12px; }
+  #frame-redesign summary { cursor: pointer; } #frame-redesign .embedded pre { font-size: 11px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--secondary); }
+  #frame-redesign .popover { position: absolute; top: 90px; left: 16px; width: 300px; max-width: calc(100% - 32px); background: var(--popup); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 12px 32px #0004; z-index: 10; padding: 8px; }
+  #frame-redesign .popover button { width: 100%; padding: 10px; display: flex; align-items: center; gap: 10px; text-align: left; }
+  #frame-redesign .popover strong { font-size: 12px; font-weight: 500; display: block; }
+  #frame-redesign .popover small { display: block; font-size: 11px; color: var(--secondary); }
+  #frame-redesign .popover .unavailable { color: var(--secondary); }
+  #frame-redesign .popover .caption { padding: 9px 10px 3px; color: var(--secondary); font-size: 11px; border-top: 1px solid var(--line); margin-top: 5px; }
+  #frame-redesign .welcome { width: 100%; min-height: 585px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 50px 24px; }
+  #frame-redesign .welcome > svg { width: 38px; height: 38px; color: var(--secondary); margin-bottom: 16px; }
+  #frame-redesign .welcome h1 { font-size: 25px; line-height: 1.25; font-weight: 500; letter-spacing: -.6px; margin: 0 0 9px; }
+  #frame-redesign .welcome p { color: var(--secondary); margin: 0 0 22px; font-size: 13px; }
+  #frame-redesign .welcome .recent-list { width: 290px; max-width: 100%; margin-top: 30px; }
+  #frame-redesign .recent-list > span { display: block; font-size: 11px; color: var(--secondary); margin-bottom: 8px; }
+  #frame-redesign .recent-list button { display: flex; gap: 10px; padding: 10px 0; text-align: left; width: 100%; align-items: center; }
+  #frame-redesign .recent-list small { display: block; font-size: 11px; color: var(--secondary); }
+  #frame-redesign .empty-results { text-align: center; padding: 90px 20px; min-height: 430px; width: 100%; }
+  #frame-redesign .empty-results h2 { font-size: 18px; font-weight: 500; }
+  #frame-redesign .empty-results p { color: var(--secondary); font-size: 12px; }
+  #frame-redesign .toast { position: absolute; left: 24px; bottom: 126px; max-width: calc(100% - 48px); background: var(--popup); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; box-shadow: 0 6px 24px #0003; display: flex; align-items: center; gap: 18px; z-index: 8; font-size: 12px; }
+  #frame-redesign .toast button { font-weight: 600; padding: 4px; color: var(--accent); }
+  #frame-redesign .focus .toast { bottom: 24px; }
+  #frame-redesign .modal-shade { position: absolute; inset: 34px 0 0; background: #0005; z-index: 20; display: flex; align-items: flex-start; justify-content: center; padding: 70px 20px 30px; }
+  #frame-redesign .sheet { width: 430px; max-width: 100%; background: var(--popup); padding: 25px; border-radius: 13px; box-shadow: 0 18px 80px #0005; border: 1px solid var(--line); }
+  #frame-redesign .sheet h2 { margin: 0 0 10px; font-size: 18px; font-weight: 600; }
+  #frame-redesign .sheet p { font-size: 12px; color: var(--secondary); margin: 0 0 22px; }
+  #frame-redesign .sheet label { display: block; margin-bottom: 7px; font-size: 12px; }
+  #frame-redesign .sheet input { width: 100%; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 9px; }
+  #frame-redesign .sheet .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 24px; }
+  #frame-redesign .sheet .actions button { min-width: 80px; }
+  #frame-redesign .grid { width: 100%; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 22px 16px; align-self: flex-start; }
+  #frame-redesign .grid button { text-align: left; padding: 5px; }
+  #frame-redesign .grid .name { display: block; font-size: 11px; margin-top: 8px; }
+  #frame-redesign .grid .art { box-shadow: none; }
+  #frame-redesign .focus .filmstrip, #frame-redesign .focus .sidebar { display: none; }
+  #frame-redesign .focus .stage { min-height: 470px; }
+  @media (max-width: 850px) { #frame-redesign .sidebar { width: 140px; } #frame-redesign .inspector { width: 255px; } #frame-redesign .stage { padding: 20px; min-height: 320px; } #frame-redesign .folder-trigger small { display: none; } }
+  @media (max-width: 650px) { #frame-redesign .workspace { flex-wrap: wrap; } #frame-redesign .sidebar { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); display: flex; gap: 4px; padding: 8px; } #frame-redesign .sidebar .section-label { display: none; } #frame-redesign .sidebar .folder-row { width: auto; flex: 1; } #frame-redesign .sidebar small, #frame-redesign .sidebar svg { display: none; } #frame-redesign .viewer { width: 100%; flex: 1 0 100%; } #frame-redesign .inspector { width: 100%; border-left: 0; border-top: 1px solid var(--line); } #frame-redesign .toolbar { flex-wrap: wrap; gap: 5px; padding: 8px; } #frame-redesign .folder-trigger { flex: 1; max-width: none; } #frame-redesign .toolbar .spacer { display: none; } #frame-redesign .toolbar .export .button-text { display: none; } #frame-redesign .scopebar { padding: 9px; } #frame-redesign .scope-label { font-size: 11px; } #frame-redesign .stage { min-height: 260px; } #frame-redesign .popover { top: 86px; } #frame-redesign .toast { bottom: 20px; } }
+</style>
+<div id="frame-redesign">
+  <div class="frame-window" data-layout="menu" aria-label="Frame folder menu design"></div>
+</div>
+<script>
+(() => {
+  const root = document.getElementById('frame-redesign');
+  const icon = (name) => `<i data-lucide="${name}" aria-hidden="true"></i>`;
+  const art = (style, video=false) => `<div class="art ${style}${video?' video-art':''}" role="img" aria-label="${style || 'Dune'} study sample artwork"><span class="land"></span></div>`;
+  const samples = [
+    {id:1, name:'Dune study.png', folder:'Stills', art:'', type:'PNG', size:'4.2 MB', dimensions:'2400 × 1600', favorite:true, ai:true},
+    {id:2, name:'Coast walk.mov', folder:'Clips', art:'coast', type:'MOV', size:'38.6 MB', dimensions:'3840 × 2160', favorite:false, video:true, duration:24},
+    {id:3, name:'Forest light.jpg', folder:'Stills', art:'forest', type:'JPEG', size:'6.8 MB', dimensions:'4000 × 2667', favorite:false},
+    {id:4, name:'Terrace.png', folder:'Stills', art:'terrace', type:'PNG', size:'3.1 MB', dimensions:'2400 × 1600', favorite:false},
+    {id:5, name:'Morning tide.mp4', folder:'Clips', art:'coast', type:'MP4', size:'21.4 MB', dimensions:'1920 × 1080', favorite:true, video:true, duration:18},
+    {id:6, name:'Last light.jpg', folder:'Stills', art:'', type:'JPEG', size:'5.3 MB', dimensions:'4000 × 2667', favorite:false}
+  ];
+  const roots = [{name:'Field notes', path:'Pictures / Field notes', ids:[1,2,3,4,5,6]}, {name:'AI studies', path:'Pictures / AI studies', ids:[1,4]}, {name:'Weekend', path:'Movies / Weekend', ids:[2,3,5,6]}];
+  const saved = window.openai?.widgetState;
+  root.querySelectorAll('.frame-window').forEach((app, appIndex) => {
+    const state = {theme:'system', screen:'Inspect', root:0, folder:'', favorites:false, selected:1, focus:false, grid:false, popover:null, sheet:null, playing:false, time:0, muted:false, ...saved?.privateContent?.[appIndex], deleted:[], toast:'', undo:null};
+    let toastTimer;
+    const undoStack=[];
+    const items = samples.map(item => ({...item}));
+    const currentRoot = () => roots[state.root];
+    const rootItems = () => items.filter(item => currentRoot().ids.includes(item.id) && !state.deleted.includes(item.id));
+    const visible = () => rootItems().filter(item => (!state.folder || item.folder===state.folder) && (!state.favorites || item.favorite));
+    const selected = () => visible().find(item => item.id===state.selected) || visible()[0];
+    const canInspect = () => !['Start','Empty folder','Missing folder'].includes(state.screen) && Boolean(selected());
+    const canPlay = () => canInspect() && selected()?.video && !state.grid && state.screen!=='Unsupported video';
+    const escape = (s) => String(s).replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+    const time = (seconds) => `0:${String(Math.floor(seconds)).padStart(2,'0')}`;
+    const rows = (values) => `<dl>${values.map(([k,v])=>`<dt>${k}</dt><dd>${v}</dd>`).join('')}</dl>`;
+    const remember = () => {
+      const prior = window.openai?.widgetState?.privateContent || {};
+      window.openai?.setWidgetState?.({modelContent:{design:app.dataset.layout, appearance:state.theme, screen:state.screen}, privateContent:{...prior,[appIndex]:{...state, playing:false, deleted:[], undo:null, toast:'', sheet:null, popover:null}}}).catch(()=>{});
+    };
+    function metadata(item) {
+      if (!item) return '';
+      return `<aside class="inspector" aria-label="Selected file metadata">
+        <header class="identity"><div class="type-line"><span>${item.video?'Video':'Image'} · ${item.type}</span><button class="icon-button favorite" data-action="favorite" data-tooltip="Favorite · F" aria-label="${item.favorite?'Remove from':'Add to'} favorites" aria-pressed="${item.favorite}">${icon('star')}</button></div><h2>${item.name}</h2><div class="path">${currentRoot().name} / ${item.folder}</div></header>
+        <section class="metadata-section"><h3>File <button data-action="copy" aria-label="Copy file metadata">${icon('copy')}</button></h3>${rows([['Dimensions',item.dimensions], ...(item.video?[['Duration',time(item.duration)],['Frame rate','30 fps'],['Video codec',item.type==='MOV'?'HEVC':'H.264'],['Audio','AAC · Stereo']]:[]), ['File size',item.size],['Created','Oct 18, 2026']])}</section>
+        ${item.ai?`<section class="metadata-section"><h3>AI generation <button data-action="copy" aria-label="Copy generation metadata">${icon('copy')}</button></h3><p class="prompt">Quiet dunes at the edge of dusk. Muted terracotta, a pale sky, and one warm sun.</p>${rows([['Model','FLUX.1 dev'],['Seed','4038251'],['Steps','28'],['Guidance','3.5']])}</section>`:item.video?'':`<section class="metadata-section"><h3>Camera</h3>${rows([['Camera','FUJIFILM X-T5'],['Lens','35 mm'],['Exposure','1/250 s · ƒ/4'],['ISO','400']])}</section>`}
+        <details class="embedded"><summary>All embedded metadata</summary><pre>${escape(JSON.stringify({format:item.type,dimensions:item.dimensions,description:item.ai?'Dune study':item.name, ...(item.video?{duration:item.duration,codec:item.type==='MOV'?'HEVC':'H.264'}:{})},null,2))}</pre></details>
+      </aside>`;
+    }
+    function render() {
+      app.style.colorScheme = state.theme==='system'?'':state.theme;
+      app.classList.toggle('focus',state.focus);
+      const list = visible(), item = selected();
+      if (item) state.selected=item.id;
+      const isStart=state.screen==='Start', empty=state.screen==='Empty folder', missing=state.screen==='Missing folder', unsupported=state.screen==='Unsupported video';
+      const unavailable=empty||missing;
+      const folderChoices = [['','All files'],...['Stills','Clips'].filter(folder=>rootItems().some(item=>item.folder===folder)).map(folder=>[folder,folder])];
+      const focusID = app.contains(document.activeElement) ? document.activeElement?.dataset?.action : null;
+      app.innerHTML=`
+        <div class="titlebar"><span class="traffic" aria-hidden="true"><span></span><span></span><span></span></span>Frame</div>
+        <header class="toolbar" ${isStart?'hidden':''}>
+          <button class="folder-trigger" data-action="folders" aria-label="Change folder: ${currentRoot().name}" aria-expanded="${state.popover==='folders'}" data-tooltip="Change folder · ⌘O to choose a folder">${icon(missing?'folder-x':'folder-open')}<span><strong>${currentRoot().name}</strong><small>${missing?'Unavailable — locate folder':currentRoot().path}</small></span>${icon('chevron-down')}</button>
+          <span class="spacer"></span>
+          ${!isStart?`<button class="icon-button" data-action="grid" aria-label="${state.grid?'Return to image':'Contact sheet'}" data-tooltip="Contact sheet · G" aria-pressed="${state.grid}" ${!item||unavailable?'disabled':''}>${icon(state.grid?'rectangle-horizontal':'layout-grid')}</button><button class="icon-button" data-action="trash" data-tooltip="Move to Trash · ⌘⌫" aria-label="Move selected file to Trash" ${!item||unavailable?'disabled':''}>${icon('trash-2')}</button><button class="labeled export" data-action="export" data-tooltip="Export exact copy · ⇧⌘E" ${!item||unavailable?'disabled':''}>${icon('share')}<span class="button-text">Export…</span></button>`:''}
+        </header>
+        <main class="workspace">
+          ${isStart?`<div class="welcome">${icon('folder-open')}<h1>Open a folder.</h1><p>Photos and videos, right where you keep them.</p><button class="primary" data-action="choose">Choose Folder…</button><p style="margin:12px 0 0;font-size:11px">or drop a folder anywhere</p><div class="recent-list"><span>Recent folders</span>${roots.map((folder,index)=>`<button data-root="${index}">${icon('folder')}<span>${folder.name}<small>${folder.path}</small></span>${icon('arrow-up-right')}</button>`).join('')}</div></div>`:`
+          <section class="viewer" aria-label="Media viewer">
+            <div class="scopebar" ${unavailable?'hidden':''}><div class="scope-label">${folderChoices.length<3?`<span>All files</span>`:`<button data-action="scope" aria-label="Select subfolder: ${state.folder||'All files'}" aria-expanded="${state.popover==='scope'}">${state.folder||'All files'}${icon('chevron-down')}</button>`}</div><div class="segmented" aria-label="Filter"><button data-filter="all" aria-pressed="${!state.favorites}">All</button><button data-filter="favorites" aria-pressed="${state.favorites}">Favorites</button></div></div>
+            ${unavailable||!item?`<div class="empty-results"><h2>${missing?'This folder is unavailable':state.favorites&&!empty?'No favorites here':'No supported media here'}</h2><p>${missing?'Reconnect the drive, or locate the folder again.':state.favorites&&!empty?'Favorite a photo or video to keep it close.':'JPEG, PNG, MP4, MOV, and M4V'}</p><button class="labeled export" data-action="${state.favorites&&!unavailable?'all':'choose'}">${missing?'Locate folder…':state.favorites&&!empty?'Show all files':'Choose another folder…'}</button></div>`:`
+            <div class="stage">${unsupported?`<div class="empty-results"><h2>This video can’t be played</h2><p>Its codec isn’t supported by macOS.</p><button class="labeled export" data-action="reveal">Reveal in Finder</button></div>`:state.grid?`<div class="grid">${list.map(media=>`<button data-select="${media.id}">${art(media.art,media.video)}<span class="name">${media.video?'▶ ':''}${media.name}</span></button>`).join('')}</div>`:art(item.art,item.video)}</div>
+            ${item.video&&!state.grid&&!unsupported?`<div class="player"><button class="icon-button" data-action="play" data-tooltip="Play / pause · Space" aria-label="${state.playing?'Pause':'Play'}">${icon(state.playing?'pause':'play')}</button><span class="time elapsed">${time(state.time)}</span><input type="range" min="0" max="${item.duration}" value="${state.time}" aria-label="Playback position"><span class="time">${time(item.duration)}</span><button class="icon-button" data-action="mute" aria-label="${state.muted?'Unmute':'Mute'}">${icon(state.muted?'volume-x':'volume-2')}</button></div>`:''}
+            <div class="stage-footer"><span class="position">${list.indexOf(item)+1} of ${list.length}</span><div><button class="icon-button" data-action="previous" data-tooltip="Previous file · ←" aria-label="Previous file">${icon('chevron-left')}</button><button class="icon-button" data-action="next" data-tooltip="Next file · →" aria-label="Next file">${icon('chevron-right')}</button><button class="icon-button" data-action="focus" data-tooltip="Focus · Return; Escape to leave" aria-label="${state.focus?'Leave focus':'Focus'}" aria-pressed="${state.focus}">${icon(state.focus?'minimize-2':'maximize-2')}</button></div></div>
+            <nav class="filmstrip" aria-label="Photos and videos">${list.map(media=>`<button class="thumb" data-select="${media.id}" aria-label="${media.name}${media.video?`, video, ${media.duration} seconds`:''}" aria-current="${media.id===item.id}">${art(media.art)}${media.video?`<span class="video-badge">${icon('play')}${time(media.duration)}</span>`:''}${media.favorite?'<span class="thumb-star" aria-label="Favorite">★</span>':''}<span class="name">${media.name}</span></button>`).join('')}</nav>`}
+          </section>${!unavailable&&item?metadata(item):''}`}
+        </main>
+        ${state.popover==='folders'?`<div class="popover" role="dialog" aria-label="Folders"><button data-action="choose">${icon('folder-plus')}<strong>Choose Folder…</strong><span class="spacer"></span><small>⌘O</small></button><div class="caption">Recent folders</div>${roots.map((folder,index)=>`<button ${missing&&index===state.root?'data-action="choose" class="unavailable"':`data-root="${index}"`}>${icon(missing&&index===state.root?'folder-x':'folder')}<span><strong>${folder.name}</strong><small>${missing&&index===state.root?'Unavailable · Locate…':folder.path}</small></span>${index===state.root&&!isStart&&!missing?icon('check'):''}</button>`).join('')}${!isStart?`<div class="caption">Current folder</div><button data-action="refresh">${icon('refresh-cw')}Refresh files<span class="spacer"></span><small>⌘R</small></button>`:''}</div>`:''}
+        ${state.popover==='scope'?`<div class="popover" style="top:139px" role="dialog" aria-label="Folder scope">${folderChoices.map(([value,label])=>`<button data-folder="${value}">${icon('folder')}<strong>${label}</strong>${state.folder===value?icon('check'):''}</button>`).join('')}</div>`:''}
+        ${state.sheet?`<div class="modal-shade"><section class="sheet" role="dialog" aria-modal="true" aria-label="${state.sheet==='export'?'Export exact copy':'Choose a folder'}">${state.sheet==='export'?`<h2>Export exact copy</h2><p>Includes the source metadata. Replacing a file also replaces all of its existing metadata.</p><label>Save as<input aria-label="Save as" value="${item?.name||''}"></label><div class="actions"><button class="labeled" data-action="cancel">Cancel</button><button class="primary" data-action="save">Export</button></div>`:`<h2>Choose a folder</h2><p>Folder-picker preview</p><div class="recent-list">${roots.map((folder,index)=>`<button data-root="${index}">${icon('folder')}<span>${folder.name}<small>${folder.path}</small></span></button>`).join('')}</div><div class="actions"><button class="labeled" data-action="cancel">Cancel</button></div>`}</section></div>`:''}
+        ${state.toast?`<div class="toast" role="status"><span>${state.toast}</span>${state.undo?'<button data-action="undo">Undo</button>':''}<button data-action="dismiss" aria-label="Dismiss notice">${icon('x')}</button></div>`:''}`;
+      if (globalThis.lucide) lucide.createIcons();
+      if(focusID) app.querySelector(`[data-action="${focusID}"]`)?.focus();
+    }
+    function choose(index) {state.root=index;state.folder='';state.favorites=false;state.selected=index===1?1:index===2?2:1;state.screen='Inspect';state.sheet=null;state.popover=null;state.playing=false;state.time=0;state.toast='';}
+    function move(offset) {const list=visible(), index=list.findIndex(i=>i.id===selected()?.id);state.selected=list[(index+offset+list.length)%list.length]?.id;state.playing=false;state.time=0;state.screen='Inspect';}
+    function closeLayer(){if(state.popover)state.popover=null;else if(state.sheet)state.sheet=null;else if(state.grid)state.grid=false;else state.focus=false;render();}
+    function action(value) {
+      if(['trash','export','focus','grid','favorite','next','previous'].includes(value)&&!canInspect())return;
+      const item=selected();
+      switch(value) {
+        case 'folders':state.popover=state.popover==='folders'?null:'folders';break;
+        case 'scope':state.popover=state.popover==='scope'?null:'scope';break;
+        case 'choose':state.sheet='choose';state.popover=null;break;
+        case 'grid':state.grid=!state.grid;state.playing=false;break;
+        case 'focus':state.focus=!state.focus;break;
+        case 'favorite':if(item)item.favorite=!item.favorite;break;
+        case 'all':state.favorites=false;break;
+        case 'next':move(1);break;
+        case 'previous':move(-1);break;
+        case 'play':if(canPlay()){state.playing=!state.playing;if(state.time>=item.duration)state.time=0;}break;
+        case 'mute':state.muted=!state.muted;break;
+        case 'trash':if(item){state.undo=item.id;undoStack.push({id:item.id,root:state.root});state.deleted.push(item.id);state.toast=`Moved ${item.name} to Trash`;state.playing=false;}break;
+        case 'undo':{const record=undoStack.pop();if(record){state.root=record.root;state.folder='';state.favorites=false;state.deleted=state.deleted.filter(id=>id!==record.id);state.selected=record.id;state.undo=null;state.toast='File restored';state.time=0;state.playing=false;state.screen='Inspect';}}break;
+        case 'export':state.sheet='export';state.playing=false;break;
+        case 'save':state.sheet=null;state.undo=null;state.toast='Exact copy exported · preview';break;
+        case 'copy':state.toast='Metadata copied · preview';state.undo=null;break;
+        case 'refresh':state.popover=null;state.toast=state.screen==='Missing folder'?'Folder is still unavailable':'Folder is up to date';state.undo=null;break;
+        case 'reveal':state.toast='Reveal file in Finder · preview';state.undo=null;break;
+        case 'cancel':state.sheet=null;break;
+        case 'dismiss':state.toast='';state.undo=null;break;
+      }
+      clearTimeout(toastTimer);
+      if(state.toast)toastTimer=setTimeout(()=>{state.toast='';state.undo=null;render();},7000);
+      render();remember();
+    }
+    app.addEventListener('click',event=>{
+      const button=event.target.closest('button'); if(!button||button.disabled)return;
+      if(button.dataset.action)action(button.dataset.action);
+      else if(button.dataset.root!==undefined){choose(Number(button.dataset.root));render();remember();}
+      else if(button.dataset.folder!==undefined){state.folder=button.dataset.folder;state.popover=null;state.time=0;state.playing=false;render();remember();}
+      else if(button.dataset.select){state.selected=Number(button.dataset.select);state.screen='Inspect';state.grid=false;state.time=0;state.playing=false;render();remember();}
+      else if(button.dataset.filter){state.favorites=button.dataset.filter==='favorites';state.playing=false;render();remember();}
+    });
+    app.addEventListener('input',event=>{if(event.target.type==='range'){state.time=Number(event.target.value);const label=app.querySelector('.elapsed');if(label)label.textContent=time(state.time);}});
+    window.addEventListener('keydown',event=>{
+      if(!root.isConnected||app.closest('[hidden]'))return;
+      const key=event.key.toLowerCase();
+      if(key==='escape'){event.preventDefault();closeLayer();return;}
+      if(event.target.matches('input, textarea, select, [contenteditable="true"]')||state.sheet||state.popover)return;
+      if(event.metaKey||event.ctrlKey){
+        const command=key==='o'?'choose':key==='r'?'refresh':key==='z'?'undo':key==='e'&&event.shiftKey?'export':key==='backspace'?'trash':null;
+        if(command){event.preventDefault();action(command);}return;
+      }
+      if(event.altKey||event.shiftKey||state.screen==='Start'||state.screen==='Empty folder'||state.screen==='Missing folder')return;
+      if((key==='enter'||key===' ')&&event.target.closest('button, summary, details, a'))return;
+      if(key==='enter'){event.preventDefault();action('focus');return;}
+      const mapping={arrowleft:'previous',arrowright:'next',f:'favorite',g:'grid',' ':selected()?.video?'play':null};
+      if(mapping[key]){event.preventDefault();action(mapping[key]);}
+    });
+    app.addEventListener('dragover',event=>{event.preventDefault();});
+    app.addEventListener('drop',event=>{event.preventDefault();choose(0);state.toast='Folder opened · preview';render();});
+    const timer=setInterval(()=>{
+      if(!root.isConnected){clearInterval(timer);return;}
+      if(!state.playing||!canPlay()||app.closest('[hidden]'))return;
+      const item=selected();if(!item?.video)return;
+      state.time=Math.min(item.duration,state.time+.25);
+      const slider=app.querySelector('input[type=range]'),label=app.querySelector('.elapsed');
+      if(slider)slider.value=state.time;if(label)label.textContent=time(state.time);
+      const scene=app.querySelector('.stage .art');if(scene)scene.style.filter=`brightness(${1+Math.sin(state.time/3)*.04})`;
+      if(state.time>=item.duration){state.playing=false;render();}
+    },250);
+    render();
+    if(globalThis.Tweak){
+      const controls=new Tweak({container:app,onChange:()=>{state.playing=false;state.time=0;state.popover=null;state.sheet=null; if(state.screen==='Video'||state.screen==='Unsupported video'){state.root=0;state.folder='';state.favorites=false;state.selected=2;} render();remember();}});
+      controls.addSelect(state,'theme',{label:'Appearance',options:['system','light','dark']});
+      controls.addSelect(state,'screen',{label:'Preview state',options:['Inspect','Video','Start','Empty folder','Missing folder','Unsupported video']});
+    }
+    app.frameMock={state,render,action,choose};
+  });
+  window.addEventListener('openai:set_globals',event=>{
+    const saved=event.detail?.globals?.widgetState?.privateContent;if(!saved)return;
+    root.querySelectorAll('.frame-window').forEach((app,index)=>{if(saved[index]){Object.assign(app.frameMock.state,saved[index],{playing:false});app.frameMock.render();}});
+  });
+})();
+</script>

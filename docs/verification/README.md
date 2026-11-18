@@ -25,3 +25,7 @@ Task verification reports record automated, visual, manual, security, and live-s
 - [Task 045 — Configurable SSH Retries](045-configurable-ssh-retries.md)
 - [Tasks 046–048 — Remote Files and Editor Usability](046-048-remote-files-and-editor-usability.md)
 - [Task 049 — RelayBar 1.6.0 Release](049-relaybar-1.6.0-release.md)
+- [Task 060 — Lines Reduction](060-lines-reduction.md)
+- [Tasks 061–062 — Plugin Catalog, Plugins Window and Sample Plugins](061-062-plugins.md)
+- [Task 063 — One Markdown Renderer](063-one-markdown-renderer.md)
+- [Task 064 — Paired-app Release Preparation](064-release-preparation.md)

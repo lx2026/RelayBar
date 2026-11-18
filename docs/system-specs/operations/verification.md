@@ -2,7 +2,7 @@
 
 ## Required checks
 
-- Run `swift test` for the complete forwarding parser matrix, migration,
+- Run `./scripts/test.sh relaybar` for the complete forwarding parser matrix, migration,
   typed-profile and group-tag validation, grouping and metadata-only mutation
   behavior, group lifecycle batching, control sequencing, rollback and
   timeout, runtime port mapping, socket refusal, retry, cancellation, browser
@@ -25,9 +25,66 @@
   reset after 60 stable seconds, manual restart, live limit changes, and stop
   cancellation. Fake SSH processes and an injected monotonic clock exercise
   these cases without deliberately triggering a server's connection ban.
-  `VisualSnapshotHarness/testCaptureRetrySettingsSnapshots` captures 0, 10, and
-  100 in Aqua/Dark Aqua and asserts that the normal 380 × 440 Settings viewport
-  needs neither horizontal nor vertical scrolling.
+  `SettingsWindowTests` verify that a typed retry limit reaches the store only
+  when committed and is clamped into 0–100.
+- `SettingsWindowTests` also verify that the Settings window is 480 points
+  wide, follows its content's fitting height as rows appear while keeping its
+  title bar in place, and closes on Command-W, Escape and Cancel.
+  `VisualSnapshotHarness/testCaptureSettingsWindowSnapshots` captures the
+  window's content in Aqua/Dark Aqua by default, with the Launch at Login
+  approval note, with the Frame access box, with an update result, and with a
+  deferred update, a three-digit retry limit and a format switched off; each
+  capture must equal the content's fitting height and contain no scroll view.
+  `PopoverPresentationTests` cover the popover header's summary and issue
+  text, each row state's second-line detail and tooltip, the group header's
+  single action, the contrast of the orange and red row text, and, with the
+  legacy scroller put on the scroll views before they are shown and around
+  `NSScroller.preferredScrollerStyleDidChangeNotification`, that the list's and
+  the editor's scroll views return to the overlay scroller, span the full
+  width and hold a document no wider than the viewport.
+  `PopoverScrollingTests` hold the list and the editor, including long names,
+  hosts, messages and field values and a hovered row, on the legacy scroller
+  and back, and check that the document is exactly as wide as the clip view,
+  that no wheel, swipe or direct scroll moves it sideways, and that every
+  AppKit control sits between the balanced insets.
+  `testCaptureSwitchboardPopoverSnapshots` captures the popover in Aqua/Dark
+  Aqua: the mock's grouped list with every row state and one hovered row, the
+  same list flat, six rows and two headers (asserting that all six rows are
+  inside the viewport), the overflowing list at its top and bottom with scroll
+  bars set to Always, the empty list, and the top of the new and edit profile
+  editor. Point `RELAYBAR_SNAPSHOT_DIR` at `.build/task-067-design/popover/`
+  to keep them with the task's other captures. The captures draw switches and
+  prominent buttons inactive, because the test process is not the active app.
+  `StatusItemGlyphTests` cover the menu-bar glyph's state, accessibility label,
+  sizes and drawing, and `testCaptureStatusItemGlyphSnapshots` draws the three
+  states on light and dark strips at actual size and enlarged.
+- Tests never show a window, take focus or activate the test process. Every
+  window RelayBar's and the shared package's tests make is a `QuietWindow`
+  from `CompositionFixtures` (or, for Settings, `QuietSettingsWindow`, which
+  adds the same rules to RelayBar's own Settings window): frames are moved far
+  off every screen, the window is never key or main, ordering it in puts it
+  behind everything, full screen is refused, and making one sets the process's
+  activation policy to prohibited. Frame's tests use their own `QuietWindow`
+  with the same rules. `RemoteFilesModelTests.testMarkdownPreviewKeepsTheWindowKeysWhetherOrNotItHasTheFocus`
+  needs the app's key window to route keys to the page, so it runs only with
+  `RELAYBAR_KEY_WINDOW_TESTS=1`; its window still stays off screen and the
+  process still cannot activate.
+- `HousePaletteTests` check every text token against the surfaces and fills it
+  is drawn on, in both forms and both appearances, at 4.5:1 or more; that the
+  paper form keeps Frame's values and the standard form follows macOS; that
+  applying a form changes what the tokens draw and posts the change; and, in an
+  off-screen window, that an AppKit view draws again and a SwiftUI view redraws
+  in the new form without being made again, both through Observation and, with
+  Observation switched off as on macOS 13, through `HouseTracking`. RelayBar's `PluginTests` and Frame's
+  `PaperAppearanceTests` switch Paper Appearance through each composition,
+  check that no feature comes or goes, that the choice is stored and applied
+  before the next launch's first window, that Frame draws exactly as before
+  with the plugin on, that a Markdown page on show takes the new paper without
+  loading again, and that a page made before a switch takes it when it loads. `VisualSnapshotHarness/testCaptureTask069PaperAppearanceSnapshots`
+  writes the popover, profile editor, Settings, Remote Files and Plugins window
+  with the plugin on and off in both appearances, and Frame's
+  `PaperAppearanceTests/testWritesPaperAppearanceDocumentSnapshots` the
+  Markdown page, when their snapshot folders are set.
 - Deletion tests verify that single and bulk requests cannot reach the service
   during the five-second Undo window and that Undo/close prevent submission
   past the original deadline. Existing acknowledged, partial, stale, and
@@ -38,6 +95,21 @@
   action, narrow suffix-preserving paths, and invalid/Remote SOCKS editor states.
 
 ## Optional live check
+
+`python3 scripts/verify-live-loopback.py` creates a disposable OpenSSH server on
+127.0.0.1:2222, an HTTP target on port 8765, and isolated keys/configuration/known
+hosts. Ports 2222, 8765 and 9876 must be free. Run it as an ordinary macOS user;
+it does not modify system SSH settings or the user's SSH files. It removes the
+fixture and stops both servers, retaining logs under `.build/live-loopback-*`.
+Pass `--output <new-directory>` to choose the evidence directory.
+
+These opt-in tests exercise composed tunnel restart/traffic, literal SFTP names,
+Archive/Restore and batch Delete, hard-link upload publication, approved POSIX
+replacement, and real staged-upload cancellation during window withdrawal. A
+client wrapper can withhold an actual successful SSH mutation response to verify
+retirement after a remote commit without replay on reconnect. It does not change
+the fixed remote helper or synthesize a server response. This controlled loopback
+evidence supplements native-app and representative remote-host acceptance.
 
 Set `RELAYBAR_LIVE_TEST=1` and `RELAYBAR_LIVE_SSH_HOST` to test a real SSH forward and HTTP response on local port 3000.
 
@@ -78,7 +150,7 @@ Before a live server is available, use the DEBUG-only Remote Files fixture to re
 
 Start a DEBUG build with `--preview-window --flexible-forwarding-preview` to review rule-aware profile rows and the editor without reading or changing the user's saved profiles. Review add, type switching, duplicate, reorder, remove, automatic ports, Unix fields, exposure warnings, reverse-SOCKS policy, scrolling, keyboard focus, and accessibility labels in light and dark appearance.
 
-Start a DEBUG build with `--preview-window --grouping-preview <scenario>` to review saved-profile grouping without reading or changing the user's saved profiles. Supported scenarios are `empty`, `zero-tag`, `all-untagged`, `one-bucket`, `mixed`, `all-tagged`, `long-tag`, and `many-sections`. Review the flat-list threshold, section order, Ungrouped placement, long-label truncation, scrolling, picker and row-menu parity, inline Return/Escape behavior, rename, ungroup-all, the persistent Start All and Stop All controls, menu-only Restart All, keyboard focus, and accessibility labels in light and dark appearance. The Task 038 offscreen matrix additionally captures stopped, active, mixed, and long-name group headers at 380 × 440 so state enablement and horizontal containment are deterministic without creating SSH processes.
+Start a DEBUG build with `--preview-window --grouping-preview <scenario>` to review saved-profile grouping without reading or changing the user's saved profiles. Supported scenarios are `empty`, `zero-tag`, `all-untagged`, `one-bucket`, `mixed`, `all-tagged`, `long-tag`, and `many-sections`. Review the flat-list threshold, section order, Ungrouped placement, long-label truncation, scrolling, picker and row-menu parity, inline Return/Escape behavior, rename, ungroup-all, the single Start All or Stop All action, menu-only Restart All, keyboard focus, and accessibility labels in light and dark appearance. The Task 038 offscreen matrix additionally captures stopped, active, mixed, and long-name group headers at 380 × 440 so state enablement and horizontal containment are deterministic without creating SSH processes.
 
 Homebrew lifecycle changes require two real cask-managed upgrades from a
 previous-version fixture whose installed receipt contains the current quit
@@ -91,7 +163,7 @@ before and after both paths; the cask must preserve them. Separately exercise a
 legacy receipt without the directive and record that Homebrew cannot apply a
 new uninstall artifact retroactively; do not count that transition as a pass.
 
-Launch at Login changes require a signed packaged build verified manually for enable, login relaunch as the menu-bar-only app with every saved profile stopped, disable without quitting the running app, and state synchronization after changes made directly in System Settings. Use the offscreen snapshot harness for the settings screen and its approval-required caption in light and dark appearance.
+Launch at Login changes require a signed packaged build verified manually for enable, login relaunch as the menu-bar-only app with every saved profile stopped, disable without quitting the running app, and state synchronization after changes made directly in System Settings. Use the offscreen snapshot harness for the Settings window and its approval-required note in light and dark appearance.
 
 For a native live-transport review without changing the user's saved tunnels, start a DEBUG build with `--remote-files-live-preview <ssh-host>`. This route uses the real SFTP service while keeping review downloads inside the same private temporary directory and suppressing Finder launch.
 
