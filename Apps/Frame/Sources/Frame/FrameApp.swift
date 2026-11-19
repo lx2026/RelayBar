@@ -6,7 +6,9 @@ import SwiftUI
 
 @main
 struct FrameApp: App {
+  static let mainWindowID = "main"
   @NSApplicationDelegateAdaptor(FrameAppDelegate.self) private var appDelegate
+  @Environment(\.openWindow) private var openWindow
   @StateObject private var store: LibraryStore
   private let modelContainer: ModelContainer
 
@@ -38,9 +40,12 @@ struct FrameApp: App {
   }
 
   var body: some Scene {
-    Window("Frame", id: "main") {
+    Window("Frame", id: Self.mainWindowID) {
       FrameRootView(store: store, modelContainer: modelContainer)
-        .onAppear { appDelegate.store = store }
+        .onAppear {
+          appDelegate.store = store
+          appDelegate.reopenMainWindow = { [openWindow] in openWindow(id: Self.mainWindowID) }
+        }
         .frame(minWidth: 960, minHeight: 640)
         .onOpenURL { url in Task { await store.handleHandoff(url) } }
     }
@@ -102,9 +107,21 @@ private struct PluginsWindow: View {
 }
 
 @MainActor
-private final class FrameAppDelegate: NSObject, NSApplicationDelegate {
+final class FrameAppDelegate: NSObject, NSApplicationDelegate {
   weak var store: LibraryStore?
+  var reopenMainWindow: (() -> Void)?
   private var termination: Task<Void, Never>?
+
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows _: Bool) -> Bool {
+    // Settings and Plugins can stay visible after the library window closes.
+    guard let reopenMainWindow else { return true }
+    if sender.windows.contains(where: {
+      $0.identifier?.rawValue == FrameApp.mainWindowID && $0.isVisible && !$0.isMiniaturized
+    }) { return true }
+    reopenMainWindow()
+    return false
+  }
+
   func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
     guard termination == nil else { return .terminateLater }
     termination = Task {
@@ -131,7 +148,10 @@ private struct FrameCommands: Commands {
       Button("Plugins…") { openWindow(id: "plugins") }
     }
     CommandGroup(after: .newItem) {
-      Button("Open…") { store.presentOpenChooser() }
+      Button("Open…") {
+        openWindow(id: FrameApp.mainWindowID)
+        store.presentOpenChooser()
+      }
         .keyboardShortcut("o", modifiers: .command)
         .disabled(store.isFileOperation)
     }
