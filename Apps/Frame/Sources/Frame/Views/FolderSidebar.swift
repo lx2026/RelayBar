@@ -56,6 +56,11 @@ private struct LibraryFooter: View {
     HStack(spacing: 4) {
       KindFilterMenu(store: store)
       Spacer(minLength: 0)
+      Button(action: store.refresh) { Image(systemName: "arrow.clockwise") }
+        .buttonStyle(IconButtonStyle())
+        .disabled(!store.canRefresh)
+        .accessibilityLabel("Refresh folder")
+        .help("Refresh folder (⌘R)")
       Button { store.setFilter(favoritesOnly ? .all : .favorites) } label: {
         Image(systemName: favoritesOnly ? "heart.fill" : "heart")
       }

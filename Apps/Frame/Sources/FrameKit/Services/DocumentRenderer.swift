@@ -37,6 +37,14 @@ import WebKit
   private var loadTask: Task<Void, Never>?
   private var pollTask: Task<Void, Never>?
   private var generation = UUID()
+  /// The page WebKit actually committed can lag behind the file selected in the tree.
+  @Published private var displayedPage: (location: DocumentLocation, path: String)?
+  private var pendingPage: (navigation: WKNavigation, location: DocumentLocation, path: String)?
+  public func isDisplaying(path: String, location: DocumentLocation?) -> Bool {
+    guard let displayedPage else { return false }
+    return displayedPage.path == path && displayedPage.location == location
+  }
+
   private var showsMarkdown = false
   private var prepared: (host: String, path: String, data: Data)?
   private var pendingScroll: Double?
@@ -91,6 +99,7 @@ import WebKit
   }
   public func stop() {
     active = false; generation = UUID(); loading = false
+    pendingPage = nil
     clearOutline()
     loadTask?.cancel(); loadTask = nil; pollTask?.cancel(); pollTask = nil
     for task in tasks.values { task.cancel() }; tasks.removeAll()
@@ -116,11 +125,13 @@ import WebKit
     stop()
     hasPageOutline = false
     prepared = nil
+    displayedPage = nil
     webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>Preview unavailable</article>", baseURL: nil)
     error = message
   }
   public func show(path: String, location: DocumentLocation, recordHistory: Bool = true,
                    maximumBytes: Int = DocumentResources.documentLimit) {
+    error = nil
     let changedLimit = documentLimit != maximumBytes || !active
     active = true
     documentLimit = min(DocumentResources.documentLimit, max(1, maximumBytes))
@@ -249,7 +260,7 @@ import WebKit
     }
   }
   private func load(reset: Bool) async {
-    guard active, !Task.isCancelled, let source, let path else { return }
+    guard active, !Task.isCancelled, let source, let path, let location else { return }
     let token = UUID(); generation = token
     loading = true
     clearOutline()
@@ -266,12 +277,13 @@ import WebKit
       for task in tasks.values { task.cancel() }; tasks.removeAll()
       error = nil
       var url = URLComponents(); url.scheme = "frame-document"; url.host = source.host; url.path = "/" + path
-      webView.load(URLRequest(url: url.url!))
+      guard let navigation = webView.load(URLRequest(url: url.url!)) else { throw BridgeError("Preview could not open. Retry.") }
+      pendingPage = (navigation, location, path)
     } catch {
       guard generation == token, !Task.isCancelled else { return }
       self.error = (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == CocoaError.fileReadNoSuchFile.rawValue
         ? "File missing." : error.localizedDescription
-      if reset { hasPageOutline = false; webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>No preview</article>", baseURL: nil) }
+      if reset { pendingPage = nil; displayedPage = nil; hasPageOutline = false; webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>No preview</article>", baseURL: nil) }
     }
   }
   public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
@@ -357,6 +369,10 @@ import WebKit
     }
   }
   public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+    if let page = pendingPage, page.navigation === navigation {
+      displayedPage = (page.location, page.path)
+      pendingPage = nil
+    }
     // Recorded once per load. The scheme handler renders by this same extension, and a page's
     // script can change the address afterwards only without a new load.
     let page = webView.url
@@ -367,7 +383,14 @@ import WebKit
     followPaper()
     if let pendingScroll { webView.evaluateJavaScript("window.scrollTo(0,\(pendingScroll))"); self.pendingScroll = nil }
   }
-  public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) { error = "Preview stopped. Retry." }
+  public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+    guard let page = pendingPage, page.navigation === navigation else { return }
+    pendingPage = nil
+    self.error = error.localizedDescription
+  }
+  public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    pendingPage = nil; displayedPage = nil; error = "Preview stopped. Retry."
+  }
   public func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
     if message.name == Self.outlineMessage { receiveOutline(message); return }
     guard message.name == "resourceBlocked", message.frameInfo.isMainFrame else { return }
