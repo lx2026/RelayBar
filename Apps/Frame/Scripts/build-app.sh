@@ -3,21 +3,20 @@
 set -euo pipefail
 
 build_configuration="${1:-release}"
-build_arguments=(-c "$build_configuration")
 case "$build_configuration" in
-  release) build_arguments+=(--arch arm64 --arch x86_64) ;;
-  debug) ;;
+  release|debug) ;;
   *) echo "Usage: $0 [debug|release]" >&2; exit 2 ;;
 esac
+build_arguments=(-c "$build_configuration" --arch arm64)
 repository_root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$repository_root"
 
 swift build "${build_arguments[@]}" --product Frame
 binary_directory="$(swift build "${build_arguments[@]}" --show-bin-path)"
-if [[ "$build_configuration" == release ]]; then
-  for architecture in arm64 x86_64; do
-    lipo "$binary_directory/Frame" -verify_arch "$architecture"
-  done
+architectures="$(lipo -archs "$binary_directory/Frame")"
+if [[ "$architectures" != arm64 ]]; then
+  echo "Frame requires an arm64-only executable. Found: $architectures" >&2
+  exit 1
 fi
 app_directory="$repository_root/.build/app/Frame.app"
 

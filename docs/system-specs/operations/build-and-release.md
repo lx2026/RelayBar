@@ -20,7 +20,7 @@ configuration, while its credentials remain in Keychain. Sparkle's
 
 - `./scripts/test.sh` runs shared-package and both app suites; pass `relaybar`, `frame`, or `shared` to select one.
 - `./scripts/build-app.sh` builds and signs `.build/RelayBar.app`.
-- `./Apps/Frame/Scripts/build-app.sh release` builds and signs the universal `Apps/Frame/.build/app/Frame.app`; `debug` uses the host architecture.
+- `./Apps/Frame/Scripts/build-app.sh release` builds and signs `Apps/Frame/.build/app/Frame.app` for Apple silicon. Both `release` and `debug` check that `lipo -archs` reports exactly `arm64` before packaging.
 - `./scripts/package-release.sh [relaybar|frame]` creates `.build/RelayBar.zip` or `.build/Frame.zip`; omission selects RelayBar.
 - `./scripts/notarize-release.sh [relaybar|frame]` builds the selected app, submits its archive, requires an Accepted result, staples, rebuilds the ZIP and validates a clean extraction. Omission selects RelayBar. Submission JSON is retained as `.build/notarization-<app>.json`.
 - `./scripts/update-appcast.sh <final ZIP> <immutable HTTPS URL>` first checks
@@ -46,7 +46,7 @@ configuration, while its credentials remain in Keychain. Sparkle's
 
 RelayBar source and its Xcode project live in `Apps/RelayBar`; Frame lives in `Apps/Frame`. Shared contracts are local Swift package dependencies under `Packages/AppComposition`. Root distribution commands and public Pages/feed paths are unchanged.
 
-Frame's app bundle is assembled by `Apps/Frame/Scripts/build-app.sh`. Since Task 063 it calls `bundle-renderer-resources.sh`, which copies the Markdown renderer's two SwiftPM resource bundles (the highlighter and SwiftMath's fonts) into `Contents/Resources`, prunes them to the `github` themes and the Latin Modern font as RelayBar's Xcode build phase does, removes the build's own seal from each so that the app's signature covers their files, adds their licence texts, and fails if a bundle or a required file is missing. The generated resource lookup finds a bundle only inside the app, so one left out would stop Frame the first time it highlights code or typesets math. Task 064 changed Release builds to request and verify both arm64 and x86_64 before packaging. Universal, notarized Frame 2.0.0/17 with the `com.lx2026.Frame` identity is installed as of 2026-11-16 and completed launch. First-use rendering remains for the native pass.
+Frame's app bundle is assembled by `Apps/Frame/Scripts/build-app.sh`. Since Task 063 it calls `bundle-renderer-resources.sh`, which copies the Markdown renderer's two SwiftPM resource bundles (the highlighter and SwiftMath's fonts) into `Contents/Resources`, prunes them to the `github` themes and the Latin Modern font as RelayBar's Xcode build phase does, removes the build's own seal from each so that the app's signature covers their files, adds their licence texts, and fails if a bundle or a required file is missing. The generated resource lookup finds a bundle only inside the app, so one left out would stop Frame the first time it highlights code or typesets math.
 
 Distribution commands require explicit approval for the selected release. After that approval, set `RELAYBAR_PUBLICATION_APPROVED=yes` and `NOTARY_PROFILE=AC_NOTARY` for the notarization invocation. The existing approval-variable name applies to both apps. Unknown app names and extra arguments fail before building. The script stops on a failed submission or any status other than Accepted; it never staples a rejected submission. Final verification covers strict signatures, stapled tickets and Gatekeeper on both the original bundle and a clean extraction, then archive identity/version/build and SHA-256 through `release-plan.py`. Local workflow tests substitute Apple tools and do not submit anything.
 
@@ -100,15 +100,16 @@ monotonic build number, bundle identifier, and deployment target. Any
 post-freeze application change requires a new build number and a complete
 rebuild and notarization.
 
-Before tagging, run the complete tests, warnings-as-errors universal Release
+Before tagging, run the complete tests, a warnings-as-errors Release
 build, property-list and license checks, resource-pruning checks, executable
 and dSYM UUID comparison, and `git diff --check`.
 
 `./scripts/notarize-release.sh` submits the pre-staple archive, waits for Apple,
 staples and validates the app, then replaces the submitted ZIP with a final
 archive containing the stapled app. Compute the published SHA-256 only after
-that final rebuild. Verify the final ZIP through clean extraction, both
-architectures, version and build, timestamped hardened-runtime signature,
+that final rebuild. Verify the final ZIP through clean extraction, the supported
+architectures (arm64 for Frame, arm64 and x86_64 for RelayBar), version and
+build, timestamped hardened-runtime signature,
 stapled ticket, Gatekeeper, bundled notices and resources, and launch.
 
 `build-app.sh` re-signs Sparkle's Installer and Downloader XPC services,
@@ -174,6 +175,8 @@ chain.
 ## Frame and paired releases
 
 Frame's current public pre-release is **2.0.0 Beta 3, build 23**, for macOS 14 or later on Apple silicon and Intel. It updates by manual download and pairs with RelayBar 2.0.0 Beta 3 for remote libraries. Frame uses a separate annotated tag and an immutable `Frame.zip` asset in the shared repository. The beta is published with `make_latest` false. See the [release](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.3) and [verification record](../../verification/075-frame-2.0.0-beta-3.md).
+
+Beta 3 is the last Intel-compatible Frame release. Starting with build 24, run Frame QA natively on Apple silicon and verify that the executable extracted from `Frame.zip` reports exactly `arm64` and matches the arm64 dSYM UUID. The minimum macOS version is 14.0.
 
 For the next paired rollout, finish native and live-host acceptance, choose explicitly approved release versions and monotonic builds, freeze a clean commit, and notarize each app separately. Publish and independently verify Frame's archive before publishing RelayBar's archive and advancing its Sparkle feed. The companion download must be available before a RelayBar update can expose an incompatible pairing. Follow the existing RelayBar feed, prior-build rehearsal, website and Homebrew order above. Release notes must name the compatible pair and explain that Frame updates manually; bridge v7 rejects older peers. No new version or public URL is selected by these preparation scripts.
 
