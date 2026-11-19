@@ -173,7 +173,7 @@ chain.
 
 ## Frame and paired releases
 
-Frame's only public build is the 2.0.0 Beta 1 pre-release; it has no stable release, updater or Homebrew cask yet. Its release plan uses a separate `frame-v<version>` tag and immutable `Frame.zip` in the same repository, with `make_latest` false so Frame does not replace RelayBar as the repository's latest release. Both apps retain their own versions and bundle identities.
+Frame's current public pre-release is **2.0.0 Beta 3, build 23**, for macOS 14 or later on Apple silicon and Intel. It updates by manual download and pairs with RelayBar 2.0.0 Beta 3 for remote libraries. Frame uses a separate annotated tag and an immutable `Frame.zip` asset in the shared repository. The beta is published with `make_latest` false. See the [release](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.3) and [verification record](../../verification/075-frame-2.0.0-beta-3.md).
 
 For the next paired rollout, finish native and live-host acceptance, choose explicitly approved release versions and monotonic builds, freeze a clean commit, and notarize each app separately. Publish and independently verify Frame's archive before publishing RelayBar's archive and advancing its Sparkle feed. The companion download must be available before a RelayBar update can expose an incompatible pairing. Follow the existing RelayBar feed, prior-build rehearsal, website and Homebrew order above. Release notes must name the compatible pair and explain that Frame updates manually; bridge v7 rejects older peers. No new version or public URL is selected by these preparation scripts.
 
