@@ -117,6 +117,10 @@ import XCTest
         catalog.recordSuccessfulOpen(try XCTUnwrap(catalog.servers(from: []).first), path: "/existing")
         let failed = try await list(broker, source: source, path: "/failure")
         XCTAssertNotNil(failed.error)
+        XCTAssertNil(failed.resolvedFolder)
+        let linked = try await list(broker, source: source, path: "/workplace")
+        XCTAssertEqual(linked.resolvedFolder, "/projects")
+        XCTAssertNil(linked.listingID)
         var request = BridgeRequest("list"); request.sourceID = source.id; request.path = "/cancelled"
         let pending = broker.handle(request)
         var cancel = BridgeRequest("cancel"); cancel.jobID = pending.jobID
@@ -240,6 +244,7 @@ private final class BridgeServiceFixture: RemoteFileServing, @unchecked Sendable
     }
     func list(server: RemoteServer, path: String) async throws -> [RemoteFileEntry] {
         if path == "/failure" { throw BridgeError("Fixture folder unavailable") }
+        if path == "/workplace" { throw BridgeError("Linked directory", resolvedFolder: "/projects") }
         if assetCount > 1 {
             return (0..<assetCount).flatMap { index in
                 ["\(index).jpg", "\(index).prompt.json", "\(index).xyz.json", "\(index).qqq.txt"].map {

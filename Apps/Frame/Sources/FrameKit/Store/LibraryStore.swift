@@ -547,6 +547,12 @@ public final class LibraryStore: ObservableObject {
 
   public func openRemote(_ source: BridgeSource, path: String, focus: [String] = [], preserveSelection: Bool = false,
                          browseFolder: Bool = false) async {
+    await openRemote(source, path: path, focus: focus, preserveSelection: preserveSelection, browseFolder: browseFolder,
+                     resolveSelectedFolder: !browseFolder && !preserveSelection)
+  }
+
+  private func openRemote(_ source: BridgeSource, path: String, focus: [String], preserveSelection: Bool,
+                          browseFolder: Bool, resolveSelectedFolder: Bool) async {
     guard !isClosing, !isFileOperation, showsRemoteFolders, FrameBridgeEnvironment.validSource(source), FrameBridgeEnvironment.validPath(path) else { return }
     let feature: FrameRemoteLibraryFeature
     do { feature = try await previews.connectLibrary() }
@@ -611,7 +617,14 @@ public final class LibraryStore: ObservableObject {
       // Frame consumes RelayBar's history; navigation here never changes it.
     } catch {
       guard scanGeneration == token else { return }
-      isScanning = false; remoteError = error.localizedDescription
+      if resolveSelectedFolder, let failure = error as? BridgeError, failure.sessionFailure == nil,
+         let target = failure.resolvedFolder, target != path, FrameBridgeEnvironment.validPath(target) {
+        // Retry the chosen library once. All later reads and actions use the physical root.
+        await openRemote(source, path: target, focus: focus, preserveSelection: false, browseFolder: false,
+                         resolveSelectedFolder: false)
+      } else {
+        isScanning = false; remoteError = error.localizedDescription
+      }
     }
   }
 
@@ -832,7 +845,7 @@ public final class LibraryStore: ObservableObject {
       if wasCollection, let source = remoteSource {
         let path = remotePath
         _ = try? presentation.task { [self] in
-          await openRemote(source, path: path)
+          await openRemote(source, path: path, focus: [], preserveSelection: false, browseFolder: false, resolveSelectedFolder: false)
           guard !isClosing, remoteSource == source, remotePath == path else { return }
           filter = newFilter; ensureValidSelection(reload: true)
         }

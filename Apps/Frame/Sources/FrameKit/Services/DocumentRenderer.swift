@@ -20,6 +20,7 @@ import WebKit
   /// The second- and third-level headings of the Markdown page on show, and the one being read.
   @Published public private(set) var outline: [DocumentHeading] = []
   @Published public private(set) var activeHeading: Int?
+  @Published public private(set) var hasPageOutline = false
   public private(set) var webView: WKWebView!
   public var onNavigate: ((String) -> Void)?
   /// Receives a code block's text from its Copy link; replaceable so tests leave the real pasteboard alone.
@@ -38,7 +39,6 @@ import WebKit
   private var generation = UUID()
   private var showsMarkdown = false
   private var prepared: (host: String, path: String, data: Data)?
-  private var scrollY: Double = 0
   private var pendingScroll: Double?
   private var refreshing = false
   private var history: [(String, Double)] = []
@@ -114,6 +114,7 @@ import WebKit
   }
   public func showFailure(_ message: String) {
     stop()
+    hasPageOutline = false
     prepared = nil
     webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>Preview unavailable</article>", baseURL: nil)
     error = message
@@ -124,33 +125,35 @@ import WebKit
     active = true
     documentLimit = min(DocumentResources.documentLimit, max(1, maximumBytes))
     let settling = retirement
+    loadTask?.cancel()
     guard self.path != path || self.location != location else {
+      let needsLoad = changedLimit || loading || prepared?.path != path
       startPolling()
       loadTask = try? work.task {
         await settling?.value
         guard !Task.isCancelled else { return }
-        if changedLimit { await self.load(reset: true) } else { await self.refresh() }
+        if needsLoad { await self.load(reset: true) } else { await self.refresh() }
       }
       return
     }
-    let previous = self.path
-    loadTask?.cancel()
     loadTask = try? work.task { [weak self] in
       await settling?.value
       guard !Task.isCancelled else { return }
       guard let self else { return }
-      if let value = try? await webView.evaluateJavaScript("window.scrollY") as? Double { scrollY = value }
-      guard !Task.isCancelled else { return }
       if self.location != location {
         source = DocumentResources(location: location, client: client); self.location = location
         history = []; historyIndex = -1
-      } else if previous != nil, history.indices.contains(historyIndex) { history[historyIndex].1 = scrollY }
+      } else {
+        let position = await scrollPosition()
+        guard !Task.isCancelled else { return }
+        if let position, history.indices.contains(historyIndex) { history[historyIndex].1 = position }
+      }
       if recordHistory {
         history = Array(history.prefix(historyIndex + 1)); history.append((path, 0)); historyIndex = history.count - 1
         if history.count > 256 { history.removeFirst(history.count - 256); historyIndex = history.count - 1 }
         pendingScroll = nil
       }
-      self.path = path; scrollY = 0
+      self.path = path
       updateHistory()
       await load(reset: true)
       startPolling()
@@ -183,8 +186,9 @@ import WebKit
     loadTask?.cancel()
     loadTask = try? work.task { [weak self] in
       guard let self else { return }
-      if let value = try? await webView.evaluateJavaScript("window.scrollY") as? Double, history.indices.contains(historyIndex) { history[historyIndex].1 = value }
+      let position = await scrollPosition()
       guard !Task.isCancelled else { return }
+      if let position, history.indices.contains(historyIndex) { history[historyIndex].1 = position }
       historyIndex = next; path = history[next].0; pendingScroll = history[next].1
       onNavigate?(history[next].0); updateHistory()
       // App navigation acquires a fresh format plugin before displaying the target.
@@ -194,6 +198,23 @@ import WebKit
     }
   }
   private func updateHistory() { canGoBack = historyIndex > 0; canGoForward = historyIndex + 1 < history.count }
+  private func scrollPosition() async -> Double? {
+    guard !Task.isCancelled, let path, let page = webView.url, page.scheme == "frame-document",
+          page.host == host, page.path == "/" + path else { return nil }
+    // A stopped web process can leave a JavaScript callback unanswered. Scroll history is best effort.
+    let (positions, reply) = AsyncStream<Double>.makeStream()
+    webView.evaluateJavaScript("window.scrollY", in: nil, in: .defaultClient) { result in
+      if case .success(let value as Double) = result { reply.yield(value) }
+      reply.finish()
+    }
+    let deadline = Task {
+      try await Task.sleep(for: .milliseconds(250))
+      reply.finish()
+    }
+    defer { deadline.cancel(); reply.finish() }
+    var iterator = positions.makeAsyncIterator()
+    return await iterator.next()
+  }
   public func refresh() async {
     guard active else { return }
     _ = try? await work.run { [weak self] in await self?.refreshContent() }
@@ -205,7 +226,9 @@ import WebKit
     do {
       if try await source.refresh() {
         guard active, generation == token, !Task.isCancelled else { return }
-        if let value = try? await webView.evaluateJavaScript("window.scrollY") as? Double { pendingScroll = value }
+        let position = await scrollPosition()
+        guard active, generation == token, !Task.isCancelled else { return }
+        if let position { pendingScroll = position }
         await load(reset: false)
       }
     } catch { if active, generation == token, !Task.isCancelled { self.error = "Connection unavailable. Retry." } }
@@ -235,10 +258,11 @@ import WebKit
       if reset { try await source.begin() }
       let data = try await source.data(at: path, limit: documentLimit)
       guard !data.isEmpty else { throw BridgeError("File is empty. Retry after saving.") }
-      let html = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: source.host, source: showsSource,
+      let page = try await self.parser.page(data, extension: (path as NSString).pathExtension, referenceToken: source.host, source: showsSource,
                                             paper: .current)
       guard generation == token, !Task.isCancelled else { return }
-      prepared = (source.host, path, Data(html.utf8))
+      hasPageOutline = page.hasOutline
+      prepared = (source.host, path, Data(page.html.utf8))
       for task in tasks.values { task.cancel() }; tasks.removeAll()
       error = nil
       var url = URLComponents(); url.scheme = "frame-document"; url.host = source.host; url.path = "/" + path
@@ -247,7 +271,7 @@ import WebKit
       guard generation == token, !Task.isCancelled else { return }
       self.error = (error as NSError).domain == NSCocoaErrorDomain && (error as NSError).code == CocoaError.fileReadNoSuchFile.rawValue
         ? "File missing." : error.localizedDescription
-      if reset { webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>No preview</article>", baseURL: nil) }
+      if reset { hasPageOutline = false; webView.loadHTMLString("<style>\(DocumentHTML.theme)</style><article>No preview</article>", baseURL: nil) }
     }
   }
   public func webView(_ webView: WKWebView, start urlSchemeTask: WKURLSchemeTask) {
@@ -271,7 +295,7 @@ import WebKit
           let data = try await source.data(at: path, limit: isDocument ? documentLimit : DocumentResources.resourceLimit)
           if isDocument {
             bytes = Data(try await parser.page(data, extension: (path as NSString).pathExtension, referenceToken: referenceToken,
-                                               paper: paper).utf8)
+                                               paper: paper).html.utf8)
           }
           else { bytes = data }
         }
@@ -324,12 +348,12 @@ import WebKit
     // run script, read the token from its own address and rewrite that address, so neither is trusted.
     guard showsMarkdown, let page = webView.url else { return }
     let token = generation, figure = "document.querySelectorAll('figure.code')[\(block)]"
-    _ = try? work.task { [weak self] in
-      // An isolated world, so nothing on the page can change what is read.
-      guard let self, let text = try? await webView.evaluateJavaScript("\(figure)?.querySelector('pre')?.textContent ?? null", contentWorld: .defaultClient) as? String,
-            generation == token, webView.url == page else { return }
+    // Copy owns no files. A late WebKit reply can be discarded after navigation or shutdown.
+    webView.evaluateJavaScript("\(figure)?.querySelector('pre')?.textContent ?? null", in: nil, in: .defaultClient) { [weak self] result in
+      guard let self, active, generation == token, webView.url == page,
+            case .success(let text as String) = result else { return }
       copyToPasteboard(text)
-      _ = try? await webView.evaluateJavaScript("(()=>{const a=\(figure)?.querySelector('.copy');if(a){clearTimeout(a.doneTimer);a.classList.add('done');a.doneTimer=setTimeout(()=>a.classList.remove('done'),1200)}return true})()", contentWorld: .defaultClient)
+      webView.evaluateJavaScript("(()=>{const a=\(figure)?.querySelector('.copy');if(a){clearTimeout(a.doneTimer);a.classList.add('done');a.doneTimer=setTimeout(()=>a.classList.remove('done'),1200)}return true})()", in: nil, in: .defaultClient) { _ in }
     }
   }
   public func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {

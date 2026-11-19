@@ -16,7 +16,7 @@ enum FrameRemoteHelper {
     }
 
     static let script = #"""
-import os, sys, json, stat, hashlib, datetime, uuid, io, base64, signal, resource, subprocess, warnings, pwd
+import errno, os, sys, json, stat, hashlib, datetime, uuid, io, base64, signal, resource, subprocess, warnings, pwd
 signal.alarm(50)
 resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
 resource.setrlimit(resource.RLIMIT_FSIZE, (8*1024*1024, 8*1024*1024))
@@ -62,9 +62,15 @@ def directory(path):
     path = filesystem_path(check_path(path))
     fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY)
     try:
-        for name in path.split('/')[1:]:
+        components = path.split('/')
+        for index, name in enumerate(components):
             if not name: continue
-            nxt = os.open(name, os.O_RDONLY | os.O_DIRECTORY | NOFOLLOW, dir_fd=fd)
+            try:
+                nxt = os.open(name, os.O_RDONLY | os.O_DIRECTORY | NOFOLLOW, dir_fd=fd)
+            except OSError as error:
+                # openat reports only its relative argument. Retain the failed prefix.
+                error.filename = '/'.join(components[:index+1])
+                raise
             os.close(fd); fd = nxt
         return fd
     except:
@@ -127,7 +133,19 @@ def is_managed(root):
     except (OSError, ValueError): return False
 
 def list_folder(root):
-    fd = directory(root)
+    try: fd = directory(root)
+    except OSError as error:
+        component = error.filename or root
+        message = 'Cannot open remote folder ' + root + '.\n' + component + ': ' + error.strerror + '.'
+        if error.errno in (errno.ENOTDIR, errno.ELOOP) and os.path.islink(component):
+            message = 'Cannot open remote folder ' + root + '.\n' + component + ' is a symbolic link.'
+            target = os.path.realpath(filesystem_path(root))
+            if os.path.isdir(target):
+                try: check_path(target)
+                except ValueError: pass
+                else:
+                    return dict(error=message+'\nResolved folder: '+target, resolvedFolder=target)
+        return dict(error=message)
     try:
         names = os.listdir(fd)
         if len(names) > 10000: raise ValueError('This folder exceeds 10,000 entries.')

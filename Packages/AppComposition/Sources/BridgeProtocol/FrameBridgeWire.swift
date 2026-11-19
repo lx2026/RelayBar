@@ -63,6 +63,8 @@ public struct BridgeResponse: Codable, Sendable {
   public var version = FrameBridgeEnvironment.protocolVersion
   public var error: String?
   public var sessionFailure: BridgeSessionFailure?
+  /// A verified directory to retry when an explicitly opened library path contains a symlink.
+  public var resolvedFolder: String?
   public var status = "ready"
   public var sources: [BridgeSource]?
   public var locations: [BridgeLocation]?
@@ -83,7 +85,7 @@ public struct BridgeResponse: Codable, Sendable {
     guard version == FrameBridgeEnvironment.protocolVersion else {
       throw BridgeError("Update Frame and RelayBar to compatible versions.", sessionFailure: .incompatible)
     }
-    if let error { throw BridgeError(error, sessionFailure: sessionFailure) }
+    if let error { throw BridgeError(error, sessionFailure: sessionFailure, resolvedFolder: resolvedFolder) }
     return self
   }
 }
@@ -116,14 +118,16 @@ public struct BridgeAssetResult: Codable, Sendable {
   public var records: [BridgeStoredAsset]?
   public var recordID: UUID?
   public var error: String?
+  public var resolvedFolder: String?
   public var outcomes: [BridgeDeleteOutcome]?
   public init() {}
 }
 public struct BridgeError: LocalizedError, Sendable {
   public let message: String
   public let sessionFailure: BridgeSessionFailure?
-  public init(_ message: String, sessionFailure: BridgeSessionFailure? = nil) {
-    self.message = message; self.sessionFailure = sessionFailure
+  public let resolvedFolder: String?
+  public init(_ message: String, sessionFailure: BridgeSessionFailure? = nil, resolvedFolder: String? = nil) {
+    self.message = message; self.sessionFailure = sessionFailure; self.resolvedFolder = resolvedFolder
   }
   public var errorDescription: String? { message }
 }
