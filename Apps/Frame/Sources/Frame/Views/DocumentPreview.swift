@@ -24,11 +24,20 @@ struct DocumentPreview: View {
       }
       // A page brings its own layout and colours, so it is framed as a card; Markdown and text read on the paper.
       let card = photo.format == .html && !renderer.showsSource
+      let showingSelection = renderer.isDisplaying(path: store.documentPath(photo), location: store.documentLocation)
       DocumentWebView(renderer: renderer, card: card)
         .overlay {
           if card {
             UnevenRoundedRectangle(topLeadingRadius: 10, topTrailingRadius: 10, style: .continuous)
               .strokeBorder(FramePalette.line, lineWidth: 1).padding(.bottom, -1).allowsHitTesting(false)
+          }
+        }
+        .opacity(showingSelection ? 1 : 0)
+        .allowsHitTesting(showingSelection)
+        .accessibilityHidden(!showingSelection)
+        .overlay {
+          if !showingSelection, renderer.error == nil {
+            ProgressView().accessibilityLabel("Loading document")
           }
         }
         .padding(.top, card ? 4 : 0)
@@ -61,11 +70,15 @@ struct DocumentHistoryItems: View {
   }
 }
 
-/// A small spinner beside the document's name while it loads.
+/// A small spinner for a refresh of the page already on display.
 struct DocumentProgress: View {
   @ObservedObject var renderer: DocumentRenderer
+  let path: String
+  let location: DocumentLocation?
   var body: some View {
-    if renderer.loading { ProgressView().controlSize(.mini).padding(.leading, 4) }
+    if renderer.loading, renderer.isDisplaying(path: path, location: location) {
+      ProgressView().controlSize(.mini).padding(.leading, 4)
+    }
   }
 }
 

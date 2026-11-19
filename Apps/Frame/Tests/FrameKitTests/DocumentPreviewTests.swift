@@ -158,8 +158,13 @@ final class DocumentPreviewTests: XCTestCase {
     try await waitFor(renderer, "document.querySelector('article')?.textContent === 'Tall'")
     _ = try await renderer.webView.evaluateJavaScript("window.scrollTo(0, 500)")
     try await waitFor(renderer, "scrollY === 500")
+    XCTAssertTrue(renderer.isDisplaying(path: "tall.html", location: .local(folder)))
     renderer.show(path: "next.md", location: .local(folder))
+    XCTAssertFalse(renderer.isDisplaying(path: "next.md", location: .local(folder)))
     try await waitFor(renderer, "document.querySelector('h1')?.textContent === 'Next'")
+    XCTAssertTrue(renderer.isDisplaying(path: "next.md", location: .local(folder)))
+    XCTAssertFalse(renderer.isDisplaying(path: "tall.html", location: .local(folder)))
+    XCTAssertFalse(renderer.isDisplaying(path: "next.md", location: .local(folder.deletingLastPathComponent())))
     renderer.back()
     try await waitFor(renderer, "document.querySelector('article')?.textContent === 'Tall' && scrollY === 500")
   }
