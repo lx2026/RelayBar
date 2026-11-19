@@ -1,5 +1,7 @@
 import AppKit
 import BridgeProtocol
+import SwiftUI
+@testable import Frame
 import SwiftData
 import WebKit
 import XCTest
@@ -408,6 +410,45 @@ final class ReviewAidsTests: XCTestCase {
 
   private func waitFor(_ condition: () -> Bool) async throws {
     for _ in 0..<400 where !condition() { try await Task.sleep(for: .milliseconds(25)) }
+  }
+
+  func testCollapsingLibraryKeepsTheDisplayedMarkdownPage() async throws {
+    let root = try folder([])
+    let longSection = String(repeating: "Paragraph.\n\n", count: 100)
+    try Data("## First\n\n\(longSection)\n## Second\n\n\(longSection)".utf8)
+      .write(to: root.appendingPathComponent("notes.md"))
+    let container = try catalog()
+    let store = try await store(container, root: root)
+    try display(store, "notes.md")
+    let window = QuietWindow(size: NSSize(width: 1600, height: 720), styleMask: [.titled, .resizable])
+    let renderer = store.documentRenderer
+    let web = try XCTUnwrap(renderer.webView)
+    var widthBeforeOutline: CGFloat?
+    let observation = renderer.$outline.sink { headings in
+      if headings.count == 2, widthBeforeOutline == nil { widthBeforeOutline = web.bounds.width }
+    }
+    defer { observation.cancel() }
+    let host = NSHostingController(rootView: FrameRootView(store: store, modelContainer: container))
+    window.contentViewController = host
+    window.orderInOffscreen()
+    defer { window.contentViewController = nil; window.orderOut(nil) }
+
+    try await waitFor { renderer.outline.count == 2 && web.window === window }
+    XCTAssertEqual(renderer.outline.count, 2)
+    host.view.layoutSubtreeIfNeeded()
+    XCTAssertEqual(web.bounds.width, try XCTUnwrap(widthBeforeOutline), accuracy: 1)
+    let originalParent = try XCTUnwrap(web.superview)
+    _ = try await web.evaluateJavaScript("window.scrollTo(0, 500); window.pageMarker = 'original'")
+    for visible in [false, true, false] {
+      let oldWidth = web.bounds.width
+      store.showsFolderOutline = visible
+      try await waitFor { abs(web.bounds.width - oldWidth) > 10 }
+      XCTAssertGreaterThan(abs(web.bounds.width - oldWidth), 10)
+      XCTAssertTrue(web.superview === originalParent)
+      let intact = try await web.evaluateJavaScript(
+        "window.pageMarker === 'original' && scrollY > 0 && document.querySelector('article h2')?.textContent === 'First'") as? Bool
+      XCTAssertEqual(intact, true)
+    }
   }
 
   func testOutlineComesFromTheIsolatedWorldAndFollowsChoice() async throws {

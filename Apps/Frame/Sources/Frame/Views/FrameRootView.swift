@@ -12,13 +12,13 @@ struct FrameRootView: View {
   @State private var isFullScreen = false
 
   var body: some View {
-    Group {
-      if (store.showsFolderOutline ?? true) && !store.isFocusMode {
-        ColumnSplitView(first: LibraryColumn(store: store), second: ReaderColumn(store: store, leading: .none))
-      } else {
-        ReaderColumn(store: store, leading: store.isFocusMode ? .none : isFullScreen ? .controls : .windowControls)
-      }
-    }
+    let showLibrary = (store.showsFolderOutline ?? true) && !store.isFocusMode
+    let leading: LeadingControls = showLibrary || store.isFocusMode ? .none : (isFullScreen ? .controls : .windowControls)
+    ColumnSplitView(
+      showsFirst: showLibrary,
+      first: LibraryColumn(store: store).environmentObject(store.previews),
+      second: ReaderColumn(store: store, leading: leading).environmentObject(store.previews)
+    )
     .ignoresSafeArea()
     .background(WindowChrome(isFullScreen: $isFullScreen))
     // Leaving full screen by any means, the green button included, ends the full-screen viewer.
