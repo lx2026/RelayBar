@@ -266,6 +266,33 @@ final class RemoteFolderTreeTests: XCTestCase {
     XCTAssertFalse(store.isScanning)
     XCTAssertNil(store.errorMessage)
   }
+  @MainActor func testExplicitOpenRetriesVerifiedDirectoryAndUsesItAsTheLibraryRoot() async throws {
+    let alias = "/home/test/workplace/docs", target = "/project/docs"
+    let store = makeRemoteStore(remoteFolderLoader: { _, path in
+      if path == alias {
+        var reply = BridgeResponse(error: "Not a directory: workplace")
+        reply.resolvedFolder = target
+        _ = try JSONDecoder().decode(BridgeResponse.self, from: JSONEncoder().encode(reply)).checked()
+      }
+      return TreeFixture.result(path, children: [], count: 1)
+    })
+    await store.openRemote(source, path: alias)
+    XCTAssertNil(store.remoteError)
+    XCTAssertEqual(store.remotePath, target)
+    XCTAssertEqual(store.rootFolder?.relativePath, target)
+    XCTAssertEqual(store.photos.first?.folderRelativePath, target)
+  }
+
+  @MainActor func testResolvedDirectoryIsNotFollowedOnBrowseOrRetriedTwice() async {
+    let store = makeRemoteStore(remoteFolderLoader: { _, path in
+      throw BridgeError(path, resolvedFolder: path + "/next")
+    })
+    await store.openRemote(source, path: "/workplace")
+    XCTAssertEqual(store.remoteError, "/workplace/next")
+    await store.openRemote(source, path: "/workplace/child", browseFolder: true)
+    XCTAssertEqual(store.remoteError, "/workplace/child")
+  }
+
   @MainActor func testLargeSyntheticTreeIsBoundedAndFast() async throws {
     let tree = RemoteFolderIndex(source: source, path: "/photos", loader: { _, path in
       let children = path == "/photos" ? (0..<600).map { FolderNode(id: "\(path)/\($0)", name: "\($0)", relativePath: "\(path)/\($0)", photoCount: 0, children: []) } : []

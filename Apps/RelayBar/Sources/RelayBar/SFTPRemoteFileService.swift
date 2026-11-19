@@ -486,7 +486,7 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
             throw BridgeError("Remote helper failed. Python 3 is required on this host. " + String(result.error.prefix(500)))
         }
         let response = try JSONDecoder().decode(BridgeAssetResult.self, from: Data(result.output.utf8))
-        if let error = response.error { throw BridgeError(error) }
+        if let error = response.error { throw BridgeError(error, resolvedFolder: response.resolvedFolder) }
         return response
     }
 

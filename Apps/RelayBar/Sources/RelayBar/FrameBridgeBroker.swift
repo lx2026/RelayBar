@@ -265,7 +265,11 @@ final class FrameBridgeBroker {
                         var response = BridgeResponse(); response.listingID = listingID
                         response.entries = entries
                         self.finish(id, response)
-                    } catch { self?.finish(id, BridgeResponse(error: error.localizedDescription)) }
+                    } catch {
+                        var response = BridgeResponse(error: error.localizedDescription)
+                        response.resolvedFolder = (error as? BridgeError)?.resolvedFolder
+                        self?.finish(id, response)
+                    }
                 }
             } catch { return BridgeResponse(error: error.localizedDescription) }
         case "fetch":
