@@ -1,7 +1,7 @@
 # Task 088: One definition for file types, limits, palette and wording
 
 Status: Complete
-Ledger: [UX parity](../system-specs/shared/ux-parity.md)
+Ledger: [UX parity](../../system-specs/shared/ux-parity.md)
 Depends on: Task 087
 
 ## Outcome
