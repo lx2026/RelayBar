@@ -7,13 +7,14 @@ import cmark_gfm_extensions
 public struct MarkdownPage: Sendable, Equatable {
     /// `<article class="markdown">…</article>`.
     public let html: String
+    public let outlineHeadingCount: Int
     public let plainText: String
     /// The text of each code block in document order, for the Copy links.
     public let codeBlocks: [String]
     /// With indexed links, each link's destination as the document wrote it. Empty otherwise.
     public let links: [String]
 
-    public static let empty = MarkdownPage(html: "<article class=\"markdown\"></article>", plainText: "", codeBlocks: [], links: [])
+    public static let empty = MarkdownPage(html: "<article class=\"markdown\"></article>", outlineHeadingCount: 0, plainText: "", codeBlocks: [], links: [])
 }
 
 /// What a link's address is in the page.
@@ -84,11 +85,11 @@ public enum MarkdownRenderer {
         defer { cmark_node_free(root) }
 
         let plainText = string(cmark_render_plaintext(root, CMARK_OPT_DEFAULT, 0))
-        let (codeBlocks, links) = rewrite(root, options: options)
+        let (codeBlocks, links, outlineHeadingCount) = rewrite(root, options: options)
         guard !Task.isCancelled else { return .empty }
         // Safe mode: any raw HTML or unsafe URL the document still carries is left out.
         let body = string(cmark_render_html(root, CMARK_OPT_DEFAULT, cmark_parser_get_syntax_extensions(parser)))
-        return MarkdownPage(html: "<article class=\"markdown\">\(body)</article>", plainText: plainText, codeBlocks: codeBlocks, links: links)
+        return MarkdownPage(html: "<article class=\"markdown\">\(body)</article>", outlineHeadingCount: outlineHeadingCount, plainText: plainText, codeBlocks: codeBlocks, links: links)
     }
 
     /// The page with its stylesheet, ready to follow a host's own document head.
@@ -127,7 +128,8 @@ public enum MarkdownRenderer {
     /// Replaces code blocks, math and images with markup the renderer wrote itself, and
     /// puts each table in a scrolling container. Returns the code blocks' text and, with indexed
     /// links, the destinations the links were given in place of.
-    private static func rewrite(_ root: UnsafeMutablePointer<cmark_node>, options: MarkdownRenderOptions) -> (codeBlocks: [String], links: [String]) {
+    private static func rewrite(_ root: UnsafeMutablePointer<cmark_node>, options: MarkdownRenderOptions) -> (codeBlocks: [String], links: [String], outlineHeadingCount: Int) {
+        var outlineHeadingCount = 0
         var codeNodes: [UnsafeMutablePointer<cmark_node>] = []
         var imageNodes: [UnsafeMutablePointer<cmark_node>] = []
         var linkNodes: [UnsafeMutablePointer<cmark_node>] = []
@@ -138,6 +140,7 @@ public enum MarkdownRenderer {
                 guard cmark_iter_get_event_type(iterator) == CMARK_EVENT_ENTER,
                       let node = cmark_iter_get_node(iterator) else { continue }
                 let type = cmark_node_get_type(node)
+                if type == CMARK_NODE_HEADING, (2...3).contains(cmark_node_get_heading_level(node)) { outlineHeadingCount += 1 }
                 if type == CMARK_NODE_CODE_BLOCK { codeNodes.append(node) }
                 else if type == CMARK_NODE_IMAGE { imageNodes.append(node) }
                 else if type == CMARK_NODE_LINK { linkNodes.append(node) }
@@ -199,7 +202,7 @@ public enum MarkdownRenderer {
                 cmark_node_free(wrapper)
             }
         }
-        return (codeBlocks, links)
+        return (codeBlocks, links, outlineHeadingCount)
     }
 
     private static func replaceBlock(_ node: UnsafeMutablePointer<cmark_node>, markup: String) -> Bool {

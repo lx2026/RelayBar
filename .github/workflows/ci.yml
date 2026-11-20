@@ -17,8 +17,8 @@ jobs:
         run: bash ./scripts/select-ci-xcode.sh
       - name: Test desktop and mobile apps, shared packages and SSH transport
         run: ./scripts/test.sh
-      - name: Build Frame app
-        run: swift build --package-path Apps/Frame --product Frame -Xswiftc -warnings-as-errors
+      - name: Build Frame for Apple silicon
+        run: swift build --package-path Apps/Frame --arch arm64 --product Frame -Xswiftc -warnings-as-errors
       - name: Build macOS project without signing
         run: >-
           xcodebuild

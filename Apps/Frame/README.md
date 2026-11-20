@@ -3,9 +3,11 @@
 Frame is a native macOS folder viewer for images, video, Markdown, HTML and text. Open an existing folder, browse its tree or thumbnails, and inspect files beside their metadata. Nothing is imported. General files stay visible even when they have no preview.
 
 - **Stable 1.6.0:** there is no stable Frame release, and stable RelayBar 1.6.0 does not include the Frame integration.
-- **2.0.0 beta:** [Frame 2.0.0 Beta 1, build 20](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1) is Frame's first public build: universal, Developer ID signed, notarized and stapled; macOS 14+.
+- Frame 2.0.0 Beta 3 (build 23) runs on macOS 14 or later and is the final release for Intel Macs. Subsequent releases require Apple silicon. [Download Beta 3](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.3)
 
-Local folders work independently. Remote folders need [RelayBar 2.0.0 Beta 1](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.1) or a RelayBar from the same source revision; both use bridge v7, and older versions are rejected. Frame has no updater or Homebrew cask: download a new build by hand. Hand acceptance in the running app and against live SSH hosts is not finished. See the [paired-app README](../../README.md) and the [reader layout verification](../../docs/verification/068-frame-reader-layout.md).
+Local folders work independently. For remote folders in Beta 3, use RelayBar 2.0.0 Beta 3. Development builds can pair with RelayBar from the same source revision. [RelayBar Beta 3](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.3)
+
+Both apps use bridge v7, and older bridge versions are rejected. Frame updates manually. Hand acceptance in the running app and against live SSH hosts is not finished. See the [paired-app README](../../README.md) and the [reader layout verification](../../docs/verification/068-frame-reader-layout.md).
 
 ## Review a folder
 
@@ -32,7 +34,7 @@ Frame is sandboxed. Local access comes from user-selected folders. Remote access
 
 ## Build and test
 
-Requires macOS 14+, a Swift 6.2+ toolchain and the macOS SDK. From this directory:
+Build and test on an Apple silicon Mac with macOS 14+, a Swift 6.2+ toolchain and the macOS SDK. From this directory:
 
 ```sh
 swift build --product Frame
@@ -41,7 +43,7 @@ make app
 open .build/app/Frame.app
 ```
 
-`make app` creates a universal Release bundle for Apple Silicon and Intel, includes the highlighter and math-font resources, and signs with the sandbox entitlements in `AppBundle/Frame.entitlements`. A Developer ID Application certificate is required; override `SIGNING_IDENTITY` when needed. `./Scripts/build-app.sh debug` builds for the host architecture.
+`make app` creates an arm64 Release bundle, includes the highlighter and math-font resources, and signs with the sandbox entitlements in `AppBundle/Frame.entitlements`. A Developer ID Application certificate is required; override `SIGNING_IDENTITY` when needed. `./Scripts/build-app.sh debug` packages an arm64 Debug build.
 
 From the repository root, `./scripts/package-release.sh frame` creates `.build/Frame.zip`. After explicit distribution approval, `./scripts/notarize-release.sh frame` handles submission, stapling and final archive verification. See the [release guide](../../docs/system-specs/operations/build-and-release.md) for the required environment and paired rollout order. Frame has no automatic updater or Homebrew cask.
 

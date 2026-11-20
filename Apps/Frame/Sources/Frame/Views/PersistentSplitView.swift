@@ -8,6 +8,7 @@ struct ColumnSplitView<First: View, Second: View>: NSViewControllerRepresentable
   static var minimumFirst: CGFloat { 200 }
   static var maximumFirst: CGFloat { 420 }
   static var defaultFirst: CGFloat { 260 }
+  let showsFirst: Bool
   let first: First
   let second: Second
 
@@ -26,6 +27,7 @@ struct ColumnSplitView<First: View, Second: View>: NSViewControllerRepresentable
     secondHost.view.setFrameSize(NSSize(width: 1_020, height: 600))
     let firstItem = NSSplitViewItem(viewController: firstHost)
     let secondItem = NSSplitViewItem(viewController: secondHost)
+    firstItem.canCollapse = true
     firstItem.minimumThickness = Self.minimumFirst
     firstItem.maximumThickness = Self.maximumFirst
     secondItem.minimumThickness = 480
@@ -36,11 +38,14 @@ struct ColumnSplitView<First: View, Second: View>: NSViewControllerRepresentable
     firstItem.holdingPriority = NSLayoutConstraint.Priority(260)
     controller.addSplitViewItem(firstItem)
     controller.addSplitViewItem(secondItem)
+    firstItem.isCollapsed = !showsFirst
     return controller
   }
 
   func updateNSViewController(_ controller: SplitController, context: Context) {
-    (controller.splitViewItems[0].viewController as? NSHostingController<AnyView>)?.rootView = styled(first)
+    let firstItem = controller.splitViewItems[0]
+    if firstItem.isCollapsed == showsFirst { firstItem.isCollapsed = !showsFirst }
+    (firstItem.viewController as? NSHostingController<AnyView>)?.rootView = styled(first)
     (controller.splitViewItems[1].viewController as? NSHostingController<AnyView>)?.rootView = styled(second)
   }
 
@@ -53,7 +58,8 @@ struct ColumnSplitView<First: View, Second: View>: NSViewControllerRepresentable
 final class SplitController: NSSplitViewController {
   override func splitView(_ splitView: NSSplitView, effectiveRect proposedEffectiveRect: NSRect,
                           forDrawnRect drawnRect: NSRect, ofDividerAt dividerIndex: Int) -> NSRect {
-    proposedEffectiveRect.insetBy(dx: -ColumnDividerView.grabOutset, dy: 0)
+    guard splitViewItems.first?.isCollapsed == false else { return .zero }
+    return proposedEffectiveRect.insetBy(dx: -ColumnDividerView.grabOutset, dy: 0)
   }
 }
 
@@ -65,7 +71,7 @@ final class ColumnDividerView: NSSplitView {
   override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 
   private var handleRect: NSRect {
-    guard let first = arrangedSubviews.first else { return .zero }
+    guard let first = arrangedSubviews.first, !isSubviewCollapsed(first) else { return .zero }
     return NSRect(x: first.frame.maxX - Self.grabOutset, y: bounds.minY,
                   width: dividerThickness + Self.grabOutset * 2, height: bounds.height)
   }

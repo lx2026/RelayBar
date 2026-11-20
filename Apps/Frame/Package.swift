@@ -23,7 +23,7 @@ let package = Package(
         ),
         .testTarget(
             name: "FrameKitTests",
-            dependencies: ["FrameKit", .product(name: "CompositionFixtures", package: "AppComposition"), .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition"), .product(name: "HouseStyle", package: "AppComposition")],
+            dependencies: ["Frame", "FrameKit", .product(name: "CompositionFixtures", package: "AppComposition"), .product(name: "Composition", package: "AppComposition"), .product(name: "PreviewSupport", package: "AppComposition"), .product(name: "BridgeProtocol", package: "AppComposition"), .product(name: "AssetGrouping", package: "AppComposition"), .product(name: "MarkdownRendering", package: "AppComposition"), .product(name: "HouseStyle", package: "AppComposition")],
             resources: [.copy("Fixtures")]
         )
     ],

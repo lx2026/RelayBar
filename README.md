@@ -100,7 +100,7 @@ From the repository root:
 ./Apps/Frame/Scripts/build-app.sh release  # Apps/Frame/.build/app/Frame.app
 ```
 
-Both Release app builds contain Apple Silicon and Intel slices. Frame's Debug build uses the host architecture. The scripts retain app entitlements and bundle the renderer's resources and licenses.
+Frame builds target Apple silicon (`arm64`) on macOS 14 or later. Intel users can download [Frame 2.0.0 Beta 3, build 23](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.3). RelayBar Release builds support Apple silicon and Intel.
 
 For development without a signing identity, run `swift build --package-path Apps/Frame --product Frame` or build RelayBar's Xcode target with `CODE_SIGNING_ALLOWED=NO`. These do not replace the signed app-bundle workflow.
 

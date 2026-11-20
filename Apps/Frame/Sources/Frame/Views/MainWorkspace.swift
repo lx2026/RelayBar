@@ -117,7 +117,9 @@ private struct FileRow: View {
       if photo.format == .markdown || photo.format == .html {
         SourceSwitch(store: store, renderer: store.documentRenderer).padding(.leading, 12)
       }
-      if photo.format.isDocument { DocumentProgress(renderer: store.documentRenderer) }
+      if photo.format.isDocument {
+        DocumentProgress(renderer: store.documentRenderer, path: store.documentPath(photo), location: store.documentLocation)
+      }
       Spacer(minLength: 12)
       if store.isSelecting {
         Button("Done", action: store.toggleSelectMode).buttonStyle(TextButtonStyle(isOn: true))
@@ -274,9 +276,13 @@ private struct DocumentReader: View {
       HStack(alignment: .top, spacing: 0) {
         DocumentPreview(photo: photo, store: store)
         if photo.format == .markdown {
-          if showsRail, !renderer.showsSource, renderer.outline.count >= 2, geometry.size.width >= Self.outlineRoom {
+          if showsRail, !renderer.showsSource, renderer.hasPageOutline, geometry.size.width >= Self.outlineRoom {
+            let visible = !renderer.outline.isEmpty && renderer.isDisplaying(path: store.documentPath(photo), location: store.documentLocation)
             OutlineRail(renderer: renderer, location: "\(store.rootName) / \(store.documentPath(photo))",
                         changed: ChangeTracking.modificationDate(of: photo).map(FrameFormat.relative.string(from:)))
+              .opacity(visible ? 1 : 0)
+              .allowsHitTesting(visible)
+              .accessibilityHidden(!visible)
               .frame(width: FrameMetrics.outlineWidth)
               .padding(.leading, 16).padding(.trailing, 36).padding(.top, 16)
           }

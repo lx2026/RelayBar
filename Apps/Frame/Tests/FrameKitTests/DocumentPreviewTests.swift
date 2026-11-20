@@ -6,6 +6,14 @@ import WebKit
 import XCTest
 @testable import FrameKit
 
+@MainActor private final class HeldAlert: NSObject, WKUIDelegate {
+  var dismiss: (() -> Void)?
+  func webView(_ webView: WKWebView, runJavaScriptAlertPanelWithMessage message: String,
+               initiatedByFrame frame: WKFrameInfo, completionHandler: @escaping () -> Void) {
+    dismiss = completionHandler
+  }
+}
+
 final class DocumentPreviewTests: XCTestCase {
   private func root() throws -> URL {
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("FrameDocuments-\(UUID())")
@@ -106,6 +114,59 @@ final class DocumentPreviewTests: XCTestCase {
       try await Task.sleep(for: .milliseconds(25))
     }
     XCTFail("WebKit condition failed: \(script); \(renderer.error ?? "no error")")
+  }
+  @MainActor func testNavigationAndShutdownWhileWebKitIsWaitingOnJavaScript() async throws {
+    QuietWindow.prepareTestProcess()
+    let folder = try root()
+    try Data("<article>First</article>".utf8).write(to: folder.appendingPathComponent("first.html"))
+    try Data("# Second".utf8).write(to: folder.appendingPathComponent("second.md"))
+    let renderer = DocumentRenderer()
+    let window = markdownWindow(renderer)
+    let alert = HeldAlert()
+    renderer.webView.uiDelegate = alert
+    defer { alert.dismiss?(); renderer.stop(); window.contentView = nil }
+    renderer.show(path: "first.html", location: .local(folder))
+    try await waitFor(renderer, "document.querySelector('article')?.textContent === 'First'")
+    Task { _ = try? await renderer.webView.evaluateJavaScript("alert('Hold the page')") }
+    for _ in 0..<200 where alert.dismiss == nil { try await Task.sleep(for: .milliseconds(10)) }
+    XCTAssertNotNil(alert.dismiss)
+
+    // Switch away, then immediately reselect the current file. Its pending replacement must be cancelled.
+    renderer.show(path: "second.md", location: .local(folder))
+    await Task.yield()
+    renderer.show(path: "first.html", location: .local(folder))
+    try await Task.sleep(for: .milliseconds(350))
+    XCTAssertFalse(renderer.canGoBack)
+
+    renderer.show(path: "second.md", location: .local(folder))
+    for _ in 0..<150 where !renderer.canGoBack { try await Task.sleep(for: .milliseconds(10)) }
+    XCTAssertTrue(renderer.canGoBack, "History advanced while the old page still held its JavaScript reply")
+    renderer.stop()
+    let drained = expectation(description: "Renderer stopped while the JavaScript alert was still open")
+    Task { await renderer.finishStopping(); drained.fulfill() }
+    await fulfillment(of: [drained], timeout: 2)
+  }
+  @MainActor func testHistoryRestoresScrollOnAResponsivePage() async throws {
+    QuietWindow.prepareTestProcess()
+    let folder = try root()
+    try Data("<article style='height:4000px'>Tall</article>".utf8).write(to: folder.appendingPathComponent("tall.html"))
+    try Data("# Next".utf8).write(to: folder.appendingPathComponent("next.md"))
+    let renderer = DocumentRenderer()
+    let window = markdownWindow(renderer)
+    defer { renderer.stop(); window.contentView = nil }
+    renderer.show(path: "tall.html", location: .local(folder))
+    try await waitFor(renderer, "document.querySelector('article')?.textContent === 'Tall'")
+    _ = try await renderer.webView.evaluateJavaScript("window.scrollTo(0, 500)")
+    try await waitFor(renderer, "scrollY === 500")
+    XCTAssertTrue(renderer.isDisplaying(path: "tall.html", location: .local(folder)))
+    renderer.show(path: "next.md", location: .local(folder))
+    XCTAssertFalse(renderer.isDisplaying(path: "next.md", location: .local(folder)))
+    try await waitFor(renderer, "document.querySelector('h1')?.textContent === 'Next'")
+    XCTAssertTrue(renderer.isDisplaying(path: "next.md", location: .local(folder)))
+    XCTAssertFalse(renderer.isDisplaying(path: "tall.html", location: .local(folder)))
+    XCTAssertFalse(renderer.isDisplaying(path: "next.md", location: .local(folder.deletingLastPathComponent())))
+    renderer.back()
+    try await waitFor(renderer, "document.querySelector('article')?.textContent === 'Tall' && scrollY === 500")
   }
   @MainActor func testRealWebKitLocalScriptsFetchMarkdownAndSecurity() async throws {
     QuietWindow.prepareTestProcess()
