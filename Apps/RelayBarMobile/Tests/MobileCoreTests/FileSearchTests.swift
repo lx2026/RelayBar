@@ -93,7 +93,7 @@ private func finished(_ index: NameIndex, _ query: String) async throws -> ([Nam
   let result = try await finished(index, "first")
   #expect(result.0.map(\.id) == ["/notes/first"])
   #expect(result.1 == NameIndex.limitNotice)
-  #expect(await files.listed == ["/home", "/notes", "/home/a", "/notes/a"])
+  #expect(await files.listed.sorted() == ["/home", "/home/a", "/notes", "/notes/a"])
   await index.observed(
     .init(rows: [.init(name: "replacement", stamp: .init(directory: false))], truncated: false),
     folder: "/notes")

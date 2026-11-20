@@ -25,7 +25,7 @@ let package = Package(
         .target(name: "PreviewSupport", dependencies: ["Composition"]),
         .target(name: "CompositionFixtures", dependencies: ["Composition"]),
         .target(name: "BridgeProtocol"),
-        .target(name: "AssetGrouping"),
+        .target(name: "AssetGrouping", dependencies: ["PreviewSupport"]),
         .target(name: "MarkdownRendering", dependencies: [
             .product(name: "cmark-gfm", package: "swift-cmark"),
             .product(name: "cmark-gfm-extensions", package: "swift-cmark"),

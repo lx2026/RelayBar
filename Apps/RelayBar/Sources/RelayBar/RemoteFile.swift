@@ -1,3 +1,4 @@
+import PreviewSupport
 import Foundation
 
 struct RemoteServer: Identifiable, Hashable, Sendable {
@@ -115,6 +116,8 @@ struct RemoteFileEntry: Identifiable, Hashable, Sendable {
     let size: Int64?
     let modificationText: String
 
+    var extendedImages = true
+
     var id: String { path }
     var isDirectory: Bool { kind == .directory }
 
@@ -122,6 +125,7 @@ struct RemoteFileEntry: Identifiable, Hashable, Sendable {
     var previewKind: String? {
         guard kind == .file else { return nil }
         let pathExtension = URL(fileURLWithPath: name).pathExtension.lowercased()
+        if !extendedImages, PreviewFileTypes.additionalImages.contains(pathExtension) { return nil }
         return RemotePreviewPlugins.descriptors.first { $0.extensions.contains(pathExtension) }?.id
     }
 
@@ -296,7 +300,7 @@ enum RemoteFileError: LocalizedError, Equatable {
         case .videoTooLarge:
             return "This video is too large to preview safely. Download it instead."
         case .unsupportedVideo:
-            return "This MP4 cannot be played on this Mac. Download it to inspect it another way."
+            return "This video cannot be played on this Mac. Download it to inspect it another way."
         case .imageDimensionsTooLarge:
             return "This image’s dimensions are too large to preview safely. Download it instead."
         case .unsupportedImage:
@@ -463,7 +467,7 @@ enum SFTPCommandBuilder {
 }
 
 enum SFTPListingParser {
-    static let maximumEntryCount = 10_000
+    static let maximumEntryCount = PreviewLimits.entries
     static let maximumListingLineUTF8ByteCount = 32 * 1_024
     static let maximumEntryNameUTF8ByteCount = 4 * 1_024
 

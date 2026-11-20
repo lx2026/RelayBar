@@ -1,3 +1,4 @@
+import PreviewSupport
 import AppKit
 import Composition
 import CompositionUI
@@ -17,8 +18,8 @@ enum RelayPlugins {
 
     static let services = PluginDescriptor(
         id: "services",
-        title: "Service Labels",
-        summary: "Shows what is answering on each forwarded web port.",
+        title: PreviewPlugins.websiteTitle,
+        summary: PreviewPlugins.websiteSummary,
         symbol: "tag",
         isOnByDefault: false,
         features: ["services"]
@@ -40,7 +41,7 @@ enum RelayPlugins {
     static let paperAppearance = PaperAppearance.plugin
 
     static func all(frameInstalled: Bool) -> [PluginDescriptor] {
-        [recovery, services, frame(installed: frameInstalled), paperAppearance]
+        [recovery, services, frame(installed: frameInstalled), paperAppearance, PreviewPlugins.moreImages]
     }
 }
 

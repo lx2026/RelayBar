@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import Foundation
 import RelayWebRoutes
@@ -80,6 +81,7 @@ package struct Preferences: Codable, Equatable {
   package func missingPlugin(kind: String, path: String, host: UUID) -> PluginDescriptor? {
     let plugin: PluginDescriptor
     switch (kind, (path as NSString).pathExtension.lowercased()) {
+    case (let kind, let ext) where ["image", "document"].contains(kind) && PreviewFileTypes.additionalImages.contains(ext): plugin = PreviewPlugins.moreImages
     case ("log", _): plugin = logPlugin
     case ("document", "ipynb"): plugin = notebookPlugin
     case ("document", "csv"), ("document", "tsv"):

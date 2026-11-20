@@ -44,6 +44,8 @@ The profile-backed `PluginComposer` initializer takes the stored global choice (
 
 ## Previews
 
+RelayBar, Frame and mobile use the file types and limits in `PreviewSupport`. JPEG and PNG are core. More Image Formats adds BMP, GIF, HEIC, HEIF, TIFF and WebP and starts enabled in each app. Each image uses the existing image registration. Markdown, HTML and text readers allow 10 MiB, and rendered Markdown and plain text use the light and dark rules in `HouseStyle.DocumentPaper`. Website Labels uses the shared product recognition and title fallback.
+
 `FilePreviewRegistry` registers format descriptors and render functions. A registration returns a handle; `register(_:in:)` ties it to a feature so that withdrawal removes the format at once and cleanup cancels in-flight rendering and closes every result that registration produced. Removing one format leaves the others' results open.
 
 ## RelayBar
@@ -57,7 +59,7 @@ The profile-backed `PluginComposer` initializer takes the stored global choice (
 - Opening or closing Remote Files is not a preference and writes nothing. A changed format toggle or limit reloads that format alone, closing the previews it produced, without replacing the window or any tunnel.
 - The shell reads the tunnel store, update model, login model and window through ports. A feature that fails or is stuck is reported once through the app's alert with its id and reason.
 - Quit unloads everything with a 20-second bound and logs anything that did not finish.
-- Plugins: `RelayPlugins` lists Reconnect on Wake (`recovery`, on by default), Service Labels (`services`, off by default), Open in Frame (`frame`: `frame.host` and `remote.files/open-in-frame`) and Paper Appearance (`paper`, on by default, no feature). Open in Frame's default is decided once per launch: on if Frame (`com.lx2026.Frame`) is installed then, off otherwise; a choice made in the Plugins window is pinned, so it wins over that default in both directions at every later launch. The tree returns each plugin's node only while it is enabled; the choices are the `plugins` object in `preferences.json`, and a document written before plugins existed loads with every plugin at its default. Settings has a Plugins row that opens the Plugins window (1180 × 720, minimum 900 × 540); the window is not created when the app runs without windows and is closed on quit.
+- Plugins: `RelayPlugins` lists Reconnect on Wake (`recovery`, on by default), Website Labels (`services`, off by default), Open in Frame (`frame`: `frame.host` and `remote.files/open-in-frame`) and Paper Appearance (`paper`, on by default, no feature). Open in Frame's default is decided once per launch: on if Frame (`com.lx2026.Frame`) is installed then, off otherwise; a choice made in the Plugins window is pinned, so it wins over that default in both directions at every later launch. The tree returns each plugin's node only while it is enabled; the choices are the `plugins` object in `preferences.json`, and a document written before plugins existed loads with every plugin at its default. Settings has a Plugins row that opens the Plugins window (1180 × 720, minimum 900 × 540); the window is not created when the app runs without windows and is closed on quit.
 
 ## Frame
 

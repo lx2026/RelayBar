@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import HouseStyle
 import ImageIO
@@ -357,10 +358,11 @@ struct ReaderScreen: View {
     .task(id: files.generation) {
       guard let service = files.value else { return }
       if let rows = try? await service.list((path as NSString).deletingLastPathComponent) {
-        position = imagePosition(path, rows: rows)
+        let extended = profiles.value.enabled(PreviewPlugins.moreImages, host: profile.id)
+        position = imagePosition(path, rows: rows, extended: extended)
         let parent = (path as NSString).deletingLastPathComponent as NSString
         siblings = sortedFolderFiles(
-          groupedRows(rows), order: profiles.value.folderOrder?[profile.id] ?? .modified
+          groupedRows(rows, extendedImages: extended), order: profiles.value.folderOrder?[profile.id] ?? .modified, extended: extended
         )
         .filter { !$0.stamp.directory && !$0.name.hasPrefix(".") }.map {
           parent.appendingPathComponent($0.name)

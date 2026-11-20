@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import HouseStyle
 import MobileCore
@@ -365,7 +366,7 @@ struct PadStart: View {
                   ? facts[visit.path]?.image ?? thumbnails[visit.path] : nil
               )
               .task(id: workspace.thumbnailLimit) {
-                if imageFile(visit.path) {
+                if imageFile(visit.path, extended: workspace.profiles.value.enabled(PreviewPlugins.moreImages, host: workspace.profile.id)) {
                   thumbnails[visit.path] = await smallImage(
                     visit.path, visit.stamp, workspace.readerPort.value, workspace.thumbnailLimit)
                 }

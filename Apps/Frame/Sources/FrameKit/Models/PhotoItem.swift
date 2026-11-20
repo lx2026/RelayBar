@@ -1,8 +1,10 @@
+import PreviewSupport
 import Foundation
 
 public enum PhotoFormat: String, Codable, CaseIterable, Sendable {
   case jpeg = "JPEG"
   case png = "PNG"
+  case additionalImage = "Image"
   case mp4 = "MP4"
   case mov = "MOV"
   case m4v = "M4V"
@@ -12,27 +14,22 @@ public enum PhotoFormat: String, Codable, CaseIterable, Sendable {
   case file = "File"
 
   public var isVideo: Bool { self == .mp4 || self == .mov || self == .m4v }
-  public var isImage: Bool { self == .jpeg || self == .png }
+  public var isImage: Bool { self == .jpeg || self == .png || self == .additionalImage }
   public var isMedia: Bool { isImage || isVideo }
   public var isDocument: Bool { !isMedia }
   public var symbol: String { isVideo ? "play.rectangle" : isImage ? "photo" : self == .html ? "globe" : self == .file ? "doc" : "doc.text" }
 
   public init?(pathExtension: String) {
-    switch pathExtension.lowercased() {
-    case "jpg", "jpeg": self = .jpeg
-    case "png": self = .png
-    case "mp4": self = .mp4
-    case "mov": self = .mov
-    case "m4v": self = .m4v
-    case "md", "markdown": self = .markdown
-    case "html", "htm": self = .html
-    default: return nil
-    }
+    let ext = pathExtension.lowercased()
+    if PreviewFileTypes.coreImages.contains(ext) { self = ext == "png" ? .png : .jpeg }
+    else if PreviewFileTypes.additionalImages.contains(ext) { self = .additionalImage }
+    else if PreviewFileTypes.video.contains(ext), let video = Self(rawValue: ext.uppercased()) { self = video }
+    else if PreviewFileTypes.markdown.contains(ext) { self = .markdown }
+    else if PreviewFileTypes.html.contains(ext) { self = .html }
+    else { return nil }
   }
 
-  public static let textExtensions: Set<String> = ["txt", "json", "jsonl", "csv", "tsv", "yaml", "yml", "toml", "xml", "log",
-    "css", "js", "ts", "jsx", "tsx", "py", "swift", "sh", "rb", "rs", "go",
-    "c", "h", "cpp", "hpp", "java", "sql", "ini", "conf"]
+  public static let textExtensions = PreviewFileTypes.text.union(PreviewFileTypes.json).union(PreviewFileTypes.table)
 
   public static func browsing(pathExtension: String) -> Self {
     if let format = Self(pathExtension: pathExtension) { return format }
@@ -47,7 +44,7 @@ public struct PhotoItem: Identifiable, Hashable, Sendable {
   public let relativePath: String
   public let folderRelativePath: String
   public let name: String
-  public let format: PhotoFormat
+  public internal(set) var format: PhotoFormat
   public let fileSize: Int64
   public let createdAt: Date?
   public let modifiedAt: Date?
@@ -125,6 +122,14 @@ public enum PhotoFilter: String, CaseIterable, Identifiable, Sendable {
   case favorites = "Favorites"
   case notFavorited = "Hide favorites"
   case archive = "Archive"
+
+  public var title: String {
+    switch self {
+    case .favorites: return "Pinned"
+    case .notFavorited: return "Hide pinned items"
+    default: return rawValue
+    }
+  }
 
   public var id: String { rawValue }
 }

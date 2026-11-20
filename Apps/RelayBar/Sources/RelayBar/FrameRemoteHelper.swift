@@ -1,3 +1,5 @@
+import AssetGrouping
+import PreviewSupport
 import Foundation
 
 /// Fixed program, never caller-supplied shell. JSON goes on stdin; paths are not shell arguments.
@@ -15,14 +17,20 @@ enum FrameRemoteHelper {
         return args + server.additionalArguments + [server.sshHost, command]
     }
 
+    private static func pythonSet(_ extensions: Set<String>) -> String {
+        "{" + extensions.sorted().map { "'.\($0)'" }.joined(separator: ", ") + "}"
+    }
+
     static let script = #"""
 import errno, os, sys, json, stat, hashlib, datetime, uuid, io, base64, signal, resource, subprocess, warnings, pwd
 signal.alarm(50)
 resource.setrlimit(resource.RLIMIT_CPU, (30, 30))
 resource.setrlimit(resource.RLIMIT_FSIZE, (8*1024*1024, 8*1024*1024))
 if sys.platform.startswith('linux'): resource.setrlimit(resource.RLIMIT_AS, (2*1024**3, 2*1024**3))
-MEDIA = {'.jpg', '.jpeg', '.png', '.mp4', '.mov', '.m4v'}
-DOCUMENTS = {'.md', '.markdown', '.html', '.htm'}
+IMAGES = \#(pythonSet(PreviewFileTypes.images(extended: true)))
+VIDEOS = \#(pythonSet(PreviewFileTypes.video))
+MEDIA = IMAGES | VIDEOS
+DOCUMENTS = \#(pythonSet(PreviewFileTypes.markdown.union(PreviewFileTypes.html)))
 MARKER = b'Frame Remote Assets 1\n'
 NOFOLLOW = os.O_NOFOLLOW
 
@@ -148,7 +156,7 @@ def list_folder(root):
         return dict(error=message)
     try:
         names = os.listdir(fd)
-        if len(names) > 10000: raise ValueError('This folder exceeds 10,000 entries.')
+        if len(names) > \#(PreviewLimits.entries): raise ValueError('This folder exceeds 10,000 entries.')
         out = []
         for name in sorted(names):
             if any(ord(c)<32 or ord(c)==127 for c in name): continue
@@ -168,7 +176,7 @@ def record(root, ident):
     folder = record_path(root, ident)
     data = read_json(os.path.join(folder, '.frame-asset.json'))
     originals = data.get('originals', [])
-    if data.get('version') != 1 or not 1 <= len(originals) <= 10000:
+    if data.get('version') != 1 or not 1 <= len(originals) <= \#(PreviewLimits.entries):
         raise ValueError('Invalid asset record.')
     # Only a record with no identities field predates them; a present field must be complete.
     if 'identities' in data:
@@ -186,7 +194,11 @@ def record(root, ident):
     if os.path.splitext(originals[0])[1].lower() not in MEDIA | DOCUMENTS: raise ValueError('Invalid media record.')
     if os.path.splitext(originals[0])[1].lower() in DOCUMENTS and len(originals) != 1: raise ValueError('Documents do not own dependencies.')
     stem=os.path.splitext(originals[0])[0]
-    if any(os.path.splitext(p)[1].lower() in MEDIA | DOCUMENTS or not p.startswith(stem+'.') for p in originals[1:]):
+    # Existing v1 records can contain formats that became primary after they were saved.
+    blocked = MEDIA | DOCUMENTS
+    if os.path.splitext(originals[0])[1].lower() in \#(pythonSet(AssetCompanionNames.originalArchiveMedia)):
+        blocked = \#(pythonSet(AssetCompanionNames.originalArchivePrimaries))
+    if any(os.path.splitext(p)[1].lower() in blocked or not p.startswith(stem+'.') for p in originals[1:]):
         raise ValueError('Invalid companion record.')
     return folder, data
 
@@ -196,7 +208,7 @@ def collection(root):
     d = directory(base)
     try: names = os.listdir(d)
     finally: os.close(d)
-    if len(names)>10000: raise ValueError('Archive exceeds 10,000 records.')
+    if len(names)>\#(PreviewLimits.entries): raise ValueError('Archive exceeds 10,000 records.')
     records=[]
     for ident in sorted(names):
         if ident.startswith('.'): continue
@@ -278,7 +290,7 @@ def move_group(pairs):
 def delete(q):
     root=check_path(q['root'])
     members=q['members']
-    if not 1<=len(members)<=10000: raise ValueError('Invalid asset members.')
+    if not 1<=len(members)<=\#(PreviewLimits.entries): raise ValueError('Invalid asset members.')
     folder=None
     if q.get('recordID'):
         folder,data=record(root,q['recordID'])
@@ -336,7 +348,7 @@ def mutate(q):
         drop_record(folder)
         return {}
     members=q['members']
-    if not 1<=len(members)<=10000: raise ValueError('Invalid asset members.')
+    if not 1<=len(members)<=\#(PreviewLimits.entries): raise ValueError('Invalid asset members.')
     originals=[e['path'] for e in members]
     identities=[]
     for e in members:
@@ -376,7 +388,8 @@ def bounded(value):
 
 def preview(q):
     members=q['members']
-    if not 1<=len(members)<=10000: raise ValueError('Invalid asset.')
+    if not 1<=len(members)<=\#(PreviewLimits.entries): raise ValueError('Invalid asset.')
+    members=members[:1+\#(PreviewLimits.companions)]
     opened=[]
     try:
         for e in members: opened.append(snapshot(e['path'],e))
@@ -387,7 +400,7 @@ def preview(q):
         if pixels not in (0,512,2048): raise ValueError('Invalid preview size.')
         meta={'File size':str(s.st_size),'Modified':members[0]['modified']}
         text={}; image=None; sidecar=None; companions=[]
-        if ext in ('.jpg','.jpeg','.png'):
+        if ext in IMAGES:
             try:
                 from PIL import Image, ImageOps, ExifTags, PngImagePlugin
             except ImportError: raise ValueError('Install Pillow for Python 3 on this host to show previews and metadata.')
@@ -413,7 +426,7 @@ def preview(q):
                     if 'A' in im.getbands(): im.convert('RGBA').save(output,format='PNG',compress_level=3)
                     else: im.convert('RGB').save(output,format='JPEG',quality=85)
                     image=output.getvalue()
-        elif ext in ('.mp4','.mov','.m4v'):
+        elif ext in VIDEOS:
             path='/dev/fd/'+str(fd)
             try:
                 probe=subprocess.run(['ffprobe','-v','error','-show_entries','format=duration:stream=codec_type,codec_name,width,height,avg_frame_rate','-of','json',path],
@@ -432,19 +445,19 @@ def preview(q):
                     image=result.stdout
             except FileNotFoundError: raise ValueError('Install ffmpeg and ffprobe on this host for video previews.')
         else: raise ValueError('Unsupported media type.')
-        remaining=256000
+        remaining=\#(PreviewLimits.companionCharacters)
         for e,(sidefd,sideinfo) in zip(members[1:],opened[1:]):
             if remaining<=0: break
             is_json=os.path.splitext(e['name'])[1].lower()=='.json'
-            if sideinfo.st_size>2*1024*1024: content='Preview exceeds 2 MiB.'
+            if sideinfo.st_size>\#(PreviewLimits.companionBytes): content='Preview exceeds 2 MiB.'
             else:
                 with os.fdopen(os.dup(sidefd),'rb') as f:
                     try:
-                        data=f.read(2*1024*1024+1)
-                        if len(data)>2*1024*1024: content='Preview exceeds 2 MiB.'
-                        elif is_json: content=json.dumps(json.loads(data),ensure_ascii=False,indent=2)[:24000]
+                        data=f.read(\#(PreviewLimits.companionBytes)+1)
+                        if len(data)>\#(PreviewLimits.companionBytes): content='Preview exceeds 2 MiB.'
+                        elif is_json: content=json.dumps(json.loads(data),ensure_ascii=False,indent=2)
                         elif b'\x00' in data: content='No text preview.'
-                        else: content=data.decode('utf8')[:24000]
+                        else: content=data.decode('utf8')
                     except (ValueError,UnicodeError): content='Invalid JSON.' if is_json else 'No text preview.'
             content=content[:remaining]; remaining-=len(content)
             companions.append(dict(name=e['name'],text=content))
@@ -473,7 +486,7 @@ try:
     elif action=='preview': result=preview(q)
     elif action=='documentStat':
         paths=q.get('paths',[])
-        if not 1<=len(paths)<=128: raise ValueError('Invalid document resources.')
+        if not 1<=len(paths)<=\#(PreviewLimits.requests): raise ValueError('Invalid document resources.')
         entries=[]
         for path in paths:
             path=check_path(path)

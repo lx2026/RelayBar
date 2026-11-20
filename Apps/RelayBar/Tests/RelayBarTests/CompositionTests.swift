@@ -1,3 +1,4 @@
+import PreviewSupport
 import AppKit
 import CompositionFixtures
 import Composition
@@ -149,6 +150,12 @@ final class RelayBarCompositionTests: XCTestCase {
         XCTAssertEqual(try Data(contentsOf: url), saved)
         let registry = try XCTUnwrap(app.runtime.service(RelayServices.PreviewRegistry.self))
         XCTAssertNil(registry.descriptor(for: "sample.json"))
+        XCTAssertEqual(registry.descriptor(for: "notes.mkd")?.id, "markdown")
+        XCTAssertEqual(registry.descriptor(for: "image.webp")?.id, "image")
+        try await app.setPlugin(PreviewPlugins.moreImages, enabled: false)
+        XCTAssertNil(registry.descriptor(for: "image.webp"))
+        XCTAssertEqual(registry.descriptor(for: "image.png")?.id, "image")
+        try await app.setPlugin(PreviewPlugins.moreImages, enabled: true)
         XCTAssertNil(app.runtime.status("remote.files/preview.json"))
         let image = try await registry.open(filename: "image.png", bytes: 68, request: request())
         XCTAssertNotNil(image.content.image)

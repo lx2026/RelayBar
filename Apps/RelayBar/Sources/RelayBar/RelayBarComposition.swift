@@ -211,7 +211,7 @@ final class RelayBarComposition: ObservableObject {
     var login: LaunchAtLoginModel? { loginPort.value }
     var updates: UpdateModel { updatesPort.value ?? unavailableUpdates }
     var windows: RemoteFilesWindowController? { windowPort.value }
-    /// Present while Service Labels runs.
+    /// Present while Website Labels runs.
     var serviceLabels: ServiceLabelBoard? { labelsPort.value }
     /// Present while Open in Frame runs and the bridge is listening.
     var frameHost: FrameBridgeBroker? { hostPort.value }
@@ -294,7 +294,8 @@ final class RelayBarComposition: ObservableObject {
             FeatureNode("remote.files") { RemoteFilesWindowFeature(environment: environment, onClose: close) } children: {
                 for descriptor in RemotePreviewPlugins.descriptors where chosen.preview(descriptor.id).enabled {
                     FeatureNode("preview.\(descriptor.id)") {
-                        RemotePreviewFormat(kind: descriptor.id, maximumBytes: chosen.preview(descriptor.id).maximumBytes)
+                        RemotePreviewFormat(kind: descriptor.id, maximumBytes: chosen.preview(descriptor.id).maximumBytes,
+                                            extendedImages: descriptor.id != "image" || chosen.plugins.isEnabled(PreviewPlugins.moreImages))
                     }
                 }
                 if frame { FeatureNode("open-in-frame") { OpenInFrameFeature() } }

@@ -36,7 +36,7 @@ struct ReaderColumn: View {
     if store.rootUnavailable {
       MessageRow(store: store, leading: leading)
       WorkspaceMessage(symbol: "folder.badge.questionmark", title: "\(store.rootName) is unavailable",
-        detail: "Reconnect the drive, or locate this folder to keep its favorites.") {
+        detail: "Reconnect the drive, or locate this folder to keep its pins.") {
         Button("Locate Folder…", action: store.locateRoot).buttonStyle(FilledButtonStyle()).disabled(!store.canOpenLocalFolder)
       }
     } else if store.activeRootID == nil {
@@ -167,10 +167,10 @@ struct FileActions: View {
     let count = store.actionPhotos.count
     let restoring = store.filter == .archive
     HStack(spacing: 6) {
-      Button(action: store.toggleFavorite) { Image(systemName: favorite ? "heart.fill" : "heart") }
+      Button(action: store.toggleFavorite) { Image(systemName: favorite ? "pin.fill" : "pin") }
         .buttonStyle(IconButtonStyle(tint: favorite ? FramePalette.amber : FramePalette.muted))
-        .help("Favorite and next (F)")
-        .accessibilityLabel(favorite ? "Unfavorite this image" : "Favorite this image")
+        .help(favorite ? "Unpin and next (F)" : "Pin and next (F)")
+        .accessibilityLabel(favorite ? "Unpin this item" : "Pin this item")
         .disabled(!store.canFavorite)
       Button(action: store.archiveSelected) { Image(systemName: restoring ? "arrow.uturn.backward" : "archivebox") }
         .buttonStyle(IconButtonStyle())

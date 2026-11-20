@@ -1,3 +1,5 @@
+import HouseStyle
+import PreviewSupport
 import MarkdownRendering
 import AppKit
 import Foundation
@@ -14,12 +16,13 @@ struct RemoteMarkdownDocument: Sendable {
 }
 
 enum RemoteMarkdownDecoder {
-    static let maximumByteCount = 2 * 1_024 * 1_024
+    static let maximumByteCount = PreviewLimits.document
 
     static func load(
         contentsOf url: URL,
         renderingWith renderer: @escaping @Sendable (String, String) throws -> MarkdownPage = {
-            MarkdownRenderer.page($0, options: .init(referenceToken: $1, images: .placeholder, links: .indexed))
+            MarkdownRenderer.page($0, options: .init(referenceToken: $1, images: .placeholder, links: .indexed,
+                                               enriched: $0.utf8.count <= MarkdownRenderer.maximumEnrichedByteCount))
         }
     ) async throws -> RemoteMarkdownDocument {
         let referenceToken = UUID().uuidString.lowercased()
@@ -293,7 +296,7 @@ final class RemoteMarkdownWebView: WKWebView, WKNavigationDelegate, WKUIDelegate
         }
         self.document = document
         load(
-            body: MarkdownRenderer.body(document.page),
+            body: MarkdownRenderer.body(document.page, palette: DocumentPaper.current.palette),
             referenceToken: document.referenceToken,
             codeBlocks: document.page.codeBlocks,
             links: document.page.links

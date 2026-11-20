@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import HouseStyle
 import ImageIO
@@ -433,7 +434,7 @@ struct HostWorkspace: View, WorkspaceViews {
   }
   fileprivate func historyLine(_ visit: Visit) -> some View {
     HistoryLine(
-      visit: visit, files: files.value, reader: readerPort.value, limit: thumbnailLimit,
+      visit: visit, files: files.value, reader: readerPort.value, limit: thumbnailLimit, extendedImages: profiles.value.enabled(PreviewPlugins.moreImages, host: profile.id),
       missing: profiles.value.missingPlugin(
         kind: visit.pageKind ?? "document", path: visit.path, host: profile.id)?.title
     ) {
@@ -513,7 +514,7 @@ struct HostWorkspace: View, WorkspaceViews {
         ?? ServiceAddress.external(url, profile: profile),
       let registry = webRoutes.value
     else {
-      return AnyView(Text("Waiting for service routes…"))
+      return AnyView(Text("Waiting for website routes…"))
     }
     if let missing = profiles.value.missingPlugin(for: address, host: profile.id) {
       return AnyView(Text("Turn on " + missing.title))
@@ -798,7 +799,7 @@ struct GoPage: View {
                     Text(host.account + "@" + host.host + ":" + String(address.port))
                   case .host(let name): Text("Host · " + name)
                   case .path(let path): Text("File · " + path)
-                  case .service(let address): Text("Service · :\(address.port)")
+                  case .service(let address): Text("Website · :\(address.port)")
                   }
                 }.frame(minHeight: 44)
               }

@@ -87,17 +87,8 @@ package struct ReadDocument: Identifiable, Sendable {
   package var position = ReadingPosition()
 }
 
-@MainActor private func readerPalette(_ form: HouseForm) -> String {
-  let light = HousePalette.paper.css(in: form, dark: false)
-  let dark = HousePalette.paper.css(in: form, dark: true)
-  return """
-    :root{--md-bg:\(light);--md-text:#242821;--md-secondary:rgba(36,40,33,.6);--md-link:#3c6a42;--md-accent-rgb:60,106,66}
-    @media(prefers-color-scheme:dark){:root{--md-bg:\(dark);--md-text:#e3e6df;--md-secondary:rgba(227,230,223,.6);--md-link:#a2c6a2;--md-accent-rgb:98,148,104}}
-    """
-}
-
 @MainActor package func plainTextPage(_ source: String, form: HouseForm) -> String {
-  "<style>" + MarkdownRenderer.stylesheet + readerPalette(form) + "</style><article><pre>"
+  "<style>" + MarkdownRenderer.stylesheet + DocumentPaper(form: form).palette + "</style><article><pre>"
     + MarkdownRenderer.escaped(source) + "</pre></article>"
 }
 
@@ -107,25 +98,28 @@ package enum Format: String, CaseIterable {
     let ext = (name as NSString).pathExtension.lowercased()
     return markdown.descriptor.extensions.contains(ext) || text.descriptor.extensions.contains(ext)
   }
-  var descriptor: PreviewDescriptor {
+  var descriptor: PreviewDescriptor { descriptor(extendedImages: true) }
+  func descriptor(extendedImages: Bool) -> PreviewDescriptor {
     let extensions: Set<String>
     switch self {
-    case .markdown: extensions = ["md", "markdown", "mdown", "mkd"]
-    case .text:
-      extensions = [
-        "txt", "text", "log", "yaml", "yml", "ini", "toml", "sh", "py", "swift", "js", "ts",
-        "css", "xml", "conf", "c", "h", "cpp", "rs", "go", "sql",
-      ]
-    case .notebook: extensions = ["ipynb"]
-    case .table: extensions = ["csv", "tsv"]
-    case .html: extensions = ["htm", "html"]
-    case .video: extensions = ["mov", "mp4", "m4v"]
-    case .json: extensions = ["json"]
-    case .image: extensions = ["png", "jpg", "jpeg", "heic", "webp", "gif", "tif", "tiff"]
+    case .markdown: extensions = PreviewFileTypes.markdown
+    case .text: extensions = PreviewFileTypes.text
+    case .notebook: extensions = PreviewFileTypes.notebook
+    case .table: extensions = PreviewFileTypes.table
+    case .html: extensions = PreviewFileTypes.html
+    case .video: extensions = PreviewFileTypes.video
+    case .json: extensions = PreviewFileTypes.json
+    case .image: extensions = PreviewFileTypes.images(extended: extendedImages)
+    }
+    let limit: Int
+    switch self {
+    case .image: limit = PreviewLimits.original
+    case .markdown, .html, .text: limit = PreviewLimits.document
+    default: limit = StructuredPreview.limit
     }
     return .init(
       id: rawValue, title: rawValue.capitalized, extensions: extensions,
-      maximumBytes: self == .image ? 100 << 20 : 2 << 20)
+      maximumBytes: Int64(limit))
   }
 
   func render(
@@ -193,7 +187,7 @@ package enum Format: String, CaseIterable {
           enriched: file.data.count <= MarkdownRenderer.maximumEnrichedByteCount))
       doc.token = token
       doc.codeBlocks = page.codeBlocks
-      doc.html = await MarkdownRenderer.body(page, palette: readerPalette(form ?? HousePalette.form))
+      doc.html = await MarkdownRenderer.body(page, palette: DocumentPaper(form: form ?? HousePalette.form).palette)
       let lines = source.split(whereSeparator: \.isNewline)
       if let heading = lines.first(where: { $0.hasPrefix("# ") }) {
         doc.title = String(heading.dropFirst(2))
@@ -242,6 +236,7 @@ struct ReadRequest {
 }
 
 @MainActor package struct Reader {
+  package var extendedImages: Bool { prefs.value.enabled(PreviewPlugins.moreImages, host: profile.id) }
   let files: any RemoteFiles
   let cache: DocumentCache
   let registry: FilePreviewRegistry<ReadRequest, ReadDocument>
@@ -301,24 +296,24 @@ struct ReadRequest {
     if doc.isImage {
       let folder = (path as NSString).deletingLastPathComponent
       let names = (try? await files.list(folder))?.filter { !$0.stamp.directory }.map(\.name) ?? []
-      let owners = names.filter(AssetCompanionNames.isMedia)
+      let owners = names.filter { AssetCompanionNames.isMedia($0, extendedImages: extendedImages) }
       let companions =
         AssetCompanionNames.groups(media: owners, files: names)[
           (path as NSString).lastPathComponent] ?? []
-      var remaining = 256_000
-      for name in companions.prefix(32) where remaining > 0 {
+      var remaining = PreviewLimits.companionCharacters
+      for name in companions.prefix(PreviewLimits.companions) where remaining > 0 {
         try Task.checkCancellation()
         let sidecar = (folder as NSString).appendingPathComponent(name)
-        guard let data = try? await files.read(sidecar, limit: min(remaining, 2 << 20)),
+        guard let data = try? await files.read(sidecar, limit: PreviewLimits.companionBytes),
           !data.contains(0), let text = String(data: data, encoding: .utf8)
         else { continue }
-        remaining -= data.count
-        if let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        let clipped = PreviewLimits.companionText(text, remaining: &remaining)
+        if clipped == text, let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
           for (key, value) in fields where value is String || value is NSNumber {
             doc.details[key] = String(describing: value)
           }
         } else {
-          doc.details[name] = text
+          doc.details[name] = clipped
         }
       }
     }
@@ -346,10 +341,10 @@ struct ReadRequest {
   }
 }
 
-package func groupedRows(_ rows: [FileRow]) -> [FileRow] {
+package func groupedRows(_ rows: [FileRow], extendedImages: Bool = true) -> [FileRow] {
   let names = rows.filter { !$0.stamp.directory }.map(\.name)
   let groups = AssetCompanionNames.groups(
-    media: names.filter(AssetCompanionNames.isMedia), files: names)
+    media: names.filter { AssetCompanionNames.isMedia($0, extendedImages: extendedImages) }, files: names)
   let companions = Set(groups.values.flatMap { $0 })
   return rows.compactMap { row in
     guard row.stamp.directory || !companions.contains(row.name) else { return nil }

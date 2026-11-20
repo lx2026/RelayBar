@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import Composition
 import Foundation
@@ -60,7 +61,7 @@ final class FramePromptSearchFeature {
     /// The most assets whose text is read at once.
     private static let concurrentReads = 6
     /// Companion characters searched per asset.
-    private nonisolated static let textBudget = 256_000
+    private nonisolated static let textBudget = PreviewLimits.companionCharacters
 
     /// The most characters the cache holds. Adding text that would pass it empties the cache first.
     var cacheLimit = 16_000_000
@@ -177,19 +178,18 @@ final class FramePromptSearchFeature {
         return AssetText(photo, parts: [photo.name] + companions.filter(isText), isComplete: isComplete)
     }
 
-    /// The whole text of each companion file, not the shortened form the metadata panel shows, then a PNG's
+    /// The text of each companion file followed by a PNG's
     /// text chunks, within the budget. A companion that could not be read makes the result incomplete.
     private nonisolated static func localText(of photo: PhotoItem) -> AssetText {
         var remaining = textBudget
         var parts = [photo.name]
         var isComplete = true
-        for file in photo.companions {
+        for file in photo.companions.prefix(PreviewLimits.companions) {
             guard remaining > 0 else { break }
             do {
                 guard let whole = try SidecarReader.searchableText(file) else { continue }
-                let text = String(whole.prefix(remaining))
+                let text = PreviewLimits.companionText(whole, remaining: &remaining)
                 parts.append(text)
-                remaining -= text.count
             } catch {
                 isComplete = false
             }

@@ -62,12 +62,12 @@ private struct LibraryFooter: View {
         .accessibilityLabel("Refresh folder")
         .help("Refresh folder (⌘R)")
       Button { store.setFilter(favoritesOnly ? .all : .favorites) } label: {
-        Image(systemName: favoritesOnly ? "heart.fill" : "heart")
+        Image(systemName: favoritesOnly ? "pin.fill" : "pin")
       }
       .buttonStyle(IconButtonStyle(tint: favoritesOnly ? FramePalette.amber : FramePalette.muted, isOn: favoritesOnly))
       .disabled(archive)
-      .accessibilityLabel("Show favorites only").accessibilityAddTraits(favoritesOnly ? .isSelected : [])
-      .help("Show favorites only")
+      .accessibilityLabel("Show pinned items only").accessibilityAddTraits(favoritesOnly ? .isSelected : [])
+      .help("Show pinned items only")
       Button { store.setFilter(archive ? .all : .archive) } label: { Image(systemName: "archivebox") }
         .buttonStyle(IconButtonStyle(tint: archive ? FramePalette.ink : FramePalette.muted, isOn: archive))
         .accessibilityLabel("Archive").accessibilityAddTraits(archive ? .isSelected : [])
@@ -89,7 +89,7 @@ struct KindFilterMenu: View {
         ForEach(FileTypeFilter.allCases) { Text($0.kindTitle).tag($0) }
       }.pickerStyle(.inline).labelsHidden()
       Divider()
-      Toggle("Hide Favorites", isOn: Binding(get: { store.filter == .notFavorited },
+      Toggle("Hide Pinned Items", isOn: Binding(get: { store.filter == .notFavorited },
         set: { store.setFilter($0 ? .notFavorited : .all) }))
         .disabled(store.filter == .archive)
       Divider()
@@ -99,7 +99,7 @@ struct KindFilterMenu: View {
         .disabled(!store.hasFileFilters && store.searchQuery.isEmpty)
     } label: {
       HStack(spacing: 4) {
-        Text(store.fileTypeFilter.kindTitle + (store.filter == .notFavorited ? " · Hide favorites" : ""))
+        Text(store.fileTypeFilter.kindTitle + (store.filter == .notFavorited ? " · Hide pinned items" : ""))
           .font(.system(size: 12)).lineLimit(1)
         Image(systemName: "chevron.down").font(.system(size: 8, weight: .semibold))
       }
@@ -108,7 +108,7 @@ struct KindFilterMenu: View {
     .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize()
     .padding(.leading, 8).padding(.trailing, 6).frame(height: 24)
     .accessibilityLabel("File filter: \(store.fileFilterLabel)")
-    .help("Filter by file type and favorites")
+    .help("Filter by file type and pins")
     .disabled(store.isFileOperation)
   }
 }
@@ -202,7 +202,7 @@ private struct FileTree: NSViewRepresentable {
         }
         expansion = expanded
       }
-      // Favourite hearts, the root row's actions and its progress are drawn by the cells; refresh them in place.
+      // Pins, the root row's actions and its progress are drawn by the cells; refresh them in place.
       let state = "\(store.favorites.hashValue)|\(store.openedTimes.hashValue)|\(store.folderBaselines.hashValue)|\(store.isScanning)|\(store.isFileOperation)|\(store.canRefresh)|\(store.remotePath)"
       if state != decoration {
         decoration = state
@@ -343,7 +343,7 @@ private final class TreeCell: NSTableCellView {
   static let identifier = NSUserInterfaceItemIdentifier("FrameTreeCell")
   private let icon = NSImageView()
   private let label = NSTextField(labelWithString: "")
-  private let heart = NSImageView()
+  private let pin = NSImageView()
   private let changedDot = ChangedDot()
   private let actions = LibraryActionsButton()
   private let spinner = NSProgressIndicator()
@@ -358,14 +358,14 @@ private final class TreeCell: NSTableCellView {
     label.cell?.truncatesLastVisibleLine = true
     icon.imageScaling = .scaleProportionallyDown
     icon.symbolConfiguration = .init(pointSize: 13, weight: .regular)
-    heart.image = NSImage(systemSymbolName: "heart.fill", accessibilityDescription: "Favorite")
-    heart.symbolConfiguration = .init(pointSize: 10, weight: .regular)
+    pin.image = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned")
+    pin.symbolConfiguration = .init(pointSize: 10, weight: .regular)
     spinner.style = .spinning
     spinner.controlSize = .small
     spinner.isDisplayedWhenStopped = false
     actions.setAccessibilityLabel("Library actions")
     actions.toolTip = "Open, Refresh"
-    for view in [icon, label, heart, changedDot, actions, spinner] as [NSView] { addSubview(view) }
+    for view in [icon, label, pin, changedDot, actions, spinner] as [NSView] { addSubview(view) }
     textField = label
     imageView = icon
   }
@@ -376,7 +376,7 @@ private final class TreeCell: NSTableCellView {
     self.isRoot = isRoot
     isFavorite = favorite
     label.font = .systemFont(ofSize: 13, weight: isRoot ? .semibold : .regular)
-    heart.isHidden = !favorite
+    pin.isHidden = !favorite
     changedDot.isHidden = !changed
     actions.isHidden = true
     scanning = false
@@ -396,7 +396,7 @@ private final class TreeCell: NSTableCellView {
     let selected = backgroundStyle == .emphasized
     label.textColor = selected ? .white : FrameColors.ink
     icon.contentTintColor = selected ? .white : FrameColors.muted
-    heart.contentTintColor = selected ? .white : FrameColors.amber
+    pin.contentTintColor = selected ? .white : FrameColors.amber
     changedDot.color = selected ? .white : .controlAccentColor
     actions.contentTintColor = selected ? .white : FrameColors.muted
   }
@@ -415,8 +415,8 @@ private final class TreeCell: NSTableCellView {
       changedDot.frame = NSRect(x: trailing - 8, y: (height - 6) / 2, width: 6, height: 6)
       trailing -= 12
     }
-    if !heart.isHidden {
-      heart.frame = NSRect(x: trailing - 11, y: (height - 11) / 2, width: 11, height: 11)
+    if !pin.isHidden {
+      pin.frame = NSRect(x: trailing - 11, y: (height - 11) / 2, width: 11, height: 11)
       trailing -= 15
     }
     let x: CGFloat = 22

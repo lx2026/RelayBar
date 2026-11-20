@@ -201,12 +201,12 @@ public final class FrameComposition: ObservableObject {
     public var remoteDidWithdraw: ((String) -> Void)?
 
     public static let descriptors: [PreviewDescriptor] = [
-        .init(id: "image", title: "Images", extensions: ["jpg", "jpeg", "png"], maximumBytes: Int64.max),
-        .init(id: "video", title: "Video", extensions: ["mp4", "mov", "m4v"], maximumBytes: Int64.max),
-        .init(id: "markdown", title: "Markdown", extensions: ["md", "markdown"], maximumBytes: 10 * 1_024 * 1_024),
-        .init(id: "html", title: "HTML", extensions: ["html", "htm"], maximumBytes: 10 * 1_024 * 1_024),
-        .init(id: "text", title: "Text files", extensions: PhotoFormat.textExtensions, maximumBytes: 10 * 1_024 * 1_024),
-        .init(id: "file", title: "Other files", extensions: ["*"], maximumBytes: 10 * 1_024 * 1_024)
+        .init(id: "image", title: "Images", extensions: PreviewFileTypes.images(extended: true), maximumBytes: Int64(PreviewLimits.original)),
+        .init(id: "video", title: "Video", extensions: PreviewFileTypes.video, maximumBytes: Int64.max),
+        .init(id: "markdown", title: "Markdown", extensions: PreviewFileTypes.markdown, maximumBytes: Int64(PreviewLimits.document)),
+        .init(id: "html", title: "HTML", extensions: PreviewFileTypes.html, maximumBytes: Int64(PreviewLimits.document)),
+        .init(id: "text", title: "Text files", extensions: PhotoFormat.textExtensions, maximumBytes: Int64(PreviewLimits.document)),
+        .init(id: "file", title: "Other files", extensions: ["*"], maximumBytes: Int64(PreviewLimits.document))
     ]
 
     /// `remoteSession` mounts a fixed session in place of the RelayBar link (fixtures, verification bundle).
@@ -434,8 +434,7 @@ public final class FrameComposition: ObservableObject {
     }
 
     public func maximumBytes(_ kind: String) -> Int64? {
-        guard Self.descriptors.contains(where: { $0.id == kind }) else { return nil }
-        return preferences.store.value.preview(kind).maximumBytes
+        return Self.descriptors.first(where: { $0.id == kind }).map { preferences.store.value.descriptor($0).maximumBytes }
     }
 
     public func setMaximumBytes(_ kind: String, _ bytes: Int64) async throws {
@@ -483,7 +482,9 @@ public final class FrameComposition: ObservableObject {
         guard !closing else { throw CancellationError() }
         try await start()
         if photo.remote != nil, !remoteAvailable { throw CompositionError(link.message) }
-        return try await (photo.remote == nil ? registry : remoteRegistry).open(kind: Self.kind(for: photo), bytes: photo.fileSize, request: FramePreviewRequest(photo: photo, pixels: pixels, priority: priority))
+        let previews = photo.remote == nil ? registry : remoteRegistry
+        return try await previews.open(filename: photo.name, bytes: photo.fileSize,
+            request: FramePreviewRequest(photo: photo, pixels: pixels, priority: priority))
     }
 
     public func showDocument(_ photo: PhotoItem, path: String, location: DocumentLocation) {

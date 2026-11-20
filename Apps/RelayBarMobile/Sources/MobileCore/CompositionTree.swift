@@ -168,16 +168,17 @@ package let scriptsPlugin = PluginDescriptor(
 )
 package enum HTMLScripts: ServiceKey { package typealias Value = Bool }
 struct FormatFeature: Feature {
+  var extendedImages = true
   var plainTables = false
   var formats: [Format] = [.markdown, .text, .json, .image, .html, .video]
   @Need(Formats.self) var registry
   func run(_ context: FeatureContext) async throws {
     for format in formats {
-      var descriptor = format.descriptor
+      var descriptor = format.descriptor(extendedImages: extendedImages)
       if format == .text, plainTables {
         descriptor = PreviewDescriptor(
           id: descriptor.id, title: descriptor.title,
-          extensions: descriptor.extensions.union(["csv", "tsv"]),
+          extensions: descriptor.extensions.union(PreviewFileTypes.table),
           maximumBytes: descriptor.maximumBytes)
       }
       try registry.register(descriptor, in: context) { request in
@@ -234,14 +235,14 @@ struct ReaderFeature: Feature {
   package private(set) var treeError: String?
   private var subscriptions = Set<AnyCancellable>()
   nonisolated package static let plugins: [PluginDescriptor] = [
-    notebookPlugin, tablePlugin, scriptsPlugin, pinsPlugin,
+    notebookPlugin, tablePlugin, scriptsPlugin, pinsPlugin, PreviewPlugins.moreImages,
     .init(
       id: "favorites", title: "Pinned Places", summary: "Pin folders and files to Places.",
       symbol: "pin",
       isOnByDefault: true, realmRelativeFeatures: ["saved-files"]
     ),
     .init(
-      id: "prompt-search", title: "Prompt Search", summary: "Search image prompts.",
+      id: "prompt-search", title: PreviewPlugins.searchTitle, summary: PreviewPlugins.searchSummary,
       symbol: "magnifyingglass",
       isOnByDefault: true, realmRelativeFeatures: ["search-prompts"]),
     fileSearchPlugin, logPlugin, localhostPlugin, networkPlugin, labelsPlugin,
@@ -251,7 +252,7 @@ struct ReaderFeature: Feature {
     deletePlugin,
     .init(
       id: PaperAppearance.plugin.id, title: PaperAppearance.plugin.title,
-      summary: "Use the warm paper colours of RelayBar and Frame.",
+      summary: PaperAppearance.plugin.summary,
       symbol: PaperAppearance.plugin.symbol, isOnByDefault: true, features: ["paper-appearance"],
       realmRelativeFeatures: ["appearance.paper"]),
   ]
@@ -383,7 +384,7 @@ struct ReaderFeature: Feature {
       FeatureNode("start-sections") { Provide(Sections.self, sections) }
       FeatureNode("file-actions") { Provide(FileActions.self, actions) }
       FeatureNode("built-in-entries") { BuiltInEntries() }
-      FeatureNode("formats") { FormatFeature(plainTables: !choices.plugins.isEnabled(tablePlugin)) }
+      FeatureNode("formats") { FormatFeature(extendedImages: choices.plugins.isEnabled(PreviewPlugins.moreImages), plainTables: !choices.plugins.isEnabled(tablePlugin)) }
       if choices.plugins.isEnabled(notebookPlugin) {
         FeatureNode("preview.notebook") { FormatFeature(formats: [.notebook]) }
       }
@@ -410,7 +411,7 @@ struct ReaderFeature: Feature {
           FeatureNode("pages") { Provide(Pages.self, Registry(parent: pages)) }
           FeatureNode("preview-formats") { Provide(Formats.self, FilePreviewRegistry()) }
           FeatureNode("formats") {
-            FormatFeature(plainTables: !choices.enabled(tablePlugin, host: host.id))
+            FormatFeature(extendedImages: choices.enabled(PreviewPlugins.moreImages, host: host.id), plainTables: !choices.enabled(tablePlugin, host: host.id))
           }
           if choices.enabled(notebookPlugin, host: host.id) {
             FeatureNode("preview.notebook") { FormatFeature(formats: [.notebook]) }
@@ -512,7 +513,9 @@ extension MobileComposition {
       // With no live realm, use the saved host's effective format for the cached bytes.
       let ext = (path as NSString).pathExtension.lowercased()
       let kind: Format?
-      if Format.table.descriptor.extensions.contains(ext) {
+      if PreviewFileTypes.additionalImages.contains(ext) {
+        kind = preferences.value.enabled(PreviewPlugins.moreImages, host: profile.id) ? .image : nil
+      } else if Format.table.descriptor.extensions.contains(ext) {
         kind = preferences.value.enabled(tablePlugin, host: profile.id) ? .table : .text
       } else if Format.notebook.descriptor.extensions.contains(ext) {
         kind = .notebook

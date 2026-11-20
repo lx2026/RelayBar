@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import Foundation
 import RelayTransport
@@ -81,7 +82,7 @@ private actor Listing {
       ![".", ".."].contains(name),
       !name.contains("/"), name.rangeOfCharacter(from: .controlCharacters) == nil
     else { return }
-    guard rows.count < 10_000 else { throw CompositionError("This folder exceeds 10,000 entries.") }
+    guard rows.count < PreviewLimits.entries else { throw CompositionError("This folder exceeds 10,000 entries.") }
     try await NameIndex.walker?.yieldToPages()
     var stamp = entry.attributes.stamp
     if let mode = entry.attributes.permissions, mode & 0o170000 == 0o120000 {
@@ -123,7 +124,7 @@ struct RemoteAdapter: RangeFiles {
   func listing(_ path: String) async throws -> FolderListing {
     let listing = Listing()
     let client = try await session.sftp()
-    let result = try await client.list(Data(path.utf8)) {
+    let result = try await client.list(Data(path.utf8), limit: PreviewLimits.entries) {
       try await listing.add($0, parent: path, client: client)
     }
     let rows = await listing.rows.sorted {

@@ -167,7 +167,7 @@ private struct FrameCommands: Commands {
       Button("Next File (→ in viewer)") { store.navigate(by: 1) }
         .disabled(!store.hasAvailableSelection)
       Divider()
-      Button("Favorite and Next (F)") { store.toggleFavorite() }
+      Button(store.allActionPhotosFavorite ? "Unpin and Next (F)" : "Pin and Next (F)") { store.toggleFavorite() }
         .disabled(!store.canFavorite)
       Button("Contact Sheet (G in viewer)") { store.toggleContactSheet() }
         .disabled(store.visiblePhotos.isEmpty || store.isScanning || store.isFileOperation

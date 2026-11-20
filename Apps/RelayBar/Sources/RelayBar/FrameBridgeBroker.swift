@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import AssetGrouping
 import AppKit
@@ -49,8 +50,8 @@ final class FrameBridgeBroker {
          available: @escaping () -> Bool = { true },
          socketRoot: @escaping () throws -> URL = FrameBridgeEnvironment.root,
          makeService: @escaping () -> any RemoteFileServing = {
-             SFTPRemoteFileService(previewSizeLimit: 100 * 1_024 * 1_024,
-                                   videoPreviewSizeLimit: 100 * 1_024 * 1_024,
+             SFTPRemoteFileService(previewSizeLimit: Int64(PreviewLimits.original),
+                                   videoPreviewSizeLimit: Int64(PreviewLimits.original),
                                    standardOutputLimit: 8 * 1_024 * 1_024)
          }) {
         self.catalog = catalog; self.defaults = defaults; self.tunnels = tunnels; self.makeService = makeService
@@ -86,7 +87,7 @@ final class FrameBridgeBroker {
     }
     private static let unauthorized = "Open a folder in RelayBar and choose Open in Frame to allow remote viewing."
     /// The most one original download may transfer.
-    private static let originalLimit: Int64 = 100 * 1_024 * 1_024
+    private static let originalLimit: Int64 = Int64(PreviewLimits.original)
 
     /// A session's connection has ended: Frame quit, crashed, or closed it. Its work stops now.
     func disconnected(_ connection: UUID) {
@@ -228,7 +229,7 @@ final class FrameBridgeBroker {
         case "deleteBatch": return deleteBatch(request)
         case "documentStat":
             guard let sourceID = request.sourceID, let server = servers[sourceID], let root = request.root,
-                  FrameBridgeEnvironment.validPath(root), let paths = request.paths, !paths.isEmpty, paths.count <= 128,
+                  FrameBridgeEnvironment.validPath(root), let paths = request.paths, !paths.isEmpty, paths.count <= PreviewLimits.requests,
                   paths.allSatisfy({ FrameBridgeEnvironment.validPath($0) && $0.hasPrefix(root == "/" ? "/" : root + "/") }),
                   work.count < 4, jobs.count < 32 else {
                 return BridgeResponse(error: "Invalid document resources or remote viewer is busy.")
@@ -255,7 +256,7 @@ final class FrameBridgeBroker {
                         let result = try await service.frameAsset(server: server, input: BridgeAssetInput(action: "list", root: path))
                         let entries = result.entries ?? []
                         try Task.checkCancellation()
-                        guard entries.count <= 10_000 else { throw BridgeError("This folder exceeds 10,000 entries. Open a smaller folder.") }
+                        guard entries.count <= PreviewLimits.entries else { throw BridgeError("This folder exceeds 10,000 entries. Open a smaller folder.") }
                         guard let self, self.jobs[id] != nil else { return }
                         let listingID = UUID()
                         if self.listings.count >= 32, let oldest = self.listings.min(by: { $0.value.date < $1.value.date })?.key {

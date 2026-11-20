@@ -121,8 +121,7 @@ public enum ArchiveService {
       throw AssetError("Invalid archive members.")
     }
     let paths = record.members.map(\.path)
-    guard AssetCompanionNames.groups(media: [paths[0]], files: Array(paths.dropFirst()))[paths[0], default: []].count == paths.count - 1,
-          paths.dropFirst().allSatisfy({ !AssetCompanionNames.isMedia($0) }) else {
+    guard AssetCompanionNames.validArchiveMembers(paths) else {
       throw AssetError("Invalid companion files.")
     }
     let files = try record.members.map { member -> AssetFile in

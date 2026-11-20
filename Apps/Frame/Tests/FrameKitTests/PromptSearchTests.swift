@@ -264,7 +264,6 @@ final class PromptSearchTests: XCTestCase {
         addTeardownBlock {
             try? FileManager.default.removeItem(at: root)
         }
-        // The metadata panel shows the first 24,000 characters of a companion; search reads all of it.
         let padding = String(repeating: "node ", count: 12_000)
         try Data("jpeg".utf8).write(to: root.appendingPathComponent("workflow.jpg"))
         try Data((padding + "lighthouse").utf8).write(to: root.appendingPathComponent("workflow.txt"))

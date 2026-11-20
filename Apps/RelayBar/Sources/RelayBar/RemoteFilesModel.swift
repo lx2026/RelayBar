@@ -1,3 +1,4 @@
+import Combine
 import Composition
 import PreviewSupport
 import AppKit
@@ -460,6 +461,14 @@ final class RemoteFilesModel: ObservableObject {
     private var latestUpload = LatestRequest()
     private var latestDeletion = LatestRequest()
     private var previewSession: PreviewSession<RelayPreviewContent>?
+    private var formatObservation: AnyCancellable?
+    private var extendedImages = true
+    private func classified(_ entry: RemoteFileEntry) -> RemoteFileEntry {
+        var result = entry
+        result.extendedImages = extendedImages
+        return result
+    }
+
     private var previewPluginStorage: RemotePreviews?
     /// Set while Open in Frame runs; the window shows its buttons only then.
     @Published var frameViewer: ((RemoteServer, String, [String]) throws -> Void)?
@@ -523,6 +532,13 @@ final class RemoteFilesModel: ObservableObject {
         self.jsonDecoder = jsonDecoder
         self.videoValidator = videoValidator
         self.tunnels = tunnels
+        formatObservation = previews?.registry.$descriptors.map {
+            $0.first(where: { $0.id == "image" })?.extensions.isSuperset(of: PreviewFileTypes.additionalImages) == true
+        }.removeDuplicates().sink { [weak self] enabled in
+            guard let self else { return }
+            extendedImages = enabled
+            entries = entries.map(classified)
+        }
     }
 
     var pathValidationMessage: String? {
@@ -962,7 +978,8 @@ final class RemoteFilesModel: ObservableObject {
         }
     }
 
-    func preview(_ entry: RemoteFileEntry) {
+    func preview(_ rawEntry: RemoteFileEntry) {
+        let entry = classified(rawEntry)
         guard
             entry.isPreviewable,
             !isTransferRunning,
@@ -1370,7 +1387,7 @@ final class RemoteFilesModel: ObservableObject {
                         path: directory
                     )
                     guard latestDeletion.isCurrent(generation) else { return }
-                    entries = refreshed
+                    entries = refreshed.map(classified)
                     selectedFileIDs.subtract(acknowledgedIDs)
                     selectedFileIDs.formIntersection(
                         Set(refreshed.filter { $0.kind == .file }.map(\.id))
@@ -1663,7 +1680,7 @@ final class RemoteFilesModel: ObservableObject {
         currentPath = path
         isFolderOpen = true
         remotePath = path
-        entries = loadedEntries
+        entries = loadedEntries.map(classified)
         if !isRefresh { resetFileSelection() }
         if
             let selectionAfterLoad,
@@ -1682,7 +1699,7 @@ final class RemoteFilesModel: ObservableObject {
         currentPath = RemotePath.parent(of: entry.path)
         isFolderOpen = false
         remotePath = entry.path
-        entries = [entry]
+        entries = [classified(entry)]
         selectedEntryID = entry.id
         resetFileSelection()
     }
@@ -1852,8 +1869,8 @@ final class RemoteFilesModel: ObservableObject {
 
         if deletedFromPreview {
             let candidates = entry.isPreviewableImage
-                ? refreshedEntries.filter(\.isPreviewableImage)
-                : refreshedEntries.filter(\.isPreviewable)
+                ? entries.filter(\.isPreviewableImage)
+                : entries.filter(\.isPreviewable)
             let preferredIndex = entry.isPreviewableImage ? imageIndex : previewIndex
             if !candidates.isEmpty {
                 let target = candidates[min(preferredIndex, candidates.count - 1)]
@@ -1899,7 +1916,7 @@ final class RemoteFilesModel: ObservableObject {
     /// Shows a refreshed listing of `directory`, keeps only the selections it
     /// still contains, and caches it for that connection.
     private func adoptListing(_ listing: [RemoteFileEntry], server: RemoteServer, directory: String) {
-        entries = listing
+        entries = listing.map(classified)
         selectedFileIDs.formIntersection(
             Set(listing.filter { $0.kind == .file }.map(\.id))
         )

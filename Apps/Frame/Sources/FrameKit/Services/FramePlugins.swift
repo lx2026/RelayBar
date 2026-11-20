@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import HouseStyle
 
@@ -6,8 +7,8 @@ public enum FramePlugins {
     /// Filters the current folder by the words in each asset's file name and companion text.
     public static let promptSearch = PluginDescriptor(
         id: "prompt-search",
-        title: "Prompt Search",
-        summary: "Filters the current folder by words in each asset's prompt and notes.",
+        title: PreviewPlugins.searchTitle,
+        summary: PreviewPlugins.searchSummary,
         symbol: "text.magnifyingglass",
         isOnByDefault: true,
         features: ["prompt-search", "remote/prompt-search"]
@@ -17,5 +18,5 @@ public enum FramePlugins {
     public static let paperAppearance = PaperAppearance.plugin
 
     /// The catalog, in the order the Plugins window lists it.
-    public static let all = [promptSearch, paperAppearance]
+    public static let all = [promptSearch, paperAppearance, PreviewPlugins.moreImages]
 }

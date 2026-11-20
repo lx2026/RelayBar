@@ -52,7 +52,7 @@ struct LocalhostOffer: View {
           "\(title) on \(host) can open as localhost through a listener on this device that checks every request."
         ).mobileFont(16)
         Label(
-          "Pages on this service can read a session token. Choose this for services you trust.",
+          "Pages on this website can read a session token. Choose this for websites you trust.",
           systemImage: "lock"
         ).mobileFont(15).padding().card()
         MainButton(title: "Open as Localhost", action: accept)
@@ -148,7 +148,7 @@ struct OpenServices: View {
                         close(host, address)
                       } label: {
                         Glyph("xmark").font(.caption).padding(10)
-                      }.accessibilityLabel("Close service")
+                      }.accessibilityLabel("Close website")
                     }
                   }.card()
                 }

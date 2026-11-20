@@ -171,7 +171,7 @@ private struct FakeConnection: HostConnection {
 }
 
 #if os(macOS)
-  @Test func macReaderFixtures() async throws {
+  @Test @MainActor func macReaderFixtures() async throws {
     let apps = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
       .deletingLastPathComponent()
       .deletingLastPathComponent().deletingLastPathComponent()
@@ -183,7 +183,7 @@ private struct FakeConnection: HostConnection {
         path: name + ".md",
         file: .init(
           stamp: .init(size: UInt64(data.count), modified: 1, directory: false),
-          data: data, date: Date()), token: "snapshot")
+          data: data, date: Date()), token: "snapshot", form: .paper)
       let references = apps.deletingLastPathComponent().appending(
         path: "Packages/AppComposition/Tests/MarkdownRenderingTests/ReferencePages")
       let reference = try String(
@@ -199,7 +199,10 @@ private struct FakeConnection: HostConnection {
         )
         .trimmingCharacters(in: .whitespacesAndNewlines)
       }
-      let actual = try #require(doc.html?.components(separatedBy: "</style>").last)
+      let html = try #require(doc.html)
+      let style = "<style>" + MarkdownRenderer.stylesheet + DocumentPaper(form: .paper).palette + "</style>"
+      #expect(html.hasPrefix(style))
+      let actual = String(html.dropFirst(style.count))
       #expect(markup(actual) == markup(expected))
     }
   }
@@ -554,6 +557,7 @@ private struct FakeConnection: HostConnection {
   let files = FakeFiles()
   let page = DocumentScheme(path: "/notes/report.html", folderOnly: true)
   let good = try #require(URL(string: "art.png", relativeTo: page.mainURL)?.absoluteURL)
+  _ = try await page.response(for: good, html: "", files: files)
   _ = try await page.response(for: good, html: "", files: files)
   for target in ["link.png", "../other.png"] {
     let url = try #require(URL(string: target, relativeTo: page.mainURL)?.absoluteURL)

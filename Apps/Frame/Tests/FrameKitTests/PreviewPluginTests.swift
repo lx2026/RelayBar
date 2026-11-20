@@ -66,6 +66,12 @@ final class PreviewPluginTests: XCTestCase {
         let plugins = FrameComposition()
         try await plugins.start()
         XCTAssertEqual(Set(plugins.registry.descriptors.map(\.id)), Set(FrameComposition.descriptors.map(\.id)))
+        XCTAssertEqual(plugins.registry.descriptor(for: "notes.mkd")?.id, "markdown")
+        XCTAssertEqual(plugins.registry.descriptor(for: "image.webp")?.id, "image")
+        try await plugins.setPlugin(PreviewPlugins.moreImages, enabled: false)
+        XCTAssertNil(plugins.registry.descriptor(for: "image.webp"))
+        XCTAssertEqual(plugins.registry.descriptor(for: "image.png")?.id, "image")
+        try await plugins.setPlugin(PreviewPlugins.moreImages, enabled: true)
         XCTAssertTrue(plugins.runtime.statuses.filter { $0.id.hasPrefix("preview.") }.allSatisfy(\.isActive))
         XCTAssertTrue(plugins.remoteRegistry.descriptors.isEmpty)
         // Without a session every feature in the remote realm waits, and says what for.

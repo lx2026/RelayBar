@@ -74,19 +74,19 @@ struct RemotePreviews {
 enum RemotePreviewPlugins {
     typealias Registry = FilePreviewRegistry<RelayPreviewRequest, RelayPreviewContent>
     static let descriptors: [PreviewDescriptor] = [
-        .init(id: "image", title: "Images", extensions: ["bmp", "gif", "heic", "heif", "jpeg", "jpg", "png", "tif", "tiff"], maximumBytes: 100 * 1_024 * 1_024),
-        .init(id: "markdown", title: "Markdown", extensions: ["md", "markdown", "mdown", "mkd"], maximumBytes: Int64(RemoteMarkdownDecoder.maximumByteCount)),
-        .init(id: "json", title: "JSON", extensions: ["json"], maximumBytes: Int64(RemoteJSONDecoder.maximumByteCount)),
-        .init(id: "video", title: "Video", extensions: ["mp4"], maximumBytes: RemoteVideoPreview.maximumByteCount),
-        .init(id: "html", title: "HTML", extensions: ["html", "htm"], maximumBytes: Int64(RemoteHTMLResources.documentLimit))
+        .init(id: "image", title: "Images", extensions: PreviewFileTypes.images(extended: true), maximumBytes: Int64(PreviewLimits.original)),
+        .init(id: "markdown", title: "Markdown", extensions: PreviewFileTypes.markdown, maximumBytes: Int64(RemoteMarkdownDecoder.maximumByteCount)),
+        .init(id: "json", title: "JSON", extensions: PreviewFileTypes.json, maximumBytes: Int64(RemoteJSONDecoder.maximumByteCount)),
+        .init(id: "video", title: "Video", extensions: PreviewFileTypes.video, maximumBytes: RemoteVideoPreview.maximumByteCount),
+        .init(id: "html", title: "HTML", extensions: PreviewFileTypes.html, maximumBytes: Int64(RemoteHTMLResources.documentLimit))
     ]
 
     /// The descriptor a format runs with, or an error if the configured limit is outside what the format allows.
-    static func descriptor(_ kind: String, maximumBytes: Int64? = nil) throws -> PreviewDescriptor {
+    static func descriptor(_ kind: String, maximumBytes: Int64? = nil, extendedImages: Bool = true) throws -> PreviewDescriptor {
         guard let base = descriptors.first(where: { $0.id == kind }) else { throw CompositionError("Unknown preview format \(kind).") }
         let limit = maximumBytes ?? base.maximumBytes
         guard limit > 0, limit <= base.maximumBytes else { throw CompositionError("Invalid \(base.title) preview settings.") }
-        return PreviewDescriptor(id: base.id, title: base.title, extensions: base.extensions, maximumBytes: limit)
+        return PreviewDescriptor(id: base.id, title: base.title, extensions: kind == "image" ? PreviewFileTypes.images(extended: extendedImages) : base.extensions, maximumBytes: limit)
     }
 
     /// Renders one format. `scope` owns follow-up work such as HTML link navigation.
@@ -148,12 +148,13 @@ enum RemotePreviewPlugins {
 struct RemotePreviewFormat: Feature {
     let kind: String
     let maximumBytes: Int64
+    var extendedImages = true
     @Need(RelayServices.PreviewRegistry.self) var registry
     @Need(RelayServices.PreviewReader.self) var reader
     @Need(RelayServices.PreviewDecoders.self) var decoders
 
     func run(_ context: FeatureContext) async throws {
-        let current = try RemotePreviewPlugins.descriptor(kind, maximumBytes: maximumBytes)
+        let current = try RemotePreviewPlugins.descriptor(kind, maximumBytes: maximumBytes, extendedImages: extendedImages)
         try registry.register(current, in: context,
             render: RemotePreviewPlugins.renderer(current, service: reader, decoders: decoders, scope: context.effects))
     }

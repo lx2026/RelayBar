@@ -2,6 +2,12 @@
 
 Notable RelayBar changes are recorded here, with Frame from 2.0.0.
 
+## Unreleased
+
+- RelayBar previews MOV, M4V and WebP, and opens Markdown up to 10 MiB on reader paper. Website Labels is the new name for Service Labels.
+- Frame opens `.mdown` and `.mkd` as Markdown and `.text` as plain text. Pin and Unpin use a pin icon and keep existing saved items.
+- Both apps include More Image Formats by default. Switching it off leaves JPEG and PNG previews enabled.
+
 ## [2.0.0-beta.1] - 2026-11-17
 
 RelayBar 2.0.0 Beta 1 and Frame 2.0.0 Beta 1 ship as a pair. Frame's beta is

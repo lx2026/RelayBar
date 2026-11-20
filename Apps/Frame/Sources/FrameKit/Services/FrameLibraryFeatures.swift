@@ -130,7 +130,7 @@ final class FrameFavoritesFeature {
     var isActive: Bool { context?.isActive == true }
     init(_ context: FeatureContext, data: FrameLibraryData) { self.context = context; library = data }
     private func model() throws -> ModelContext {
-        guard let context else { throw CompositionError("Favorites are unavailable.") }
+        guard let context else { throw CompositionError("Pins are unavailable.") }
         try context.checkActive()
         return library.context
     }

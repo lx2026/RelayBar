@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import Darwin
 import Foundation
@@ -428,7 +429,7 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
     init(
         executableURL: URL = URL(fileURLWithPath: "/usr/bin/sftp"),
         fileManager: FileManager = .default,
-        previewSizeLimit: Int64 = 100 * 1_024 * 1_024,
+        previewSizeLimit: Int64 = Int64(PreviewLimits.original),
         markdownPreviewSizeLimit: Int64 = Int64(RemoteMarkdownDecoder.maximumByteCount),
         jsonPreviewSizeLimit: Int64 = Int64(RemoteJSONDecoder.maximumByteCount),
         videoPreviewSizeLimit: Int64 = RemoteVideoPreview.maximumByteCount,

@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import Foundation
 import HouseStyle
@@ -14,19 +15,7 @@ actor DocumentParser {
   }
 }
 
-/// The reader column's paper as CSS colours, light and dark, for the form in use when it was read.
-public struct DocumentPaper: Equatable, Sendable {
-  public let light: String
-  public let dark: String
-
-  @MainActor public init(form: HouseForm) {
-    light = HousePalette.paper.css(in: form, dark: false)
-    dark = HousePalette.paper.css(in: form, dark: true)
-  }
-
-  /// The paper of the active form.
-  @MainActor public static var current: DocumentPaper { DocumentPaper(form: HousePalette.form) }
-}
+public typealias DocumentPaper = HouseStyle.DocumentPaper
 
 public enum DocumentHTML {
   /// `referenceToken` is carried by the page's Copy links so the renderer can tell them from links a document wrote.
@@ -50,8 +39,8 @@ public enum DocumentHTML {
                                        paper: DocumentPaper) throws -> (html: String, hasOutline: Bool) {
     guard data.count <= DocumentResources.documentLimit else { throw BridgeError("Document exceeds 10 MiB.") }
     guard !data.contains(0), let source = String(data: data, encoding: .utf8) else { throw BridgeError("No text preview.") }
-    if !asSource, ["md", "markdown"].contains(ext.lowercased()) { return renderedMarkdown(source, referenceToken: referenceToken, paper: paper) }
-    if !asSource, ["html", "htm"].contains(ext.lowercased()) { return (source, false) }
+    if !asSource, PreviewFileTypes.markdown.contains(ext.lowercased()) { return renderedMarkdown(source, referenceToken: referenceToken, paper: paper) }
+    if !asSource, PreviewFileTypes.html.contains(ext.lowercased()) { return (source, false) }
     return ("<style>\(theme(paper))</style><article><pre>\(MarkdownRenderer.escaped(source))</pre></article>", false)
   }
   @MainActor public static func page(_ data: Data, extension ext: String, referenceToken: String, source asSource: Bool = false) throws -> String {
@@ -60,11 +49,7 @@ public enum DocumentHTML {
   /// Frame's green-accented colours over the shared reading design, on the reader column's paper.
   /// `--frame-page` marks the pages whose paper follows a later change of form.
   public static func palette(_ paper: DocumentPaper) -> String {
-    """
-    :root{--frame-page:1;--md-bg:\(paper.light);--md-text:#242821;--md-secondary:rgba(36,40,33,.6);--md-link:#3c6a42;--md-accent-rgb:60,106,66}
-    @media(prefers-color-scheme:dark){:root{--md-bg:\(paper.dark);--md-text:#e3e6df;--md-secondary:rgba(227,230,223,.6);--md-link:#a2c6a2;--md-accent-rgb:98,148,104}}
-    article{padding-top:16px}
-    """
+    paper.palette
   }
   @MainActor public static var palette: String { palette(.current) }
   public static func theme(_ paper: DocumentPaper) -> String { MarkdownRenderer.stylesheet + palette(paper) }

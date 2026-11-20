@@ -17,7 +17,7 @@ extension PhotoItem {
     let ext = (name as NSString).pathExtension.lowercased()
     switch ext {
     case "": return "FILE"
-    case "markdown": return "MD"
+    case _ where format == .markdown: return "MD"
     case "htm": return "HTML"
     case "jpeg": return "JPG"
     default: return String(ext.uppercased().prefix(5))

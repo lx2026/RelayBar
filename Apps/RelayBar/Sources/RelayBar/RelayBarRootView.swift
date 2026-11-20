@@ -427,7 +427,7 @@ private struct TunnelRow: View {
     let tunnel: Tunnel
     let phase: TunnelPhase
     let runtimePorts: [UUID: Int]
-    /// Labels from Service Labels, keyed by rule id; empty while it is off.
+    /// Labels from Website Labels, keyed by rule id; empty while it is off.
     let serviceLabels: [UUID: ServiceLabel]
     let availableGroups: [String]
     let onToggle: () -> Void
@@ -575,7 +575,7 @@ private struct TunnelRow: View {
         ForEach(Array(tunnel.rules.enumerated()), id: \.element.id) { index, rule in
             Menu(ruleMenuTitle(rule, index: index)) {
                 if rule.localBrowserURL != nil {
-                    Button("Open in Browser", systemImage: "safari") {
+                    Button("Open Website", systemImage: "safari") {
                         onOpenRule(rule.id)
                     }
                 }
@@ -666,15 +666,15 @@ private struct TunnelRow: View {
     private var openButtonHelp: String {
         switch phase {
         case .running:
-            return "Open in browser"
+            return "Open website"
         case .starting, .retrying:
-            return "Open in browser when connected"
+            return "Open website when connected"
         case .stopped, .failed:
-            return "Start tunnel and open in browser"
+            return "Start tunnel and open website"
         }
     }
 
-    /// The label of the rule the browser button opens, when Service Labels has one.
+    /// The label of the rule the browser button opens, when Website Labels has one.
     private var browserLabel: ServiceLabel? {
         guard tunnel.unambiguousBrowserURL != nil, let rule = tunnel.rules.first else { return nil }
         return serviceLabels[rule.id]

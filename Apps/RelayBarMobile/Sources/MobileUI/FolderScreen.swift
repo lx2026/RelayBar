@@ -1,11 +1,12 @@
+import PreviewSupport
 import Composition
 import HouseStyle
 import ImageIO
 import MobileCore
 import SwiftUI
 
-func imageFile(_ path: String) -> Bool {
-  ["png", "jpg", "jpeg", "heic", "webp", "gif", "tif", "tiff"].contains(
+func imageFile(_ path: String, extended: Bool = true) -> Bool {
+  PreviewFileTypes.images(extended: extended).contains(
     (path as NSString).pathExtension.lowercased())
 }
 
@@ -18,12 +19,12 @@ func displayPath(_ path: String, home: String?) -> String {
 
 private enum FileKind: Int {
   case document, html, data, image, video, other
-  init(_ name: String) {
+  init(_ name: String, extended: Bool = true) {
     switch (name as NSString).pathExtension.lowercased() {
-    case "json": self = .data
-    case "htm", "html": self = .html
-    case "mp4", "mov", "m4v", "webm": self = .video
-    default: self = imageFile(name) ? .image : Format.isDocument(name) ? .document : .other
+    case let ext where PreviewFileTypes.json.contains(ext): self = .data
+    case let ext where PreviewFileTypes.html.contains(ext): self = .html
+    case let ext where PreviewFileTypes.video.contains(ext): self = .video
+    default: self = imageFile(name, extended: extended) ? .image : Format.isDocument(name) ? .document : .other
     }
   }
   var glyph: String {
@@ -38,8 +39,8 @@ private enum FileKind: Int {
   }
 }
 
-func imagePosition(_ path: String, rows: [FileRow]) -> String? {
-  let images = rows.filter { !$0.stamp.directory && imageFile($0.name) }.sorted {
+func imagePosition(_ path: String, rows: [FileRow], extended: Bool = true) -> String? {
+  let images = rows.filter { !$0.stamp.directory && imageFile($0.name, extended: extended) }.sorted {
     $0.name.localizedStandardCompare($1.name) == .orderedAscending
   }
   guard let index = images.firstIndex(where: { $0.name == (path as NSString).lastPathComponent })
@@ -85,6 +86,7 @@ struct HistoryLine: View {
   let files: (any RemoteFiles)?
   let reader: Reader?
   let limit: Int
+  let extendedImages: Bool
   var missing: String?
   let open: () -> Void
   @State private var changed = false
@@ -92,9 +94,9 @@ struct HistoryLine: View {
   var body: some View {
     let changed = facts[visit.path].map { $0.stamp != visit.stamp } ?? self.changed
     FileLine(
-      icon: FileKind(visit.path).glyph, title: visit.title,
+      icon: FileKind(visit.path, extended: extendedImages).glyph, title: visit.title,
       subtitle: missing.map { "Turn on " + $0 }
-        ?? (imageFile(visit.path)
+        ?? (imageFile(visit.path, extended: extendedImages)
           ? imageCaption(visit.path, position: facts[visit.path]?.position ?? position)
           : (visit.path as NSString).lastPathComponent
             + (changed ? " · changed since you read it" : "")),
@@ -103,10 +105,10 @@ struct HistoryLine: View {
     .task(id: RowRead(path: visit.path, stamp: visit.stamp, limit: limit, connected: reader != nil))
     {
       guard let stamp = try? await files?.stat(visit.path) else { return }
-      if imageFile(visit.path),
+      if imageFile(visit.path, extended: extendedImages),
         let rows = try? await files?.list((visit.path as NSString).deletingLastPathComponent)
       {
-        position = imagePosition(visit.path, rows: rows)
+        position = imagePosition(visit.path, rows: rows, extended: extendedImages)
       }
       self.changed = stamp != visit.stamp
       image = await smallImage(visit.path, stamp, reader, limit)
@@ -116,7 +118,7 @@ struct HistoryLine: View {
 @MainActor func smallImage(
   _ path: String, _ stamp: FileStamp, _ reader: Reader?, _ limit: Int
 ) async -> CGImage? {
-  guard imageFile(path),
+  guard imageFile(path, extended: reader?.extendedImages ?? true),
     let bytes = try? await reader?.thumbnail(path: path, stamp: stamp, limit: limit),
     let source = CGImageSourceCreateWithData(bytes as CFData, nil)
   else { return nil }
@@ -223,7 +225,7 @@ struct FolderScreen: View {
         target: $deletion, completed: { id in rows.removeAll { $0.id == id } },
         failure: { message = $0 })
     )
-    .background(HouseColor.paper).task(id: files.generation) {
+    .background(HouseColor.paper).task(id: "\(files.generation)-\(reader?.extendedImages ?? true)") {
       do {
         if !snapshot, let service = files.value {
           #if os(iOS)
@@ -231,7 +233,7 @@ struct FolderScreen: View {
           #endif
           let listing = try await service.listing(path)
           try Task.checkCancellation()
-          rows = groupedRows(listing.rows)
+          rows = groupedRows(listing.rows, extendedImages: reader?.extendedImages ?? true)
           message = listing.notice
           #if os(iOS)
             if let offset {
@@ -376,7 +378,7 @@ struct FolderScreen: View {
         row.stamp.directory == folders && (showsHidden || !row.name.hasPrefix("."))
           && (query.isEmpty || row.name.localizedCaseInsensitiveContains(query))
           && (!changedOnly || visit(row).map { $0.stamp != row.stamp } == true)
-      }, order: order)
+      }, order: order, extended: reader?.extendedImages ?? true)
   }
   private var breadcrumbs: some View {
     HStack(spacing: 0) {
@@ -400,7 +402,7 @@ struct FolderScreen: View {
     let child = (path as NSString).appendingPathComponent(row.name)
     let route =
       row.stamp.directory
-      ? Route.folder(child) : Route(kind: imageFile(child) ? "image" : "document", path: child)
+      ? Route.folder(child) : Route(kind: imageFile(child, extended: reader?.extendedImages ?? true) ? "image" : "document", path: child)
     func run(_ action: FileAction) {
       do { try action.perform(child) { open(route) } } catch {
         message = error.localizedDescription
@@ -457,20 +459,20 @@ private struct FolderLine: View {
     return Group {
       if cards && !row.stamp.directory {
         Button(action: open) {
-          if imageFile(child), let img = facts[child]?.image ?? image, limit > 0 {
+          if imageFile(child, extended: reader?.extendedImages ?? true), let img = facts[child]?.image ?? image, limit > 0 {
             VStack(alignment: .leading) {
               Image(decorative: img, scale: 1).resizable().scaledToFit().frame(maxWidth: .infinity)
                 .frame(height: 152).background(HouseColor.stage)
               Text(row.name).mobileFont(15, .semibold).padding(8)
             }.card(12)
-          } else if FileKind(child) == .document {
+          } else if FileKind(child, extended: reader?.extendedImages ?? true) == .document {
             CanvasCard(
               title: title, excerpt: excerpt,
               detail: [row.stamp.modified.map(modifiedTime), row.name].compactMap { $0 }.joined(
                 separator: " · "), height: 200)
           } else {
             VStack(alignment: .leading) {
-              Glyph(FileKind(child).glyph)
+              Glyph(FileKind(child, extended: reader?.extendedImages ?? true).glyph)
               Text(row.name).mobileFont(17, .semibold)
               Spacer()
               Text(size ?? "").secondaryText()
@@ -479,11 +481,11 @@ private struct FolderLine: View {
         }
       } else {
         FileLine(
-          icon: row.stamp.directory ? "folder" : FileKind(child).glyph,
+          icon: row.stamp.directory ? "folder" : FileKind(child, extended: reader?.extendedImages ?? true).glyph,
           title: title + (row.companions.isEmpty ? "" : "  { }"),
           subtitle: row.stamp.directory
             ? count.map { "\($0) " + ($0 == 1 ? "item" : "items") } ?? "Folder"
-            : FileKind(child) == .document
+            : FileKind(child, extended: reader?.extendedImages ?? true) == .document
               ? [title == row.name ? nil : row.name, excerpt].compactMap { $0 }.joined(
                 separator: " · ") : visit.map { _ in row.name } ?? size ?? "",
           time: row.stamp.directory
@@ -523,15 +525,15 @@ private struct FolderLine: View {
 
 func hiddenEntryCount(_ rows: [FileRow]) -> Int { rows.filter { $0.name.hasPrefix(".") }.count }
 
-func sortedFolderFiles(_ rows: [FileRow], order: FolderOrder) -> [FileRow] {
+func sortedFolderFiles(_ rows: [FileRow], order: FolderOrder, extended: Bool = true) -> [FileRow] {
   rows.sorted { a, b in
     if a.stamp.directory != b.stamp.directory { return a.stamp.directory }
     if order == .modified {
       if a.stamp.modified != b.stamp.modified {
         return (a.stamp.modified ?? 0) > (b.stamp.modified ?? 0)
       }
-      if !a.stamp.directory && FileKind(a.name) != FileKind(b.name) {
-        return FileKind(a.name).rawValue < FileKind(b.name).rawValue
+      if !a.stamp.directory && FileKind(a.name, extended: extended) != FileKind(b.name, extended: extended) {
+        return FileKind(a.name, extended: extended).rawValue < FileKind(b.name, extended: extended).rawValue
       }
     }
     return a.name.localizedStandardCompare(b.name) == .orderedAscending

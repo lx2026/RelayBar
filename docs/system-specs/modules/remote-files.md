@@ -41,7 +41,7 @@ without adding search, indexing, mounting, or editing.
   unrelated hosts.
 - OpenSSH config discovery reads at most 1 MiB from `~/.ssh/config`, exposes at most 256 concrete `Host` aliases, and ignores wildcard, character-pattern, and negated aliases. Config aliases remain read-only and are not copied into RelayBar storage.
 - Missing-path output from SFTP is normalized to a short user-facing error while preserving the entered path and server for retry.
-- When an entered path identifies a supported image, Markdown, HTML, JSON, or MP4 file, RelayBar
+- When an entered path identifies a supported image, Markdown, HTML, JSON, or video file, RelayBar
   opens the existing bounded preview with that exact file selected. Back returns
   through a single-file browser context to the welcome workspace. Another regular file
   is shown selected in that context without starting a download automatically.
@@ -64,7 +64,7 @@ Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfo
 - Back follows navigation history, reselects the folder that was left, and
   returns to the quiet welcome detail from the initial folder. That transition
   clears the active root, snapshots, preview content, and SSH session.
-- Supported images, Markdown documents, HTML pages, JSON documents, and MP4 videos open a split preview workspace. Other files begin destination selection for download.
+- Supported images, Markdown documents, HTML pages, JSON documents, and videos open a split preview workspace. Other files begin destination selection for download.
 - Search, filters, indexing, workspace discovery, rename, move, folder
   or multi-file upload, synchronization, and remote editing are absent.
 
@@ -165,7 +165,7 @@ Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfo
 
 - Preview reuses the workspace's one draggable leading sidebar. **In This
   Folder** appears above Recent Folders and Recent Hosts and contains only
-  previewable image, Markdown, HTML, JSON, and MP4 siblings from the current in-memory folder
+  previewable image, Markdown, HTML, JSON, and video siblings from the current in-memory folder
   snapshot; opening preview performs no additional listing, recursive
   discovery, search, or eager sibling download.
 - The active file stays selected. Clicking a sibling or pressing Left or Right starts that preview through the active server and SSH master. Superseded retrieval and decoding work is cancelled, generation-guarded, and cleaned before stale content can publish.
@@ -180,7 +180,7 @@ Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfo
 
 ## Image preview
 
-- PNG, JPEG, GIF, HEIC/HEIF, TIFF, and BMP files are previewable.
+- PNG and JPEG files are previewable. More Image Formats adds BMP, GIF, HEIC, HEIF, TIFF and WebP by default.
 - Preview retrieval is limited to 100 MiB.
 - Bounded native ImageIO thumbnail decoding runs off the main actor from private temporary storage; only the completed immutable image is published back to the UI.
 - Leaving the preview or closing the window removes preview content, including when cancellation happens after retrieval but during decoding.
@@ -200,7 +200,7 @@ Empty folders show a single focused empty state with an explicit accessibility d
 ## Markdown preview
 
 - `.md`, `.markdown`, `.mdown`, and `.mkd` files use the same split preview workspace.
-- Preview retrieval is limited to 2 MiB and accepts UTF-8 without NULs.
+- Markdown preview retrieval is limited to 10 MiB and accepts UTF-8 without NULs.
 - The reader is selectable and read-only; it does not fetch document images, resolve remote embeds, execute HTML or Mermaid, or write remote content.
 - Detailed behavior and limits live in [Markdown preview](markdown-preview.md).
 
@@ -221,7 +221,7 @@ Empty folders show a single focused empty state with an explicit accessibility d
 
 ## Video preview
 
-- Regular `.mp4` files, matched case-insensitively, use the split preview
+- Regular `.mp4`, `.mov` and `.m4v` files, matched case-insensitively, use the split preview
   workspace and sibling navigation. Retrieval is private and cancellable, is
   capped at 512 MiB, and shows measured bytes plus a percentage when size is
   known.

@@ -6,7 +6,7 @@ import SwiftUI
 
 func pluginGroup(_ plugin: PluginDescriptor) -> String {
   switch plugin.id {
-  case "notebook-preview", "table-preview", "html-scripts": "Previews"
+  case "more-images", "notebook-preview", "table-preview", "html-scripts": "Previews"
   case "pinned-services", "favorites", "prompt-search", "file-search", "log-follow": "Pages"
   case "delete-undo": "Files"
   case "paper": "Appearance"

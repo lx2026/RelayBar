@@ -1,3 +1,4 @@
+import PreviewSupport
 import Combine
 import Composition
 import Foundation
@@ -15,7 +16,7 @@ struct ServiceLabel: Equatable, Sendable {
     }
 }
 
-/// The current labels, keyed by rule id. Service Labels fills it; the tunnel list reads it through a port.
+/// The current labels, keyed by rule id. Website Labels fills it; the tunnel list reads it through a port.
 @MainActor
 final class ServiceLabelBoard: ObservableObject {
     @Published private(set) var labels: [UUID: ServiceLabel] = [:]
@@ -40,59 +41,9 @@ protocol ServiceProbing: Sendable {
 // MARK: - Recognition
 
 extension ServiceLabel {
-    /// Products known by a word in the page title or a marker in the page, tried in order.
-    /// Stable Diffusion WebUI and Open WebUI come before Gradio, which pages of theirs may embed.
-    private static let products: [(name: String, titles: [String], markers: [String])] = [
-        ("ComfyUI", ["comfyui"], []),
-        ("Jupyter", ["jupyter"], ["jupyter-config-data"]),
-        ("TensorBoard", ["tensorboard"], ["<tf-tensorboard", "<tb-webapp"]),
-        ("Stable Diffusion WebUI", ["stable diffusion"], []),
-        ("Open WebUI", ["open webui"], []),
-        ("Gradio", ["gradio"], ["window.gradio_config", "<gradio-app"])
-    ]
-    private static let titleLimit = 40
-
-    /// Names what answered from its status, its headers (with lowercased names) and the bytes read.
-    /// Any response means the port is responding. A redirect that was not followed, or a body that is
-    /// not HTML, has no name.
     static func recognizing(status: Int, headers: [String: String], body: Data) -> ServiceLabel {
-        let unnamed = ServiceLabel(name: nil, isResponding: true)
-        guard !(300..<400).contains(status) else { return unnamed }
-        if let type = headers["content-type"], !type.lowercased().contains("html") {
-            return unnamed
-        }
-        let page = String(decoding: body, as: UTF8.self)
-        let title = pageTitle(page)
-        let lowercasedTitle = title?.lowercased() ?? ""
-        let lowercasedPage = page.lowercased()
-        let product = products.first { product in
-            product.titles.contains { lowercasedTitle.contains($0) }
-                || product.markers.contains { lowercasedPage.contains($0) }
-        }
-        if let product {
-            return ServiceLabel(name: product.name, isResponding: true)
-        }
-        guard let title else { return unnamed }
-        return ServiceLabel(name: String(title.prefix(titleLimit)), isResponding: true)
-    }
-
-    /// The text of the first `<title>` element with its whitespace collapsed, or nil when it has none.
-    private static func pageTitle(_ page: String) -> String? {
-        guard
-            let open = page.range(of: "<title", options: .caseInsensitive),
-            let start = page.range(of: ">", range: open.upperBound..<page.endIndex),
-            let end = page.range(of: "</title", options: .caseInsensitive, range: start.upperBound..<page.endIndex)
-        else {
-            return nil
-        }
-        // The title is the remote page's text: control and invisible formatting characters are dropped.
-        let visible = String(String.UnicodeScalarView(page[start.upperBound..<end.lowerBound].unicodeScalars.filter { scalar in
-            scalar.properties.generalCategory != .control && scalar.properties.generalCategory != .format
-                || scalar.properties.isWhitespace
-        }))
-        let words = visible.split(whereSeparator: \.isWhitespace)
-        guard !words.isEmpty else { return nil }
-        return words.joined(separator: " ")
+        ServiceLabel(name: WebsiteName.recognizing(status: status, contentType: headers["content-type"], body: body),
+                     isResponding: true)
     }
 }
 
@@ -102,7 +53,7 @@ extension ServiceLabel {
 /// three seconds at most, no more than 64 KiB read, and redirects followed only to the same host and port.
 struct HTTPServiceProbe: ServiceProbing {
     static let loopbackHosts: Set<String> = ["127.0.0.1", "localhost", "::1"]
-    static let byteLimit = 64 * 1_024
+    static let byteLimit = WebsiteName.byteLimit
     static let timeout: TimeInterval = 3
     static let redirectLimit = 3
 
@@ -184,7 +135,7 @@ struct HTTPServiceProbe: ServiceProbing {
     ]
 
     /// True for a plain HTTP URL whose host is 127.0.0.1, localhost or ::1. HTTPS is refused: evaluating
-    /// a certificate can fetch from addresses the certificate names, and Open in Browser only uses HTTP.
+    /// a certificate can fetch from addresses the certificate names, and Open Website only uses HTTP.
     static func isLoopback(_ url: URL) -> Bool {
         guard url.scheme?.lowercased() == "http" else { return false }
         guard let host = url.host(percentEncoded: false)?.lowercased() else { return false }
@@ -309,7 +260,7 @@ private final class ProbeSessionDelegate: NSObject, URLSessionTaskDelegate, Send
 
 // MARK: - Feature
 
-/// Service Labels. While a profile runs, each of its rules that opens in a browser is asked what it
+/// Website Labels. While a profile runs, each of its rules that opens in a browser is asked what it
 /// serves, once when the profile starts running and then every `interval`. A profile's labels go when
 /// it stops running.
 struct ServiceLabelsFeature: Feature {
@@ -324,12 +275,12 @@ struct ServiceLabelsFeature: Feature {
         let observation = tunnels.$phases.combineLatest(tunnels.$tunnels).sink { phases, profiles in
             schedule.follow(phases: phases, profiles: profiles)
         }
-        try context.effect("service label observation", cancel: { observation.cancel() }) {}
+        try context.effect("website label observation", cancel: { observation.cancel() }) {}
         labels.set(board)
     }
 }
 
-/// Service Labels' working state: one probing task per running profile, owned by the feature's context,
+/// Website Labels' working state: one probing task per running profile, owned by the feature's context,
 /// and a gate that lets at most four probes run at once.
 @MainActor
 private final class ServiceProbeSchedule {
@@ -373,7 +324,7 @@ private final class ServiceProbeSchedule {
                 board.clear(entry.rules)
             }
             guard !targets.isEmpty else { continue }
-            let task = try? context.task("service labels for profile \(profile.id)") { [weak self] in
+            let task = try? context.task("website labels for profile \(profile.id)") { [weak self] in
                 await self?.watch(targets)
             }
             guard let task else { continue }

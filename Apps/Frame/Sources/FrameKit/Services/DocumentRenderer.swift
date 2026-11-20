@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import AssetGrouping
 import AppKit
@@ -377,7 +378,7 @@ import WebKit
     // script can change the address afterwards only without a new load.
     let page = webView.url
     showsMarkdown = page?.scheme == "frame-document" && host != nil && page?.host == host
-      && ["md", "markdown"].contains(page?.pathExtension.lowercased() ?? "")
+      && PreviewFileTypes.markdown.contains(page?.pathExtension.lowercased() ?? "")
   }
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
     followPaper()

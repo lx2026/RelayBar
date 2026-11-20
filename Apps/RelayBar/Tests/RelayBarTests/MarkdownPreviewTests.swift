@@ -1,3 +1,4 @@
+import HouseStyle
 import MarkdownRendering
 import AppKit
 import CompositionFixtures
@@ -75,6 +76,8 @@ final class RemoteMarkdownWebViewTests: XCTestCase {
 
         let ran = try await view.evaluateJavaScript("typeof window.ran") as? String
         XCTAssertEqual(ran, "undefined")
+        let css = try await view.evaluateJavaScript("Array.from(document.querySelectorAll('style')).map(s => s.textContent).join('')") as? String
+        XCTAssertTrue(css?.contains(DocumentPaper.current.palette) == true)
         let innerText = try await view.evaluateJavaScript("document.body.innerText") as? String
         let text = try XCTUnwrap(innerText)
         XCTAssertTrue(text.contains("<script>window.ran = 1</script>"), text)

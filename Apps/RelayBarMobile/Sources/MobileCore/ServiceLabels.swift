@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import Foundation
 import Network
@@ -42,24 +43,9 @@ private func fetchTitle(_ url: URL, _ proxies: [ProxyConfiguration], _ userAgent
     var buffer = Data()
     for try await byte in bytes {
       buffer.append(byte)
-      if byte == 62
-        && buffer.suffix(8).map({ ($0 >= 65 && $0 <= 90) ? $0 + 32 : $0 }) == Array("</title>".utf8)
-      {
-        break
-      }
-      if buffer.count == 65536 { break }
+      if buffer.count == WebsiteName.byteLimit { break }
     }
-    let text = String(decoding: buffer, as: UTF8.self)
-    guard
-      let open = text.range(
-        of: #"<title(?:\s[^>]*)?>"#, options: [.regularExpression, .caseInsensitive]),
-      let end = text[open.upperBound...].range(of: "</title>", options: .caseInsensitive)
-    else { return nil }
-    let title = text[open.upperBound..<end.lowerBound].trimmingCharacters(
-      in: .whitespacesAndNewlines)
-    if let token = userAgent?.components(separatedBy: "RelayBar/").last, title.contains(token) {
-      return nil
-    }
-    return title.isEmpty ? nil : String(title.prefix(40))
+    let token = userAgent?.components(separatedBy: "RelayBar/").last
+    return WebsiteName.recognizing(status: http.statusCode, contentType: http.mimeType, body: buffer, excluding: token)
   } catch { return nil }
 }

@@ -6,8 +6,8 @@ Markdown preview is a safe, read-only state inside the Remote Files window.
 
 - Regular files ending in `.md`, `.markdown`, `.mdown`, or `.mkd` are previewable.
 - Preview uses the active server snapshot and downloads to a private temporary directory.
-- The service rejects a known size above 2 MiB before transfer and aborts a transfer that crosses the same limit.
-- The decoder reads at most 2 MiB plus one byte, accepts UTF-8 with an optional BOM, and rejects NULs.
+- The service rejects a known size above 10 MiB before transfer and aborts a transfer that crosses the same limit.
+- The decoder reads at most 10 MiB plus one byte, accepts UTF-8 with an optional BOM, and rejects NULs.
 - Parsing runs away from the main UI path. Preview cancellation is forwarded into the detached worker, and the compatibility pass checks cancellation throughout its line, character, and lookahead loops.
 - A generation token prevents a canceled or superseded preview from publishing stale state.
 - Published preview state keeps the rendered page (its HTML, plain text and the text of each code block) and its private-reference token. The original and compatibility-transformed Markdown strings are not retained.
@@ -16,7 +16,7 @@ Markdown preview is a safe, read-only state inside the Remote Files window.
 
 ## Rendering
 
-The page is produced by the shared `MarkdownRendering` library, which Frame uses too, so a document looks the same in both apps apart from Frame's palette and its loading of images.
+RelayBar, Frame and mobile render Markdown with the shared `MarkdownRendering` library and reader paper palette. RelayBar replaces relative images with placeholders. The readers load them from the document’s folder.
 
 - Away from the main thread, the library runs the Obsidian compatibility pass, parses the result with swift-cmark 0.8.0's cmark-gfm in safe mode (CommonMark plus GFM autolinks, strikethrough, tasks and tables), and then rewrites the parsed tree: it writes code blocks, typeset math and table containers itself and removes anything else that would load. The result is one static HTML page with one stylesheet and no script.
 - The macOS and iOS libraries share the HTML writer, syntax colours and font traits, and the Core Graphics bitmap and PNG encoder. Equations use transparent backgrounds and black ink at two pixels per point with the pixel dimensions rounded up. The page preserves the scaled descent for inline alignment and inverts the ink in dark appearance. On iOS, SwiftMath lays out an unattached label on the main actor, then the renderer draws its display list at the bounded output size.

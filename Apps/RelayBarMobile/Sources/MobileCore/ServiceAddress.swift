@@ -1,19 +1,20 @@
+import PreviewSupport
 import Composition
 import Foundation
 import RelayWebRoutes
 
 package let localhostPlugin = PluginDescriptor(
   id: "localhost", title: "Localhost Compatibility",
-  summary: "Open trusted services that require localhost.", symbol: "arrow.triangle.2.circlepath",
+  summary: "Open trusted websites that require localhost.", symbol: "arrow.triangle.2.circlepath",
   isOnByDefault: true,
   realmRelativeFeatures: ["exact-localhost"])
 package let pinsPlugin = PluginDescriptor(
   id: "pinned-services", title: "Pinned Websites",
-  summary: "Keep services on Home and in Open Location.", symbol: "pin", isOnByDefault: true,
+  summary: "Keep websites on Home and in Open Location.", symbol: "pin", isOnByDefault: true,
   realmRelativeFeatures: ["services.pins"])
 package let labelsPlugin = PluginDescriptor(
-  id: "service-labels", title: "Service Labels",
-  summary: "Read a short title from the service.", symbol: "tag", isOnByDefault: false,
+  id: "service-labels", title: PreviewPlugins.websiteTitle,
+  summary: PreviewPlugins.websiteSummary, symbol: "tag", isOnByDefault: false,
   realmRelativeFeatures: ["services.titles"])
 
 package struct ServiceAddress: Codable, Hashable, Sendable {

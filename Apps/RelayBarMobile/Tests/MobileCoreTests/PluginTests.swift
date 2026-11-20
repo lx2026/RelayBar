@@ -8,7 +8,7 @@ import Testing
   var prefs = Preferences()
   let host = UUID()
   let ids = Set(MobileComposition.plugins.map(\.id))
-  #expect(ids.count == 14)
+  #expect(ids.count == 15)
   #expect(
     MobileComposition.plugins.filter { !$0.isOnByDefault }.map(\.id).sorted()
       == [deletePlugin.id, networkPlugin.id, logPlugin.id, labelsPlugin.id].sorted())

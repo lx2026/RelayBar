@@ -804,20 +804,20 @@ struct NativeContactSheet: NSViewRepresentable {
     let color = active ? NSColor.white : selected ? FrameColors.ink : FrameColors.muted
     let text = NSAttributedString(string: title, attributes: [.font: NSFont.systemFont(ofSize: 12), .foregroundColor: color,
                                                               .paragraphStyle: paragraph])
-    let heartWidth: CGFloat = (favorite ? 16 : 0) + (changed ? 12 : 0)
+    let badgeWidth: CGFloat = (favorite ? 16 : 0) + (changed ? 12 : 0)
     let top = well.maxY + 6
-    let textWidth = min(ceil(text.size().width), max(0, bounds.width - heartWidth - (active ? 12 : 0)))
+    let textWidth = min(ceil(text.size().width), max(0, bounds.width - badgeWidth - (active ? 12 : 0)))
     // The file on show gets an accent pill behind its name, so it stays distinct inside a multiple selection.
     if active {
       NSColor.selectedContentBackgroundColor.setFill()
-      NSBezierPath(roundedRect: NSRect(x: 0, y: top - 1, width: textWidth + heartWidth + 12, height: 18), xRadius: 5, yRadius: 5).fill()
+      NSBezierPath(roundedRect: NSRect(x: 0, y: top - 1, width: textWidth + badgeWidth + 12, height: 18), xRadius: 5, yRadius: 5).fill()
     }
     let x: CGFloat = active ? 6 : 0
     text.draw(with: NSRect(x: x, y: top + 1, width: textWidth, height: 16), options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine])
-    if favorite, let heart = NSImage(systemSymbolName: "heart.fill", accessibilityDescription: "Favorite")?
+    if favorite, let pin = NSImage(systemSymbolName: "pin.fill", accessibilityDescription: "Pinned")?
       .withSymbolConfiguration(.init(pointSize: 10, weight: .regular).applying(.init(paletteColors: [active ? .white : FrameColors.amber]))) {
-      let size = heart.size
-      heart.draw(in: NSRect(x: x + textWidth + 4, y: top + (16 - size.height) / 2, width: size.width, height: size.height))
+      let size = pin.size
+      pin.draw(in: NSRect(x: x + textWidth + 4, y: top + (16 - size.height) / 2, width: size.width, height: size.height))
     }
     if changed {
       (active ? NSColor.white : NSColor.controlAccentColor).setFill()

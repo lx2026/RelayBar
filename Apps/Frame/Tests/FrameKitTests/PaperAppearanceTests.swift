@@ -49,7 +49,7 @@ final class PaperAppearanceTests: XCTestCase {
   }
 
   func testThePluginIsListedOnByDefaultAndItsChoiceAppliesBeforeTheNextWindow() async throws {
-    XCTAssertEqual(FramePlugins.all.map(\.id), ["prompt-search", "paper"])
+    XCTAssertEqual(FramePlugins.all.map(\.id), ["prompt-search", "paper", "more-images"])
     let root = FileManager.default.temporaryDirectory.appendingPathComponent("FramePaper-\(UUID())")
     let storage = root.appendingPathComponent("preferences.json")
     defer { try? FileManager.default.removeItem(at: root) }

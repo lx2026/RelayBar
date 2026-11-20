@@ -5,7 +5,7 @@ preview workspace.
 
 ## Entry and retrieval
 
-- A regular file ending in `.mp4`, case-insensitively, is previewable from a
+- A regular file ending in `.mp4`, `.mov` or `.m4v`, case-insensitively, is previewable from a
   folder listing, sibling list, or direct absolute path. The MP4 container does
   not imply that every codec is supported.
 - Retrieval uses the active owned SSH master and a private `0700` preview

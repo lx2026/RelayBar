@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import Foundation
 import Darwin
@@ -10,9 +11,9 @@ public enum DocumentLocation: Hashable, Sendable {
 
 /// One root-scoped, read-only source for WebKit. It never accepts shell commands or mutation requests.
 public actor DocumentResources {
-  public static let documentLimit = 10 * 1_024 * 1_024
-  public static let resourceLimit = 32 * 1_024 * 1_024
-  public static let sessionLimit = 64 * 1_024 * 1_024
+  public static let documentLimit = PreviewLimits.document
+  public static let resourceLimit = PreviewLimits.asset
+  public static let sessionLimit = PreviewLimits.page
   public let location: DocumentLocation
   /// The custom-scheme host WebKit reaches this source by, and nothing else. Each source has its own, so a page
   /// loaded from one source can never be served from another.
@@ -56,7 +57,7 @@ public actor DocumentResources {
   }
   public func data(at path: String, limit: Int = DocumentResources.resourceLimit) async throws -> Data {
     let path = try Self.normalized(path), token = generation
-    guard loaded.contains(path) || loaded.count < 128 else { throw BridgeError("This page requests too many files.") }
+    guard loaded.contains(path) || loaded.count < PreviewLimits.requests else { throw BridgeError("This page requests too many files.") }
     loaded.insert(path)
     if let value = cache[path] {
       guard value.data.count <= limit else { throw BridgeError("File exceeds the preview limit.") }
@@ -99,7 +100,7 @@ public actor DocumentResources {
     try Task.checkCancellation()
     guard generation == token else { throw CancellationError() }
     // Evict bytes unrelated to this page before enforcing its aggregate budget.
-    if cache.count >= 128 || cache.values.reduce(0, { $0 + $1.data.count }) + value.data.count > Self.sessionLimit {
+    if cache.count >= PreviewLimits.requests || cache.values.reduce(0, { $0 + $1.data.count }) + value.data.count > Self.sessionLimit {
       cache = cache.filter { loaded.contains($0.key) }
     }
     guard cache.values.reduce(0, { $0 + $1.data.count }) + value.data.count <= Self.sessionLimit else {

@@ -1,7 +1,8 @@
+import PreviewSupport
 import Foundation
 
 public enum SidecarReader {
-  public static let maximumBytes = 2 * 1_024 * 1_024
+  public static let maximumBytes = PreviewLimits.companionBytes
   /// Shown in place of a companion that is not text.
   public static let binaryCompanionText = "No text preview."
 
@@ -34,8 +35,7 @@ public enum SidecarReader {
         guard !data.contains(0), let decoded = String(data: data, encoding: .utf8) else { return binaryCompanionText }
         text = decoded
       }
-      // Keep SwiftUI text layout bounded even for huge generated workflows.
-      return text.count > 24_000 ? String(text.prefix(24_000)) + "\n…" : text
+      return text
     } catch { return RelayRemoteClient.unreadableCompanionPrefix + error.localizedDescription }
   }
 }

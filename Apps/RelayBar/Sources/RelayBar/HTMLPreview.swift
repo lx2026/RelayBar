@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import AppKit
 import Combine
@@ -8,8 +9,8 @@ import WebKit
 
 /// One preview owns its resources. No folder history or persistent cache is involved.
 actor RemoteHTMLResources {
-    static let documentLimit = 10 * 1_024 * 1_024
-    static let resourceLimit = 32 * 1_024 * 1_024
+    static let documentLimit = PreviewLimits.document
+    static let resourceLimit = PreviewLimits.asset
     private let service: RemoteFileServing
     private let server: RemoteServer
     let root: String
@@ -69,7 +70,7 @@ actor RemoteHTMLResources {
             guard data.count <= limit else { throw RemoteFileError.previewTooLarge }
             return data
         }
-        guard requested.contains(path) || requested.count < 128 else {
+        guard requested.contains(path) || requested.count < PreviewLimits.requests else {
             throw BridgeError("Too many page resources.")
         }
         requested.insert(path)
@@ -104,7 +105,7 @@ actor RemoteHTMLResources {
         defer { pending.removeValue(forKey: path) }
         let bytes = try await task.value
         guard !closed else { throw CancellationError() }
-        guard cache.values.reduce(0, { $0 + $1.count }) + bytes.count <= 64 * 1_024 * 1_024 else {
+        guard cache.values.reduce(0, { $0 + $1.count }) + bytes.count <= PreviewLimits.page else {
             throw BridgeError("Page resources exceed 64 MiB.")
         }
         cache[path] = bytes
@@ -210,7 +211,7 @@ private actor HTMLTransferSlots {
         tasks[key] = Task { [weak self, resources, documentLimit] in
             do {
                 let path = try RemoteHTMLResources.normalized(url.path)
-                let html = ["html", "htm"].contains((path as NSString).pathExtension.lowercased())
+                let html = PreviewFileTypes.html.contains((path as NSString).pathExtension.lowercased())
                 let data = try await resources.data(at: path, limit: html ? documentLimit : RemoteHTMLResources.resourceLimit)
                 guard !Task.isCancelled, let self, tasks[key] != nil else { return }
                 let policy = "default-src 'none'; script-src relaybar-document: http: https: 'unsafe-inline' 'unsafe-eval'; style-src relaybar-document: http: https: 'unsafe-inline'; img-src relaybar-document: http: https: data: blob:; font-src relaybar-document: http: https: data:; media-src relaybar-document: http: https: blob:; connect-src relaybar-document: http: https: ws: wss:; frame-src 'none'; object-src 'none'; worker-src blob:; base-uri 'none'; form-action 'none'"

@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import Foundation
 import ImageIO
@@ -47,12 +48,11 @@ public enum ImageMetadataReader {
     }
     var result = await readEmbedded(photo: photo, videoMetadata: videoMetadata)
     result.companions = await Task.detached(priority: .userInitiated) {
-      var remaining = 256_000, texts: [BridgeCompanionText] = []
-      for file in photo.companions {
+      var remaining = PreviewLimits.companionCharacters, texts: [BridgeCompanionText] = []
+      for file in photo.companions.prefix(PreviewLimits.companions) {
         guard remaining > 0 else { break }
-        let text = String(SidecarReader.read(file).prefix(remaining))
+        let text = PreviewLimits.companionText(SidecarReader.read(file), remaining: &remaining)
         texts.append(BridgeCompanionText(name: file.url.lastPathComponent, text: text))
-        remaining -= text.count
       }
       return texts
     }.value

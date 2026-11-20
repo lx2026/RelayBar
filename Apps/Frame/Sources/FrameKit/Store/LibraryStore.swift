@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import AssetGrouping
 import AppKit
@@ -171,6 +172,21 @@ public final class LibraryStore: ObservableObject {
   private var isClosing = false
   private var playbackReady: AnyCancellable?
   private var hasRemoteAuthority: Bool { showsRemoteFolders && previews.remoteLibrary.isAvailable }
+  private var extendedImages = true
+  private var imageChoiceObservation: AnyCancellable?
+
+  private func displayed(_ items: [PhotoItem]) -> [PhotoItem] {
+    guard !extendedImages else { return items }
+    return items.map(displayed)
+  }
+
+  private func displayed(_ value: PhotoItem) -> PhotoItem {
+    guard !extendedImages, value.format == .additionalImage else { return value }
+    var item = value
+    item.format = .file
+    return item
+  }
+
   private var preferencesObservation: AnyCancellable?
   private var preferenceTask: Task<Void, Never>?
 
@@ -205,6 +221,12 @@ public final class LibraryStore: ObservableObject {
       .sink { [weak self] _ in self?.searchFeatureChanged(remote: false) }.store(in: &featureObservations)
     runtime.port(FrameServices.PromptSearch.self, realm: "remote").$generation.dropFirst()
       .sink { [weak self] _ in self?.searchFeatureChanged(remote: true) }.store(in: &featureObservations)
+    imageChoiceObservation = previews.preferences.store.$value.map { $0.plugins.isEnabled(PreviewPlugins.moreImages) }
+      .removeDuplicates().sink { [weak self] enabled in
+        self?.extendedImages = enabled
+        self?.scopeChanged()
+        self?.objectWillChange.send()
+      }
     preferencesObservation = previews.preferences.values.sink { [weak self] in self?.applyPreferences($0) }
     playbackReady = playback.$player.dropFirst().sink { [weak self] player in
       guard player != nil, let self, let photo = self.selectedPhoto, photo.remote != nil else { return }
@@ -299,13 +321,13 @@ public final class LibraryStore: ObservableObject {
   }
   /// The current folder after its filters, before Prompt Search narrows it.
   private var searchScope: [PhotoItem] {
-    PhotoQuery.visiblePhotos(in: photos, folderRelativePath: selectedFolderPath,
+    PhotoQuery.visiblePhotos(in: displayed(photos), folderRelativePath: selectedFolderPath,
                              filter: filter, favorites: favorites, includeSubfolders: includesSubfolders,
                              fileType: fileTypeFilter, includeCompanions: showsSidecarFiles)
   }
   public var selectedPhoto: PhotoItem? {
     guard let selectionID else { return nil }
-    return photos.first { $0.id == selectionID }
+    return photos.first { $0.id == selectionID }.map(displayed)
       ?? (missingPreview?.id == selectionID ? missingPreview : nil)
   }
   public var hasAvailableSelection: Bool {
@@ -447,7 +469,7 @@ public final class LibraryStore: ObservableObject {
   /// How many files of each kind the folder holds after its favourite filter, before the kind filter.
   public var kindCounts: [FileTypeFilter: Int] {
     if let kindCountsCache { return kindCountsCache }
-    let scope = PhotoQuery.visiblePhotos(in: photos, folderRelativePath: selectedFolderPath, filter: filter,
+    let scope = PhotoQuery.visiblePhotos(in: displayed(photos), folderRelativePath: selectedFolderPath, filter: filter,
       favorites: favorites, includeSubfolders: includesSubfolders, includeCompanions: showsSidecarFiles)
     var counts: [FileTypeFilter: Int] = [:]
     for photo in scope {
@@ -695,7 +717,7 @@ public final class LibraryStore: ObservableObject {
     let panel = NSOpenPanel()
     panel.title = id == nil ? "Choose a folder" : "Locate \(rootName)"
     panel.message = id == nil ? ""
-      : "Choose this folder’s current location to keep its favorites."
+      : "Choose this folder’s current location to keep its pins."
     panel.prompt = id == nil ? "Choose Folder" : "Use This Folder"
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
@@ -758,8 +780,8 @@ public final class LibraryStore: ObservableObject {
     }
   }
   public func files(in path: String) -> [PhotoItem] {
-    if let remoteFolders { return remoteFolders.files(at: path) }
-    return localFolders?.results[path]?.files ?? photos.filter { $0.folderRelativePath == path && $0.archiveID == nil }
+    if let remoteFolders { return displayed(remoteFolders.files(at: path)) }
+    return displayed(localFolders?.results[path]?.files ?? photos.filter { $0.folderRelativePath == path && $0.archiveID == nil })
   }
   public func selectFile(_ photo: PhotoItem) {
     guard !isClosing, !isFileOperation else { return }
@@ -873,7 +895,7 @@ public final class LibraryStore: ObservableObject {
   }
   public var folderFileCount: Int {
     if let folderFileCountCache { return folderFileCountCache }
-    let count = PhotoQuery.visiblePhotos(in: photos, folderRelativePath: selectedFolderPath,
+    let count = PhotoQuery.visiblePhotos(in: displayed(photos), folderRelativePath: selectedFolderPath,
       filter: filter == .archive ? .archive : .all, favorites: [], includeSubfolders: includesSubfolders,
       includeCompanions: showsSidecarFiles).count
     folderFileCountCache = count
@@ -898,7 +920,7 @@ public final class LibraryStore: ObservableObject {
     }
   }
   public var fileFilterLabel: String {
-    fileTypeFilter.rawValue + (filter == .favorites || filter == .notFavorited ? " · \(filter.rawValue)" : "")
+    fileTypeFilter.rawValue + (filter == .favorites || filter == .notFavorited ? " · \(filter.title)" : "")
   }
   public var folderContainsSubfolders: Bool {
     if let remoteFolders { return !(remoteFolders.nodes[selectedFolderPath]?.children.isEmpty ?? true) }
@@ -1009,7 +1031,7 @@ public final class LibraryStore: ObservableObject {
           preview(next)
         } else { clearSelection() }
       } else { ensureValidSelection(reload: false) }
-    } catch { errorMessage = "Could not save favorite: \(error.localizedDescription)" }
+    } catch { errorMessage = "Could not save pin: \(error.localizedDescription)" }
   }
   public func isFavorite(_ photo: PhotoItem) -> Bool { favorites.contains(photo.favoriteID) }
 
@@ -1590,7 +1612,7 @@ public final class LibraryStore: ObservableObject {
   private func loadFavorites(rootID: UUID) {
     guard let feature = previews.library.favorites, feature.isActive else { favorites = []; return }
     do { favorites = try feature.favorites(rootID: rootID) }
-    catch { errorMessage = "Could not load favorites: \(error.localizedDescription)" }
+    catch { errorMessage = "Could not load pins: \(error.localizedDescription)" }
   }
   private func loadChangeState(rootID: UUID) {
     folderBaselines = [:]; openedTimes = [:]; tracksChanges = false

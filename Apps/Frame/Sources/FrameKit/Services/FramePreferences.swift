@@ -44,7 +44,8 @@ struct FramePreferenceDocument: Codable, Equatable {
     /// The descriptor a format runs with: its fixed extensions and the chosen limit.
     @MainActor
     func descriptor(_ base: PreviewDescriptor) -> PreviewDescriptor {
-        PreviewDescriptor(id: base.id, title: base.title, extensions: base.extensions, maximumBytes: preview(base.id).maximumBytes)
+        PreviewDescriptor(id: base.id, title: base.title, extensions: base.id == "image" ? PreviewFileTypes.images(extended: plugins.isEnabled(PreviewPlugins.moreImages)) : base.extensions,
+                          maximumBytes: min(base.maximumBytes, preview(base.id).maximumBytes))
     }
 
     @MainActor
@@ -52,7 +53,7 @@ struct FramePreferenceDocument: Codable, Equatable {
         try display.validate()
         for (kind, preview) in previews {
             guard let base = FrameComposition.descriptors.first(where: { $0.id == kind }),
-                  preview.maximumBytes > 0, preview.maximumBytes <= base.maximumBytes else {
+                  preview.maximumBytes > 0, (kind == "image" || preview.maximumBytes <= base.maximumBytes) else {
                 throw CompositionError("Invalid preview size limit.")
             }
         }

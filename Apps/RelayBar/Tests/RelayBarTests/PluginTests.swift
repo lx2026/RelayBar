@@ -40,7 +40,7 @@ final class PluginTests: XCTestCase {
     }
 
     func testSwitchingAPluginChangesOnlyItsFeatureAndTheChoiceSurvivesARestart() async throws {
-        XCTAssertEqual(RelayPlugins.all(frameInstalled: false).map(\.id), ["recovery", "services", "frame", "paper"])
+        XCTAssertEqual(RelayPlugins.all(frameInstalled: false).map(\.id), ["recovery", "services", "frame", "paper", "more-images"])
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("RelayPluginSwitch-\(UUID())")
         let url = root.appendingPathComponent("preferences.json")
         let (defaults, suite) = makeIsolatedDefaults()
@@ -665,7 +665,7 @@ final class PluginTests: XCTestCase {
             let (defaults, suite) = makeIsolatedDefaults()
             defer { defaults.removePersistentDomain(forName: suite) }
             let app = makeApp(defaults: defaults, frameInstalled: installed)
-            XCTAssertEqual(app.plugins.map(\.id), ["recovery", "services", "frame", "paper"])
+            XCTAssertEqual(app.plugins.map(\.id), ["recovery", "services", "frame", "paper", "more-images"])
             XCTAssertEqual(app.plugins.first { $0.id == "frame" }, app.framePlugin)
             XCTAssertEqual(app.framePlugin.isOnByDefault, installed)
             await app.start()

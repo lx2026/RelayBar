@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import AssetGrouping
 import Combine
@@ -136,7 +137,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
     var request = BridgeRequest("list"); request.sourceID = source.id; request.path = path
     let response = try await operation(request)
     defer { release(response.jobID) }
-    guard let listingID = response.listingID, let entries = response.entries, entries.count <= 10_000 else {
+    guard let listingID = response.listingID, let entries = response.entries, entries.count <= PreviewLimits.entries else {
       throw BridgeError("Invalid remote folder response.")
     }
     let prefix = path == "/" ? "/" : path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -186,7 +187,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
                        bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
   }
   public func documentStats(source: BridgeSource, root: String, paths: [String]) async throws -> [BridgeEntry] {
-    guard paths.count <= 128, paths.allSatisfy({ FrameBridgeEnvironment.validPath($0) && $0.hasPrefix(root == "/" ? "/" : root + "/") }) else {
+    guard paths.count <= PreviewLimits.requests, paths.allSatisfy({ FrameBridgeEnvironment.validPath($0) && $0.hasPrefix(root == "/" ? "/" : root + "/") }) else {
       throw BridgeError("Document resource limit exceeded.")
     }
     var request = BridgeRequest("documentStat")
@@ -225,8 +226,8 @@ public actor RelayRemoteClient: RemoteAssetServing {
     return localPhoto(photo, media: media, companions: companions)
   }
   public func companionText(_ photo: PhotoItem) async -> [BridgeCompanionText] {
-    var result: [BridgeCompanionText] = [], remaining = 256_000
-    for entry in photo.remote?.companions ?? [] {
+    var result: [BridgeCompanionText] = [], remaining = PreviewLimits.companionCharacters
+    for entry in (photo.remote?.companions ?? []).prefix(PreviewLimits.companions) {
       guard remaining > 0 else { break }
       let text: String
       if entry.size > SidecarReader.maximumBytes { text = Self.oversizedCompanionText }
@@ -236,8 +237,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
           text = await Task.detached { SidecarReader.read(file) }.value
         } catch { text = Self.unreadableCompanionPrefix + error.localizedDescription }
       }
-      result.append(BridgeCompanionText(name: entry.name, text: String(text.prefix(remaining))))
-      remaining -= text.count
+      result.append(BridgeCompanionText(name: entry.name, text: PreviewLimits.companionText(text, remaining: &remaining)))
     }
     return result
   }
@@ -275,7 +275,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
   private func transfer(_ photo: PhotoItem, entry: BridgeEntry, priority: Int) async throws -> AssetFile {
     let key = key(photo, entry)
     if let value = cache[key], (try? value.0.validate()) != nil { cache[key]?.1 = .now; return value.0 }
-    let limit: Int64 = 100 * 1_024 * 1_024
+    let limit: Int64 = Int64(PreviewLimits.original)
     guard entry.size <= limit else { throw BridgeError("\(entry.name) exceeds the remote viewer limit. Download it in RelayBar instead.") }
     await slots.acquire(priority: priority)
     do {
@@ -477,7 +477,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
     var request = BridgeRequest("collection"); request.sourceID = source.id; request.root = root
     let response = try await operation(request)
     defer { release(response.jobID) }
-    guard let records = response.asset?.records, records.count <= 10_000, let listingID = response.listingID else {
+    guard let records = response.asset?.records, records.count <= PreviewLimits.entries, let listingID = response.listingID else {
       throw BridgeError("Invalid archive response.")
     }
     // A record's id is its item's id in the list, and Delete keys members by path: neither may repeat.
@@ -487,7 +487,7 @@ public actor RelayRemoteClient: RemoteAssetServing {
     }
     return try records.map { record in
       guard let media = record.members.first, let original = record.originals.first,
-            record.members.count == record.originals.count, record.members.count <= 10_000,
+            record.members.count == record.originals.count, record.members.count <= PreviewLimits.entries,
             record.originals.allSatisfy(FrameBridgeEnvironment.validPath),
             record.members.allSatisfy({ FrameBridgeEnvironment.validPath($0.path) && FrameBridgeEnvironment.validName($0.name) && $0.size >= 0 }),
             let format = PhotoFormat(pathExtension: (media.name as NSString).pathExtension) else { throw BridgeError("Invalid asset record.") }
