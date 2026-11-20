@@ -1,4 +1,6 @@
+import Combine
 import Foundation
+import RelayTransport
 import Testing
 
 @testable import MobileCore
@@ -6,6 +8,10 @@ import Testing
 private actor SearchFixture: RemoteFiles {
   var listed: [String] = []
   let folders: [String: [FileRow]]
+  private var interruption: SFTPError?
+  func interrupt(with error: SFTPError?) { interruption = error }
+  var unreadable: Set<String> = []
+  func denyListing(_ path: String) { unreadable.insert(path) }
   let pause: String?
   init(_ tree: [String: [String]], pause: String? = nil) {
     folders = tree.mapValues { names in
@@ -21,6 +27,8 @@ private actor SearchFixture: RemoteFiles {
   }
   func list(_ path: String) async throws -> [FileRow] {
     listed.append(path)
+    if let interruption { throw interruption }
+    if unreadable.contains(path) { throw CocoaError(.fileReadNoPermission) }
     if path == pause { try await Task.sleep(for: .seconds(60)) }
     return folders[path] ?? []
   }
@@ -34,17 +42,11 @@ private actor SearchFixture: RemoteFiles {
 }
 
 private func finished(_ index: NameIndex, _ query: String) async throws -> ([NameHit], String?) {
-  let deadline = ContinuousClock.now + .seconds(3)
-  repeat {
-    if let (_, hits, status) = await index.results(query, visits: [], since: nil),
-      status?.hasPrefix("Indexing") != true
-    {
-      return (hits, status)
-    }
-    try await Task.sleep(for: .milliseconds(5))
-  } while .now < deadline
-  Issue.record("The index did not finish: \(await index.diagnostics)")
-  throw CocoaError(.fileReadUnknown)
+  let (_, hits, status) = try #require(
+    await index.results(query, visits: [], since: nil, waitForIndex: true))
+  let diagnostics = await index.diagnostics
+  #expect(status?.hasPrefix("Indexing") != true, "\(diagnostics)")
+  return (hits, status)
 }
 
 @Test func breadthFirstResumeAndDeferredSearch() async throws {
@@ -136,6 +138,70 @@ private func finished(_ index: NameIndex, _ query: String) async throws -> ([Nam
   #expect(try FileManager.default.contentsOfDirectory(atPath: store.path).isEmpty)
 }
 
+@Test func refreshDropsNamesUnderUnreadableFolders() async throws {
+  let store = URL.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: store) }
+  let host = Profile(host: "test.invalid", account: "reader")
+  let files = SearchFixture(["/home": ["drafts/", "note.md"], "/home/drafts": ["old-note.md"]])
+  func makeIndex() -> NameIndex {
+    NameIndex(
+      files: files, directory: store, profile: host, fingerprint: "pin", home: "/home", pins: [])
+  }
+  let first = makeIndex()
+  await first.prepare(deferred: false)
+  #expect(try await finished(first, "note").0.count == 2)
+  await first.stop()
+
+  await files.denyListing("/home/drafts")
+  let refreshed = makeIndex()
+  await refreshed.prepare(deferred: false, now: Date().addingTimeInterval(901))
+  #expect(try await finished(refreshed, "note").0.map(\.id) == ["/home/note.md"])
+  await refreshed.stop()
+  let restored = makeIndex()
+  await restored.prepare(deferred: true)
+  #expect(try await finished(restored, "old-note").0.isEmpty)
+  await restored.stop()
+}
+
+@Test func replacingDirectoryReleasesItsSearchBudget() async throws {
+  let store = URL.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: store) }
+  let files = SearchFixture(["/home": ["drafts/"], "/home/drafts": ["old.md"]])
+  let index = NameIndex(
+    files: files, directory: store, profile: Profile(host: "test.invalid", account: "reader"),
+    fingerprint: "pin", home: "/home", pins: [], fileLimit: 1)
+  await index.prepare(deferred: false)
+  #expect(try await finished(index, "old.md").0.count == 1)
+  await index.observed(
+    .init(rows: [.init(name: "new.md", stamp: .init(directory: false))], truncated: false),
+    folder: "/home")
+  let (hits, status) = try await finished(index, ".md")
+  #expect(hits.map(\.id) == ["/home/new.md"])
+  #expect(status == nil)
+  await index.stop()
+}
+
+@Test(arguments: [SFTPError.closed, .handleLimit])
+func checkingProgressDoesNotRetryAnInterruptedWalk(_ interruption: SFTPError) async throws {
+  let store = URL.temporaryDirectory.appending(path: UUID().uuidString)
+  defer { try? FileManager.default.removeItem(at: store) }
+  let files = SearchFixture(["/home": ["note.md"]])
+  let index = NameIndex(
+    files: files, directory: store, profile: Profile(host: "test.invalid", account: "reader"),
+    fingerprint: "pin", home: "/home", pins: [])
+  await files.interrupt(with: interruption)
+  await index.prepare(deferred: true)
+  let (revision, partial, status) = try #require(
+    await index.results("note", visits: [], since: nil, waitForIndex: true))
+  #expect(partial.isEmpty && status == nil)
+  let poll = await index.results("note", visits: [], since: revision, waitForIndex: true)
+  #expect(poll == nil)
+  #expect(await files.listed == ["/home"])
+  await files.interrupt(with: nil)
+  #expect(try await finished(index, "note").0.map(\.id) == ["/home/note.md"])
+  await index.stop()
+}
+
 @Test func namesRankPrefixesWordsTitlesAndReadPaths() {
   let paths = ["café/z", "decafeteria", "big-cafe", "cafes", "read/café.md", "x"]
   func hits(_ query: String, _ paths: [String]) -> [String] {
@@ -197,7 +263,7 @@ private actor PageTrafficFixture: RemoteFiles {
   await index.stop()
 }
 
-@Test @MainActor func selectedSearchHitOpensAndHostOverrideRemovesIndex() async throws {
+@Test(.timeLimit(.minutes(1))) @MainActor func selectedSearchHitOpensAndHostOverrideRemovesIndex() async throws {
   let directory = URL.temporaryDirectory.appending(path: UUID().uuidString)
   defer { try? FileManager.default.removeItem(at: directory) }
   let demo = try DemoHost()
@@ -206,11 +272,10 @@ private actor PageTrafficFixture: RemoteFiles {
     _, _, _ in demo
   }
   let profile = try await demo.install(in: core)
-  core.runtime.service(Demand.self)?.show(profile.id, in: UUID())
-  let deadline = ContinuousClock.now + .seconds(3)
-  while core.runtime.service(FileSearch.self, realm: profile.realm) == nil, .now < deadline {
-    try await Task.sleep(for: .milliseconds(5))
-  }
+  let demand = try #require(core.runtime.service(Demand.self))
+  let readers = core.runtime.port(Readers.self, realm: profile.realm)
+  demand.show(profile.id, in: UUID())
+  for await ready in readers.$value.map({ @Sendable in $0 != nil }).values where ready { break }
   let index = try #require(core.runtime.service(FileSearch.self, realm: profile.realm))
   let hit = try #require(try await finished(index, "session 18").0.first)
   let reader = try #require(core.runtime.service(Readers.self, realm: profile.realm))

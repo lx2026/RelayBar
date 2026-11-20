@@ -23,5 +23,9 @@ public enum FolderListing {
     "\(count) hidden \(count == 1 ? "item" : "items")"
   }
 
+  public static func revealLabel(_ count: Int) -> String {
+    "Show " + hiddenLabel(count)
+  }
+
   public static let show = "Show"
 }

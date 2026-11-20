@@ -62,6 +62,7 @@ struct IconButton: View {
     Button(action: action) {
       Glyph(symbol).frame(width: 44, height: 44).background(
         circle ? HouseColor.fill : .clear, in: Circle())
+        .contentShape(Rectangle())
     }
     .buttonStyle(.plain).accessibilityLabel(label)
   }

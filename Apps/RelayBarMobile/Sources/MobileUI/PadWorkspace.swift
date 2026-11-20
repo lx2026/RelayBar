@@ -137,6 +137,7 @@ struct PadWorkspace<Primary: View, Secondary: View>: View {
             Text(workspace.profile.host).mobileFont(18, .bold)
             Glyph("chevron.down")
           }
+          .frame(minHeight: 44).contentShape(Rectangle())
         }.accessibilityLabel("Switch host")
         Spacer()
         IconButton(
@@ -177,7 +178,7 @@ struct PadWorkspace<Primary: View, Secondary: View>: View {
             Text(verbatim: ":" + String(address.port)).font(.caption.monospaced())
             Text(workspace.websiteTitle(address)).mobileFont(15)
             Spacer()
-          }.padding(.horizontal, 8).frame(minHeight: 34)
+          }.padding(.horizontal, 8).frame(minHeight: 44).contentShape(Rectangle())
             .background(
               isSelected(address) ? HouseColor.fill : Color.clear,
               in: RoundedRectangle(cornerRadius: 8))
@@ -247,7 +248,8 @@ struct PadWorkspace<Primary: View, Secondary: View>: View {
 
 @MainActor private func sidebarLabel(_ name: String, _ icon: String, selected: Bool) -> some View {
   Label(name, systemImage: icon).mobileFont(15).padding(.leading, 10)
-    .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+    .contentShape(Rectangle())
     .background(selected ? HouseColor.fill : Color.clear, in: RoundedRectangle(cornerRadius: 8))
     .accessibilityAddTraits(selected ? .isSelected : [])
 }

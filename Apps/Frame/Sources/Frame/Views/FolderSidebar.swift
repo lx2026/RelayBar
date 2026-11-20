@@ -134,6 +134,9 @@ private struct FileTree: NSViewRepresentable {
     outline.columnAutoresizingStyle = .uniformColumnAutoresizingStyle
     outline.dataSource = context.coordinator; outline.delegate = context.coordinator
     outline.onDelete = { [weak coordinator = context.coordinator] in coordinator?.deleteCurrent() }
+    outline.onRevealHidden = { [weak coordinator = context.coordinator] in
+      coordinator?.revealSelectedHiddenRow() ?? false
+    }
     scroll.documentView = outline; scroll.hasVerticalScroller = true; scroll.drawsBackground = false
     scroll.automaticallyAdjustsContentInsets = false
     scroll.contentInsets = NSEdgeInsets(top: 0, left: 0, bottom: 8, right: 0)
@@ -148,7 +151,8 @@ private struct FileTree: NSViewRepresentable {
       var name: String
       var file: PhotoItem?
       var children: [Node] = []
-      var isHiddenRow = false
+      var hiddenCount = 0
+      var isHiddenRow: Bool { hiddenCount > 0 }
       var isRoot = false
       init(path: String, name: String) { self.path = path; self.name = name }
     }
@@ -159,6 +163,7 @@ private struct FileTree: NSViewRepresentable {
     private var signature = ""
     private var expansion: Set<String> = []
     private var decoration = ""
+    private weak var lastSelectedNode: Node?
     private var updating = false
     init(_ store: LibraryStore) { self.store = store }
     func update(_ store: LibraryStore) {
@@ -185,7 +190,7 @@ private struct FileTree: NSViewRepresentable {
         let count = folders.hidden + files.hidden
         if count > 0 {
           let row = Node(path: path, name: FolderListing.hiddenLabel(count))
-          row.isHiddenRow = true
+          row.hiddenCount = count
           value.children.append(row)
         }
         return value
@@ -219,6 +224,9 @@ private struct FileTree: NSViewRepresentable {
       let showsFolder = store.folderIsSelected || store.viewMode == .contactSheet || store.selectedPhoto == nil
       let selectedNode = store.filter == .archive ? nil : showsFolder ? nodes["d:" + store.selectedFolderPath]
         : store.selectedPhoto.flatMap { nodes["f:" + $0.relativePath] }
+      let focusedOnShow = (outline.item(atRow: outline.selectedRow) as? Node)?.isHiddenRow == true
+      if selectedNode === lastSelectedNode, focusedOnShow { return }
+      lastSelectedNode = selectedNode
       if let item = selectedNode {
         let row = outline.row(forItem: item)
         if row >= 0, outline.selectedRow != row {
@@ -239,6 +247,7 @@ private struct FileTree: NSViewRepresentable {
       guard let node = item as? Node else { return nil }
       if node.isHiddenRow {
         let button = NSButton(title: FolderListing.show, target: self, action: #selector(showHidden(_:)))
+        button.setAccessibilityLabel(FolderListing.revealLabel(node.hiddenCount))
         return NSStackView(views: [NSTextField(labelWithString: node.name), button])
       }
       let cell = (outlineView.makeView(withIdentifier: TreeCell.identifier, owner: self) as? TreeCell) ?? TreeCell()
@@ -276,9 +285,14 @@ private struct FileTree: NSViewRepresentable {
     }
     func outlineViewSelectionDidChange(_ notification: Notification) {
       guard !updating, let outline, let node = outline.item(atRow: outline.selectedRow) as? Node else { return }
-      if node.isHiddenRow { store.revealHidden(in: node.path) }
-      else if let file = node.file { store.showFile(file) }
+      guard !node.isHiddenRow else { return }
+      if let file = node.file { store.showFile(file) }
       else { store.selectFolder(node.path) }
+    }
+    func revealSelectedHiddenRow() -> Bool {
+      guard let outline, let node = outline.item(atRow: outline.selectedRow) as? Node, node.isHiddenRow else { return false }
+      store.revealHidden(in: node.path)
+      return true
     }
     @objc private func showHidden(_ sender: NSButton) {
       guard let outline, let node = outline.item(atRow: outline.row(for: sender)) as? Node else { return }
@@ -313,8 +327,11 @@ private enum TreeMetrics {
 
 private final class FileOutline: NSOutlineView {
   var onDelete: (() -> Void)?
+  var onRevealHidden: (() -> Bool)?
   override func keyDown(with event: NSEvent) {
     let modifiers = event.modifierFlags.intersection([.command, .option, .control, .shift])
+    // Space, Return and the numeric keypad Enter activate the selected Show row.
+    if modifiers.isEmpty, [49, 36, 76].contains(event.keyCode), onRevealHidden?() == true { return }
     if [51, 117].contains(event.keyCode), modifiers.isEmpty || modifiers == .command { onDelete?(); return }
     super.keyDown(with: event)
   }

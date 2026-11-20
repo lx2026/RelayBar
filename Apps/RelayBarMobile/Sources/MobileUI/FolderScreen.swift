@@ -82,6 +82,8 @@ private struct RowRead: Equatable {
   let stamp: FileStamp
   let limit: Int
   let connected: Bool
+  var order: FolderOrder = .modified
+  var extendedImages = true
 }
 struct HistoryLine: View {
   @Environment(\.galleryRows) var facts
@@ -91,6 +93,7 @@ struct HistoryLine: View {
   let reader: Reader?
   let limit: Int
   let extendedImages: Bool
+  let order: FolderOrder
   var missing: String?
   let open: () -> Void
   @State private var changed = false
@@ -106,13 +109,15 @@ struct HistoryLine: View {
             + (changed ? " · changed since you read it" : "")),
       changed: changed, image: limit == 0 ? nil : facts[visit.path]?.image ?? image, action: open
     )
-    .task(id: RowRead(path: visit.path, stamp: visit.stamp, limit: limit, connected: reader != nil))
+    .task(id: RowRead(path: visit.path, stamp: visit.stamp, limit: limit, connected: reader != nil,
+      order: order, extendedImages: extendedImages))
     {
       guard let stamp = try? await files?.stat(visit.path) else { return }
       if imageFile(visit.path, extended: extendedImages),
         let rows = try? await files?.list((visit.path as NSString).deletingLastPathComponent)
       {
-        position = imagePosition(visit.path, rows: rows, extended: extendedImages)
+        guard !Task.isCancelled else { return }
+        position = imagePosition(visit.path, rows: rows, extended: extendedImages, order: order)
       }
       self.changed = stamp != visit.stamp
       image = await smallImage(visit.path, stamp, reader, limit)
@@ -366,8 +371,12 @@ struct FolderScreen: View {
         HStack {
           Text(FolderListing.hiddenLabel(hiddenCount)).secondaryText()
           Spacer()
-          Button(FolderListing.show) { if pad { workspace.revealedFolder = path } else { revealed = true } }
-            .accessibilityLabel("Show hidden items")
+          Button {
+            if pad { workspace.revealedFolder = path } else { revealed = true }
+          } label: {
+            Text(FolderListing.show).frame(minWidth: 44, minHeight: 44).contentShape(Rectangle())
+          }
+          .accessibilityLabel(FolderListing.revealLabel(hiddenCount))
         }.frame(minHeight: 44)
       }
     }

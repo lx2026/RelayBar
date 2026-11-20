@@ -24,6 +24,7 @@ struct IconsWorkspace: View {
           Text(FolderListing.hiddenLabel(hidden))
           Spacer()
           Button(FolderListing.show) { store.revealHidden(in: store.selectedFolderPath) }
+            .accessibilityLabel(FolderListing.revealLabel(hidden))
         }.padding(8)
       }
     }

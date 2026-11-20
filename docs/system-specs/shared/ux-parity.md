@@ -6,8 +6,8 @@ Read across for current behaviour. The last column records the direction of chan
 
 | Behaviour | RelayBar | Frame | Mobile | Where decided | Status | Direction |
 |---|---|---|---|---|---|---|
-| Folder order | Newest first within folders and files | Same | Same by default, with a saved Name option | [Folder listing] | Same | Break ties by natural name order. |
-| Hidden entries | Count and Show | Count and Show in local and remote folders | Count and Show | [Folder listing] | Same | Reveal dot names for the current folder visit. |
+| Folder order | Newest first within folders and files | Same | Same by default, with a saved Name option also used for image positions in Recent | [Folder listing] | Same | Break ties by natural name order. |
+| Hidden entries | Count and Show | Count and Show in local and remote folders | Count and Show | [Folder listing] | Same | Show reveals dot names for the current visit. Its accessibility label includes the count in all three apps. |
 | Keeping an item | — | Pin / Unpin | Pin / Unpin | [Sidebar], [Screen], [Website browser] | Same | Use the pin glyph. |
 | Markdown extensions | md, markdown, mdown, mkd | md, markdown, mdown, mkd | md, markdown, mdown, mkd | [Preview policy], [Grouping] | Same | Group and render all four extensions. |
 | Image formats | JPEG and PNG plus More Image Formats | JPEG and PNG plus More Image Formats | JPEG and PNG plus More Image Formats | [Preview policy] | Same | More Image Formats starts enabled. |

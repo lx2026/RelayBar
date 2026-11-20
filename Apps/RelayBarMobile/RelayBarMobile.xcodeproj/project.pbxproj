@@ -19,7 +19,20 @@
 		C8956B8B8B6EB44E11B79820 /* RelayBarMobile */ = {isa = PBXFileReference; lastKnownFileType = folder; name = RelayBarMobile; path = .; sourceTree = SOURCE_ROOT; };
 		CD38E8BE29E7B1CAC0511223 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		EA15BB25D4F1476505718107 /* RelayBarMobile.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = RelayBarMobile.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CA48938C4B23420AA76FAF29 /* RelayBarMobileUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; path = RelayBarMobileUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		19CB54782EF14236A03BD144 /* UITests */ = {isa = PBXFileSystemSynchronizedRootGroup; path = UITests; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXContainerItemProxy section */
+		DE3C45EA6E854F76A0531ABD = {isa = PBXContainerItemProxy; containerPortal = 635699C7AE572054D851C0D8; proxyType = 1; remoteGlobalIDString = 3AEFFDC976DB086AF874ADD4; remoteInfo = RelayBarMobile; };
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXTargetDependency section */
+		EB26C44DF3B64AC4860DFFD2 = {isa = PBXTargetDependency; target = 3AEFFDC976DB086AF874ADD4; targetProxy = DE3C45EA6E854F76A0531ABD; };
+/* End PBXTargetDependency section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		E9FBD7776D411ACED80ECCEB /* Frameworks */ = {
@@ -36,6 +49,7 @@
 		02DA93D238EDDBDCFD40D7CE /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				CA48938C4B23420AA76FAF29 /* RelayBarMobileUITests.xctest */,
 				EA15BB25D4F1476505718107 /* RelayBarMobile.app */,
 			);
 			name = Products;
@@ -63,6 +77,7 @@
 		9A5D4F7488F210802BB8ABF2 = {
 			isa = PBXGroup;
 			children = (
+				19CB54782EF14236A03BD144 /* UITests */,
 				6EF643C6B8196827A4A65BCA /* App */,
 				520B23E4DD2FFF02D1EDB7FC /* Packages */,
 				02DA93D238EDDBDCFD40D7CE /* Products */,
@@ -92,6 +107,17 @@
 			productReference = EA15BB25D4F1476505718107 /* RelayBarMobile.app */;
 			productType = "com.apple.product-type.application";
 		};
+		67311750EFC140F59F68E9A0 /* RelayBarMobileUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7FF91146625E491781E052C9;
+			buildPhases = (68363F0286CA428DBA64ECA3 /* Sources */);
+			dependencies = (EB26C44DF3B64AC4860DFFD2 /* RelayBarMobile */);
+			fileSystemSynchronizedGroups = (19CB54782EF14236A03BD144 /* UITests */);
+			name = RelayBarMobileUITests;
+			productName = RelayBarMobileUITests;
+			productReference = CA48938C4B23420AA76FAF29 /* RelayBarMobileUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -101,6 +127,7 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					67311750EFC140F59F68E9A0 = {TestTargetID = 3AEFFDC976DB086AF874ADD4; };
 				};
 			};
 			buildConfigurationList = 9208C88205F82380737FDBAE /* Build configuration list for PBXProject "RelayBarMobile" */;
@@ -120,6 +147,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				67311750EFC140F59F68E9A0 /* RelayBarMobileUITests */,
 				3AEFFDC976DB086AF874ADD4 /* RelayBarMobile */,
 			);
 		};
@@ -145,6 +173,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		68363F0286CA428DBA64ECA3 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
@@ -311,6 +340,28 @@
 			};
 			name = Debug;
 		};
+		D70D20183A2F4B62BE80A7BE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar.ios.UITests;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RelayBarMobile;
+			};
+			name = Debug;
+		};
+		F3759CF48924447B9A4DE912 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 27.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.lx2026.RelayBar.ios.UITests;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = RelayBarMobile;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -332,6 +383,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		7FF91146625E491781E052C9 = {isa = XCConfigurationList; buildConfigurations = (D70D20183A2F4B62BE80A7BE /* Debug */, F3759CF48924447B9A4DE912 /* Release */); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */

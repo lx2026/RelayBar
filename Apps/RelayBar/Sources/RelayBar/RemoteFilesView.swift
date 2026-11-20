@@ -957,6 +957,7 @@ struct RemoteFilesView: View {
                         .padding(.leading, 48)
                     Spacer()
                     Button(FolderListing.show) { model.showsHidden = true }
+                        .accessibilityLabel(FolderListing.revealLabel(listing.hidden))
                 }
             }
         }

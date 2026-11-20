@@ -108,11 +108,9 @@ struct ReaderScreen: View {
             if pad {
               VStack(alignment: .leading) {
                 Text(doc.title).mobileFont(16, .semibold).lineLimit(1)
-                Text(
-                  doc.isImage
-                    ? (facts[path]?.position ?? position ?? "")
-                    : (path as NSString).lastPathComponent
-                ).secondaryText().lineLimit(1)
+                if doc.title != (path as NSString).lastPathComponent {
+                  Text((path as NSString).lastPathComponent).secondaryText().lineLimit(1)
+                }
               }
             } else {
               Button {

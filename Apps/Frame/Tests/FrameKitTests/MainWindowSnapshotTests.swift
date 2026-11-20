@@ -50,6 +50,42 @@ final class MainWindowSnapshotTests: XCTestCase {
     XCTAssertEqual(store.visiblePhotos.map(\.name), ["Study.png"])
   }
 
+  private func outline(in view: NSView) -> NSOutlineView? {
+    if let tree = view as? NSOutlineView { return tree }
+    for child in view.subviews {
+      if let tree = outline(in: child) { return tree }
+    }
+    return nil
+  }
+
+  func testSelectingHiddenRowRequiresExplicitActivation() async throws {
+    let (store, catalog) = try await openLibrary()
+    let host = NSHostingView(rootView: FrameRootView(store: store, modelContainer: catalog))
+    let window = QuietWindow(size: NSSize(width: 1280, height: 740))
+    window.contentView = host
+    window.orderInOffscreen()
+    defer { window.orderOut(nil); window.contentView = nil }
+    host.layoutSubtreeIfNeeded()
+    let tree = try XCTUnwrap(outline(in: host))
+    let row = tree.numberOfRows - 1
+    let cell = try XCTUnwrap(tree.view(atColumn: 0, row: row, makeIfNecessary: true) as? NSStackView)
+    let show = try XCTUnwrap(cell.arrangedSubviews.compactMap { $0 as? NSButton }.first)
+    XCTAssertEqual(show.accessibilityLabel(), "Show 2 hidden items")
+    func press(_ keyCode: UInt16, _ characters: String) throws {
+      let key = try XCTUnwrap(NSEvent.keyEvent(with: .keyDown, location: .zero, modifierFlags: [],
+        timestamp: 0, windowNumber: window.windowNumber, context: nil, characters: characters,
+        charactersIgnoringModifiers: characters, isARepeat: false, keyCode: keyCode))
+      tree.keyDown(with: key)
+    }
+    tree.selectRowIndexes(IndexSet(integer: row - 1), byExtendingSelection: false)
+    try press(125, "\u{F701}") // Down arrow
+    XCTAssertEqual(tree.selectedRow, row)
+    XCTAssertEqual(store.hiddenCount(in: ""), 2)
+    try press(36, "\r")
+    XCTAssertEqual(store.hiddenCount(in: ""), 0)
+    XCTAssertTrue(store.gridFolders.contains { $0.name == ".drafts" })
+  }
+
   func testMainWindowSnapshots() async throws {
     guard let path = ProcessInfo.processInfo.environment["FRAME_SNAPSHOT_DIR"], !path.isEmpty else {
       throw XCTSkip("Set FRAME_SNAPSHOT_DIR to capture the main window.")
@@ -79,13 +115,6 @@ final class MainWindowSnapshotTests: XCTestCase {
     }
     XCTAssertEqual(store.hiddenCount(in: ""), 2)
     try await record("folder")
-    func outline(in view: NSView) -> NSOutlineView? {
-      if let tree = view as? NSOutlineView { return tree }
-      for child in view.subviews {
-        if let tree = outline(in: child) { return tree }
-      }
-      return nil
-    }
     let tree = try XCTUnwrap(outline(in: host))
     func sidebarFilesAndFolders() -> [String] {
       (0..<tree.numberOfRows).compactMap {

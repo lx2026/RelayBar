@@ -435,6 +435,7 @@ struct HostWorkspace: View, WorkspaceViews {
   fileprivate func historyLine(_ visit: Visit) -> some View {
     HistoryLine(
       visit: visit, files: files.value, reader: readerPort.value, limit: thumbnailLimit, extendedImages: profiles.value.enabled(PreviewPlugins.moreImages, host: profile.id),
+      order: profiles.value.folderOrder?[profile.id] ?? .modified,
       missing: profiles.value.missingPlugin(
         kind: visit.pageKind ?? "document", path: visit.path, host: profile.id)?.title
     ) {

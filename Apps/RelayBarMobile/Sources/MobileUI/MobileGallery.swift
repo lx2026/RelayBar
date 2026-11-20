@@ -151,12 +151,7 @@
       guard let search = core.runtime.service(FileSearch.self, realm: profile.realm) else {
         throw CompositionError("The demo search did not start.")
       }
-      var hits: [NameHit] = []
-      let searchDeadline = ContinuousClock.now + .seconds(5)
-      while hits.isEmpty && ContinuousClock.now < searchDeadline {
-        hits = await search.results("compar", visits: data.history, since: nil)?.1 ?? []
-        if hits.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
-      }
+      let hits = await search.results("compar", visits: data.history, since: nil, waitForIndex: true)?.1 ?? []
       guard !hits.isEmpty else { throw CompositionError("The demo note was not indexed.") }
       func searchPage(_ status: String) -> AnyView {
         AnyView(

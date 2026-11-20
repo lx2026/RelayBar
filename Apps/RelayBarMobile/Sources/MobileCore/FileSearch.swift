@@ -162,7 +162,7 @@ package actor NameIndex {
     directory.appending(path: Self.hash(root)).appending(path: identity)
   }
 
-  func prepare(deferred: Bool) {
+  func prepare(deferred: Bool, now: Date = Date()) {
     guard !stopped else { return }
     for root in roots {
       let url = url(root)
@@ -170,7 +170,7 @@ package actor NameIndex {
         at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
       var tree =
         (try? JSONDecoder().decode(Tree.self, from: Data(contentsOf: url))) ?? Tree(pending: [root])
-      if let date = tree.finished, Date().timeIntervalSince(date) >= 900 {
+      if let date = tree.finished, now.timeIntervalSince(date) >= 900 {
         tree.pending = [root]
         tree.refreshing = true
         tree.finished = nil
@@ -185,6 +185,7 @@ package actor NameIndex {
     requested = true
     guard !stopped, walking == nil, roots.contains(where: { trees[$0]?.pending.isEmpty == false })
     else { return }
+    revision += 1
     walking = Task(priority: .background) { await walk() }
   }
 
@@ -237,6 +238,14 @@ package actor NameIndex {
     return true
   }
 
+  private func interruptsWalk(_ error: any Error) -> Bool {
+    if error is CancellationError || error is TransportError { return true }
+    switch error as? SFTPError {
+    case .closed, .handleLimit, .handleInUse, .malformedPacket: return true
+    default: return false
+    }
+  }
+
   private func walk() async {
     defer {
       save()
@@ -254,11 +263,11 @@ package actor NameIndex {
           guard try await canList(root) else { continue }
         } catch {
           lastFailure = "\(type(of: error))"
-          if Task.isCancelled || error is TransportError || error as? SFTPError == .closed {
+          if Task.isCancelled || interruptsWalk(error) {
             return
           }
           // A place that cannot be resolved is left out; the others are still walked.
-          trees[root]?.pending.removeAll()
+          trees[root] = Tree(pending: [])
           finishFolder(root)
           continue
         }
@@ -287,23 +296,19 @@ package actor NameIndex {
       var interrupted = Task.isCancelled
       for (index, result) in listings {
         let (root, folder) = batch[index]
+        // A foreground listing can supersede either a successful walk request or a failed one.
+        guard trees[root]?.pending.contains(folder) == true else { continue }
         switch result {
         case .success(let listing):
-          // A foreground listing may have replaced this folder while the request was in flight.
-          if trees[root]?.pending.contains(folder) == true {
-            apply(listing, folder: folder, root: root)
-          }
+          apply(listing, folder: folder, root: root)
         case .failure(let error):
           lastFailure = "\(type(of: error))"
-          if error is CancellationError || error is TransportError
-            || error as? SFTPError == .closed
-          {
+          if interruptsWalk(error) {
             interrupted = true
             continue
           }
           // Leave inaccessible folders out; other branches can still be searched.
-          trees[root]?.pending.removeAll { $0 == folder }
-          finishFolder(root)
+          apply(FolderListing(rows: [], truncated: false), folder: folder, root: root)
         }
       }
       if interrupted { return }
@@ -363,17 +368,39 @@ package actor NameIndex {
     tree.directories -= old.filter(\.directory).count
     tree.pending.removeAll { $0 == folder }
     let depth = folder.split(separator: "/").count - root.split(separator: "/").count + 1
+    let rows = listing.rows.filter {
+      !$0.name.hasPrefix(".") && !($0.stamp.directory && ($0.symbolicLink || Self.skips.contains($0.name)))
+    }
+    let known = Set(old.filter(\.directory).map(\.name))
+    let retained = known.intersection(rows.lazy.filter { $0.stamp.directory }.map(\.name))
+    let removed = known.subtracting(retained)
+    if !removed.isEmpty {
+      let prefix = folder == "/" ? "/" : folder + "/"
+      func inRemovedFolder(_ path: String) -> Bool {
+        guard path.hasPrefix(prefix),
+          let child = path.dropFirst(prefix.count).split(separator: "/", maxSplits: 1).first
+        else { return false }
+        return removed.contains(String(child))
+      }
+      tree.pending.removeAll(where: inRemovedFolder)
+      for key in tree.folders.keys.filter(inRemovedFolder) {
+        for entry in tree.folders.removeValue(forKey: key) ?? [] {
+          if entry.directory { tree.directories -= 1 } else { tree.files -= 1 }
+        }
+      }
+    }
+    // Reserve the surviving subtrees before assigning newly freed slots.
+    tree.directories += retained.count
     var entries: [IndexedName] = []
     tree.limited = tree.limited || listing.truncated
-    for row in listing.rows where !row.name.hasPrefix(".") {
-      if row.stamp.directory {
-        guard !row.symbolicLink, !Self.skips.contains(row.name) else { continue }
+    for row in rows {
+      if row.stamp.directory, !retained.contains(row.name) {
         guard tree.directories < folderLimit else {
           tree.limited = true
           continue
         }
         tree.directories += 1
-      } else {
+      } else if !row.stamp.directory {
         guard tree.files < fileLimit else {
           tree.limited = true
           continue
@@ -382,17 +409,6 @@ package actor NameIndex {
       }
       entries.append(.init(name: row.name, directory: row.stamp.directory))
     }
-    let children = Set(entries.filter(\.directory).map(\.name))
-    for removed in old where removed.directory && !children.contains(removed.name) {
-      let path = (folder as NSString).appendingPathComponent(removed.name)
-      tree.pending.removeAll { $0 == path || $0.hasPrefix(path + "/") }
-      for key in Array(tree.folders.keys) where key == path || key.hasPrefix(path + "/") {
-        for entry in tree.folders.removeValue(forKey: key) ?? [] {
-          if entry.directory { tree.directories -= 1 } else { tree.files -= 1 }
-        }
-      }
-    }
-    let known = Set(old.filter(\.directory).map(\.name))
     for entry in entries where entry.directory {
       let child = (folder as NSString).appendingPathComponent(entry.name)
       if depth < (root == home ? 2 : 12) {
@@ -424,10 +440,11 @@ package actor NameIndex {
     if checkpoint.duration(to: .now) >= .seconds(2) { save() }
   }
 
-  package func results(_ query: String, visits: [Visit], since previous: Int?) async -> (
+  package func results(_ query: String, visits: [Visit], since previous: Int?, waitForIndex: Bool = false) async -> (
     Int, [NameHit], String?
   )? {
-    start()
+    if previous == nil { start() }
+    if waitForIndex { await walking?.value }
     guard revision != previous else { return nil }
     let count = trees.values.reduce(0) { $0 + $1.files + $1.directories }
     let status =

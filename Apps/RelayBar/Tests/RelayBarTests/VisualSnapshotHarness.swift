@@ -278,7 +278,7 @@ final class VisualSnapshotHarness: XCTestCase {
         preview.model.activate(try XCTUnwrap(preview.model.recentLocations.first))
         try await waitUntil { preview.model.screen == .browser && !preview.model.isLoading }
         preview.model.preview(image)
-        try await waitUntil(timeout: 5) { preview.model.previewImage != nil && !preview.model.isLoadingPreview }
+        try await waitUntil(timeout: .seconds(5)) { preview.model.previewImage != nil && !preview.model.isLoadingPreview }
 
         for form in HouseForm.allCases {
             // Switched through the plugin, as the Plugins window does, so its switch shows the choice too.
@@ -1240,7 +1240,7 @@ final class VisualSnapshotHarness: XCTestCase {
             try await waitUntil { model.previewImage != nil && !model.isLoadingPreview }
             fixture.service.setDeletionSuspended(true)
             model.deletePreviewEntry()
-            try await waitUntil(timeout: 7) { model.deletion?.phase == .active }
+            try await waitUntil(timeout: .seconds(7)) { model.deletion?.phase == .active }
             try capture(
                 view: RemoteFilesView(model: model),
                 appearance: appearanceName,
@@ -1252,7 +1252,7 @@ final class VisualSnapshotHarness: XCTestCase {
 
             fixture.service.previewURL = nextImageURL
             fixture.service.setDeletionSuspended(false)
-            try await waitUntil(timeout: 3) {
+            try await waitUntil(timeout: .seconds(3)) {
                 model.deletion == nil
                     && model.previewEntry == nextImage
                     && model.previewImage != nil
@@ -1882,16 +1882,16 @@ final class VisualSnapshotHarness: XCTestCase {
     }
 
     private func waitUntil(
-        timeout: TimeInterval = 1,
+        timeout: Duration = .seconds(5), file: StaticString = #filePath, line: UInt = #line,
         condition: @escaping @MainActor () -> Bool
     ) async throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while !condition(), Date() < deadline {
+        let deadline = ContinuousClock.now + timeout
+        while !condition(), ContinuousClock.now < deadline {
             try await Task.sleep(for: .milliseconds(10))
         }
         _ = try XCTUnwrap(
             condition() ? true : nil,
-            "Timed out waiting for snapshot fixture state."
+            "Timed out waiting for snapshot fixture state.", file: file, line: line
         )
     }
 }

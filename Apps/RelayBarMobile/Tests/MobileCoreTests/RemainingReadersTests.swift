@@ -338,3 +338,12 @@ private actor PreviewFiles: RangeFiles {
   #expect(names(for: UUID()) == ["Work", "Archive", "Z.txt", "A.txt"])
   await core.runtime.shutdown()
 }
+
+@Test func imageCaptionUsesHostOrderAmongVisibleImages() {
+  func row(_ name: String, _ modified: UInt32) -> FileRow {
+    FileRow(name: name, stamp: .init(modified: modified, directory: false))
+  }
+  let rows = [row("a.jpg", 1), row("b.jpg", 2), row(".old.jpg", 3), row("note.md", 4)]
+  #expect(imagePosition("/album/a.jpg", rows: rows, order: .name) == "1 of 2")
+  #expect(imagePosition("/album/a.jpg", rows: rows, order: .modified) == "2 of 2")
+}
