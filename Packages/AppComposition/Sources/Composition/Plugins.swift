@@ -13,14 +13,24 @@ public struct PluginDescriptor: Identifiable, Equatable, Sendable {
     /// The full feature ids this plugin contributes while it is on.
     public let features: [String]
 
+    /// Paths rooted at each enclosing realm, such as `readers/markdown`.
+    public let realmRelativeFeatures: [String]
+
+    public func owns(_ feature: String, inRealm realm: String?) -> Bool {
+        if features.contains(feature) { return true }
+        guard let realm else { return false }
+        return realmRelativeFeatures.contains { feature == "\(realm)/\($0)" }
+    }
+
     /// Declares a plugin.
-    public init(id: String, title: String, summary: String, symbol: String, isOnByDefault: Bool, features: [String]) {
+    public init(id: String, title: String, summary: String, symbol: String, isOnByDefault: Bool, features: [String] = [], realmRelativeFeatures: [String] = []) {
         self.id = id
         self.title = title
         self.summary = summary
         self.symbol = symbol
         self.isOnByDefault = isOnByDefault
         self.features = features
+        self.realmRelativeFeatures = realmRelativeFeatures
     }
 }
 

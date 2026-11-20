@@ -1,6 +1,8 @@
+#if os(macOS)
 import AppKit
 import CompositionFixtures
 import WebKit
+#endif
 import XCTest
 @testable import MarkdownRendering
 
@@ -97,6 +99,7 @@ final class MarkdownSnapshotTests: XCTestCase {
     [^1]: Footnote text with a second sentence.
     """
 
+    #if os(macOS)
     /// Times the renderer and a web view's layout for each `.md` file in MARKDOWN_PERF_SOURCES,
     /// appending one line per file to MARKDOWN_PERF_OUT. Skipped unless both are set.
     @MainActor func testMeasureRenderAndLayout() async throws {
@@ -190,4 +193,5 @@ final class MarkdownSnapshotTests: XCTestCase {
             }
         }
     }
+    #endif
 }

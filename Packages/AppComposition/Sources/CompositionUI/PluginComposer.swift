@@ -9,14 +9,45 @@ public final class PluginComposer: ObservableObject {
     @Published public var selection: String?
     /// The last failure to switch a plugin, shown once at the bottom of the plugin list.
     @Published public private(set) var errorMessage: String?
-    @Published private(set) var graph: FeatureGraph
+    @Published public private(set) var graph: FeatureGraph
     @Published private(set) var enabled: Set<String>
-    let plugins: [PluginDescriptor]
+    public let plugins: [PluginDescriptor]
 
     private let runtime: FeatureRuntime?
     private let readEnabled: (@MainActor (PluginDescriptor) -> Bool)?
     private let writeEnabled: (@MainActor (PluginDescriptor, Bool) async throws -> Void)?
     private let fixedDependents: [String: [String]]
+    private var globalChoice: (@MainActor (PluginDescriptor) -> Bool?)?
+    private var readHost: (@MainActor (PluginDescriptor, String) -> PluginHostChoice)?
+    private var writeHost: (@MainActor (PluginDescriptor, String, PluginHostChoice) async throws -> Void)?
+    private struct PendingSwitch<Value> {
+        let value: Value
+        let revision: UUID
+        let task: Task<Void, Never>
+
+        /// Store successive edits to one switch in tap order across suspension points.
+        @MainActor init(value: Value, after previous: Self?, store: @escaping @MainActor () async throws -> Void,
+                        finished: @escaping @MainActor (UUID, String?) -> Void) {
+            self.value = value
+            let revision = UUID()
+            self.revision = revision
+            task = Task {
+                await previous?.task.value
+                do {
+                    try await store()
+                    finished(revision, nil)
+                } catch {
+                    finished(revision, error.localizedDescription)
+                }
+            }
+        }
+    }
+    private var pendingGlobal: [String: PendingSwitch<Bool>] = [:]
+    private struct HostSwitch: Hashable {
+        let plugin: String
+        let realm: String
+    }
+    private var pendingHosts: [HostSwitch: PendingSwitch<PluginHostChoice>] = [:]
     private var subscription: AnyCancellable?
 
     /// Live: follows a runtime. `setEnabled` stores the choice and applies the new tree.
@@ -35,6 +66,59 @@ public final class PluginComposer: ObservableObject {
         }
     }
 
+    /// A profile-backed composer. A nil global choice means the catalog default.
+    public convenience init(runtime: FeatureRuntime, plugins: [PluginDescriptor],
+                            globalChoice: @escaping @MainActor (PluginDescriptor) -> Bool?,
+                            setEnabled: @escaping @MainActor (PluginDescriptor, Bool) async throws -> Void,
+                            hostChoice: @escaping @MainActor (PluginDescriptor, String) -> PluginHostChoice,
+                            setHostChoice: @escaping @MainActor (PluginDescriptor, String, PluginHostChoice) async throws -> Void) {
+        self.init(runtime: runtime, plugins: plugins,
+                  isEnabled: { globalChoice($0) ?? $0.isOnByDefault }, setEnabled: setEnabled)
+        self.globalChoice = globalChoice
+        self.readHost = hostChoice
+        self.writeHost = setHostChoice
+    }
+
+    public var supportsHostChoices: Bool { writeHost != nil }
+
+    public func hostChoice(for plugin: PluginDescriptor, in realm: String) -> PluginHostChoice {
+        let key = HostSwitch(plugin: plugin.id, realm: realm)
+        return pendingHosts[key]?.value ?? readHost?(plugin, realm) ?? .inherit
+    }
+
+    /// Reads committed choices so a tree rebuild cannot consume an edit still being stored.
+    public func effectiveState(for plugin: PluginDescriptor, in realm: String?) -> PluginEffectiveState {
+        if let realm {
+            let choice = readHost?(plugin, realm) ?? .inherit
+            if choice != .inherit { return .init(isEnabled: choice == .on, source: .host) }
+        }
+        if let on = globalChoice?(plugin) {
+            return .init(isEnabled: on, source: .global)
+        }
+        // The original initializer supplies only the resolved Boolean, without storage provenance.
+        if globalChoice == nil {
+            let on = readEnabled?(plugin) ?? isEnabled(plugin)
+            if on != plugin.isOnByDefault { return .init(isEnabled: on, source: .global) }
+        }
+        return .init(isEnabled: plugin.isOnByDefault, source: .pluginDefault)
+    }
+
+    /// Stores through the profile owner, which applies the resulting tree.
+    public func setHostChoice(_ choice: PluginHostChoice, for plugin: PluginDescriptor, in realm: String) async {
+        guard let writeHost else { return }
+        let key = HostSwitch(plugin: plugin.id, realm: realm)
+        let update = PendingSwitch(value: choice, after: pendingHosts[key]) {
+            try await writeHost(plugin, realm, choice)
+        } finished: { [self] revision, failure in
+            guard pendingHosts[key]?.revision == revision else { return }
+            pendingHosts[key] = nil
+            errorMessage = failure
+        }
+        objectWillChange.send()
+        pendingHosts[key] = update
+        await update.task.value
+    }
+
     /// Static: for previews and snapshots. `enabled` holds plugin ids; `dependents` is keyed by feature id.
     public init(graph: FeatureGraph, plugins: [PluginDescriptor], enabled: Set<String>,
                 dependents: [String: [String]] = [:]) {
@@ -47,51 +131,53 @@ public final class PluginComposer: ObservableObject {
         self.enabled = enabled
     }
 
-    func isEnabled(_ plugin: PluginDescriptor) -> Bool {
+    public func isEnabled(_ plugin: PluginDescriptor) -> Bool {
         enabled.contains(plugin.id)
     }
 
     /// Shows the new state at once and reverts it if storing the choice fails.
-    func setEnabled(_ plugin: PluginDescriptor, _ on: Bool) {
+    public func setEnabled(_ plugin: PluginDescriptor, _ on: Bool) {
         if on {
             enabled.insert(plugin.id)
         } else {
             enabled.remove(plugin.id)
         }
         guard let writeEnabled else { return }
-        Task {
-            do {
-                try await writeEnabled(plugin, on)
-                errorMessage = nil
-            } catch {
-                errorMessage = error.localizedDescription
-            }
+        pendingGlobal[plugin.id] = PendingSwitch(value: on, after: pendingGlobal[plugin.id]) {
+            try await writeEnabled(plugin, on)
+        } finished: { [self] revision, failure in
+            guard pendingGlobal[plugin.id]?.revision == revision else { return }
+            pendingGlobal[plugin.id] = nil
+            errorMessage = failure
             refreshEnabled()
         }
     }
 
-    func retry(_ id: String) {
+    public func retry(_ id: String) {
         runtime?.retry(id)
     }
 
-    func dependents(of id: String) -> [String] {
+    public func dependents(of id: String) -> [String] {
         runtime?.dependents(of: id) ?? fixedDependents[id] ?? []
     }
 
-    func node(_ id: String?) -> FeatureGraph.Node? {
+    public func node(_ id: String?) -> FeatureGraph.Node? {
         id.flatMap { id in graph.nodes.first { $0.id == id } }
     }
 
     /// The plugin that contributes a feature, if any.
-    func plugin(owning id: String) -> PluginDescriptor? {
-        plugins.first { $0.features.contains(id) }
+    public func plugin(owning node: FeatureGraph.Node) -> PluginDescriptor? {
+        plugins.first { $0.owns(node.id, inRealm: node.container) }
     }
 
     /// The feature to report under an enabled plugin's row: a failure, then a stuck feature, and a waiting
     /// one only while none of the plugin's features is running.
-    func trouble(of plugin: PluginDescriptor) -> FeatureGraph.Node? {
+    public func trouble(of plugin: PluginDescriptor) -> FeatureGraph.Node? {
         guard isEnabled(plugin) else { return nil }
-        let present = graph.nodes.filter { plugin.features.contains($0.id) }
+        return trouble(in: members(of: plugin))
+    }
+
+    func trouble(in present: [FeatureGraph.Node]) -> FeatureGraph.Node? {
         if let failed = present.first(where: { $0.phase.kind == .failed }) {
             return failed
         }
@@ -103,9 +189,13 @@ public final class PluginComposer: ObservableObject {
     }
 
     /// Selects the plugin's first feature when it is on the map.
-    func reveal(_ plugin: PluginDescriptor) {
-        guard let first = plugin.features.first, node(first) != nil else { return }
-        selection = first
+    public func reveal(_ plugin: PluginDescriptor) {
+        if let first = plugin.features.first, node(first) != nil {
+            selection = first
+        } else if !plugin.realmRelativeFeatures.isEmpty,
+                  let first = graph.nodes.first(where: { plugin.owns($0.id, inRealm: $0.container) }) {
+            selection = first.id
+        }
     }
 
     private func follow(_ next: FeatureGraph) {
@@ -118,7 +208,7 @@ public final class PluginComposer: ObservableObject {
 
     private func refreshEnabled() {
         guard let readEnabled else { return }
-        enabled = Set(plugins.filter(readEnabled).map(\.id))
+        enabled = Set(plugins.filter { pendingGlobal[$0.id]?.value ?? readEnabled($0) }.map(\.id))
     }
 }
 

@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 import Composition
 import CompositionFixtures
@@ -386,3 +387,4 @@ private final class Filled: NSView {
         bounds.fill()
     }
 }
+#endif

@@ -1,4 +1,4 @@
-import AppKit
+import CoreGraphics
 import Foundation
 import SwiftMath
 
@@ -15,7 +15,6 @@ public enum MathTypesetter {
     private static let maximumDisplaySize = CGSize(width: 1_600, height: 500)
     private static let maximumInlineSize = CGSize(width: 360, height: 26)
     private static let pixelsPerPoint: CGFloat = 2
-    private static let lock = NSLock()
     private final class Cached { let value: TypesetMath; init(_ value: TypesetMath) { self.value = value } }
     private static let cache: NSCache<NSString, Cached> = {
         let cache = NSCache<NSString, Cached>()
@@ -69,42 +68,15 @@ public enum MathTypesetter {
         let key = "\(display ? "display" : "inline")|\(formula)" as NSString
         if let cached = cache.object(forKey: key) { return cached.value }
         guard canParse(formula) else { return nil }
-        // The typesetter shares font tables between calls.
-        lock.lock()
-        defer { lock.unlock() }
-        var renderer = MathImage(
-            latex: formula,
-            fontSize: display ? 22 : 16,
-            textColor: .black,
-            labelMode: display ? .display : .text,
-            textAlignment: display ? .center : .left
-        )
-        let (error, rendered, layout) = renderer.asImage()
-        guard error == nil, let rendered, rendered.size.width > 0, rendered.size.height > 0 else { return nil }
+        guard let drawing = MathDrawing.make(formula, display: display) else { return nil }
         let limit = display ? maximumDisplaySize : maximumInlineSize
-        let scale = min(1, limit.width / rendered.size.width, limit.height / rendered.size.height)
-        let size = CGSize(width: max(1, rendered.size.width * scale), height: max(1, rendered.size.height * scale))
-        guard let png = png(of: rendered, size: size) else { return nil }
+        let scale = min(1, limit.width / drawing.size.width, limit.height / drawing.size.height)
+        let size = CGSize(width: max(1, drawing.size.width * scale), height: max(1, drawing.size.height * scale))
+        let pixels = CGSize(width: ceil(size.width * pixelsPerPoint), height: ceil(size.height * pixelsPerPoint))
+        guard let png = drawing.png(pixels: pixels) else { return nil }
         let typeset = TypesetMath(png: png, width: size.width, height: size.height,
-                                  descent: max(0, (layout?.descent ?? 0) * scale))
+                                  descent: max(0, drawing.descent * scale))
         cache.setObject(Cached(typeset), forKey: key, cost: png.count)
         return typeset
-    }
-
-    private static func png(of image: NSImage, size: CGSize) -> Data? {
-        guard let bitmap = NSBitmapImageRep(
-            bitmapDataPlanes: nil,
-            pixelsWide: Int((size.width * pixelsPerPoint).rounded(.up)),
-            pixelsHigh: Int((size.height * pixelsPerPoint).rounded(.up)),
-            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
-            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
-        ) else { return nil }
-        bitmap.size = size
-        guard let context = NSGraphicsContext(bitmapImageRep: bitmap) else { return nil }
-        NSGraphicsContext.saveGraphicsState()
-        NSGraphicsContext.current = context
-        image.draw(in: NSRect(origin: .zero, size: size))
-        NSGraphicsContext.restoreGraphicsState()
-        return bitmap.representation(using: .png, properties: [:])
     }
 }

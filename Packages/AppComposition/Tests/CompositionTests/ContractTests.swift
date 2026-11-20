@@ -5,6 +5,7 @@ import Foundation
 import XCTest
 
 final class ContractTests: XCTestCase {
+    #if os(macOS)
     func testOlderResponsesAreIncompatibleAndOnlyNamedFailuresEndTheSession() throws {
         let older = Data(#"{"version":6,"status":"ready","error":"Open a folder in RelayBar and choose Open in Frame to allow remote viewing."}"#.utf8)
         let response = try JSONDecoder().decode(BridgeResponse.self, from: older)
@@ -36,6 +37,8 @@ final class ContractTests: XCTestCase {
         // A bare v6 request is not a call.
         XCTAssertNil(try? JSONDecoder().decode(BridgeCall.self, from: Data(#"{"version":6,"operation":"catalog"}"#.utf8)))
     }
+
+    #endif
 
     func testGroupingKeepsDocumentsIndependentAndRejectsAmbiguousOwners() {
         let media = ["a.png", "a.jpg", "a.detail.png", "other/a.png"]

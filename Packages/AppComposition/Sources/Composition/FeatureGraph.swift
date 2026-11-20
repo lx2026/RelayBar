@@ -78,12 +78,12 @@ extension FeatureGraph {
         for id in order {
             guard let plan = plans[id] else { continue }
             var container = plan.parent
-            while let ancestor = container, let above = plans[ancestor], !(above.template is RealmFeature) {
+            while let ancestor = container, let above = plans[ancestor], !above.node.isRealm {
                 container = above.parent
             }
             let fiber = fibers[id]
             nodes.append(Node(id: id, name: plan.node.id, parent: plan.parent, container: container,
-                              isContainer: plan.template is RealmFeature,
+                              isContainer: plan.node.isRealm,
                               phase: fiber?.phase ?? .pending("Not loaded yet"), generation: fiber?.generation ?? 0,
                               needs: plan.needs.map(\.name), offers: plan.offers.map(\.name)))
             for need in plan.needs {

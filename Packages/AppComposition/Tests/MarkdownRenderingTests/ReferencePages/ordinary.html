@@ -1,0 +1,70 @@
+<article class="markdown"><h1>Sampler run 14 — notes</h1>
+<p>A <em>short</em> report with <strong>bold</strong>, <del>struck</del> text, <code>inline code</code>, a <a href="https://example.com">link</a> and a bare URL: <a href="https://example.com/runs/14">https://example.com/runs/14</a>.</p>
+<h2>Checklist</h2>
+<ul>
+<li><input type="checkbox" checked="" disabled="" /> Seeds fixed for all eight prompts</li>
+<li><input type="checkbox" disabled="" /> Re-run the two failures
+<ul>
+<li><input type="checkbox" disabled="" /> <code>cfg 7.5</code>, 30 steps</li>
+<li><input type="checkbox" checked="" disabled="" /> <code>cfg 5.0</code>, 40 steps</li>
+</ul>
+</li>
+<li>Plain item with a nested list
+<ol>
+<li>first</li>
+<li>second</li>
+</ol>
+</li>
+</ul>
+<h2>Results</h2>
+<div class="table-scroll">
+<table>
+<thead>
+<tr>
+<th align="left">Prompt</th>
+<th align="right">Steps</th>
+<th align="right">CFG</th>
+<th align="right">Seed</th>
+<th align="left">Verdict</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td align="left">harbour at dusk</td>
+<td align="right">30</td>
+<td align="right">7.5</td>
+<td align="right">1184</td>
+<td align="left">keep</td>
+</tr>
+<tr>
+<td align="left">paper lantern, macro</td>
+<td align="right">40</td>
+<td align="right">5.0</td>
+<td align="right">2291</td>
+<td align="left">redo — hands</td>
+</tr>
+<tr>
+<td align="left">long-column table to test width, with a much longer description cell</td>
+<td align="right">30</td>
+<td align="right">7.5</td>
+<td align="right">77</td>
+<td align="left">keep</td>
+</tr>
+</tbody>
+</table>
+</div>
+<h2>Code</h2>
+<figure class="code"><figcaption><div class="bar"><span class="language">python</span><a class="copy" role="button" href="relaybar-copy://block/snapshot/MA">Copy</a></div></figcaption><pre class="light"><code><span style="color:#d73a49;">def</span> <span style="color:#6f42c1;">schedule</span><span style="color:#24292e;">(steps: </span><span style="color:#e36209;">int</span><span style="color:#24292e;">, sigma_max: </span><span style="color:#e36209;">float</span><span style="color:#24292e;"> = </span><span style="color:#005cc5;">14.6</span><span style="color:#24292e;">) -&gt; </span><span style="color:#e36209;">list</span><span style="color:#24292e;">[</span><span style="color:#e36209;">float</span><span style="color:#24292e;">]:
+    </span><span style="color:#6a737d;"># Karras-style spacing</span>
+    <span style="color:#d73a49;">return</span><span style="color:#24292e;"> [sigma_max * (</span><span style="color:#005cc5;">1</span><span style="color:#24292e;"> - i / steps) ** </span><span style="color:#005cc5;">7</span> <span style="color:#d73a49;">for</span><span style="color:#24292e;"> i </span><span style="color:#d73a49;">in</span> <span style="color:#e36209;">range</span><span style="color:#24292e;">(steps)]</span></code></pre><pre class="dark"><code><span style="color:#ff7b72;">def</span> <span style="color:#d2a8ff;">schedule</span><span style="color:#c9d1d9;">(steps: </span><span style="color:#ffa657;">int</span><span style="color:#c9d1d9;">, sigma_max: </span><span style="color:#ffa657;">float</span><span style="color:#c9d1d9;"> = </span><span style="color:#79c0ff;">14.6</span><span style="color:#c9d1d9;">) -&gt; </span><span style="color:#ffa657;">list</span><span style="color:#c9d1d9;">[</span><span style="color:#ffa657;">float</span><span style="color:#c9d1d9;">]:
+    </span><span style="color:#8b949e;"># Karras-style spacing</span>
+    <span style="color:#ff7b72;">return</span><span style="color:#c9d1d9;"> [sigma_max * (</span><span style="color:#79c0ff;">1</span><span style="color:#c9d1d9;"> - i / steps) ** </span><span style="color:#79c0ff;">7</span> <span style="color:#ff7b72;">for</span><span style="color:#c9d1d9;"> i </span><span style="color:#ff7b72;">in</span> <span style="color:#ffa657;">range</span><span style="color:#c9d1d9;">(steps)]</span></code></pre></figure>
+<figure class="code"><figcaption><div class="bar"><span class="language">plain text</span><a class="copy" role="button" href="relaybar-copy://block/snapshot/MQ">Copy</a></div></figcaption><pre><code>no language given: plain block with a long line that should scroll rather than wrap ............................................</code></pre></figure>
+<blockquote>
+<p>Quoted remark: the lantern set needs a lower CFG.
+It continues on a second line.</p>
+</blockquote>
+<p><strong>Image not loaded:</strong> Colour bands from the run</p>
+<hr />
+<p>Final paragraph after a rule.</p>
+</article>

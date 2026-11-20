@@ -1,3 +1,4 @@
+#if os(macOS)
 import BridgeProtocol
 import XCTest
 
@@ -24,3 +25,4 @@ final class BridgePathValidationTests: XCTestCase {
         XCTAssertFalse(FrameBridgeEnvironment.validPath("relative/path"))
     }
 }
+#endif

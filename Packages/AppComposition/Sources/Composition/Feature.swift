@@ -113,19 +113,17 @@ public struct FeatureNode {
     public let id: String
     let make: @MainActor () -> any Feature
     let isolates: Set<ObjectIdentifier>
-    let children: [FeatureNode]
+    let isRealm: Bool
+    fileprivate(set) var children: [FeatureNode]
 
     public init<F: Feature>(_ id: String, isolating: [any ServiceKey.Type] = [],
                             _ make: @escaping @MainActor () -> F,
                             @FeatureTreeBuilder children: () -> [FeatureNode] = { [] }) {
         self.id = id
+        isRealm = F.self == RealmFeature.self
         self.make = { make() }
         isolates = Set(isolating.map { ObjectIdentifier($0) })
         self.children = children()
-    }
-
-    init(id: String, make: @escaping @MainActor () -> any Feature, isolates: Set<ObjectIdentifier>, children: [FeatureNode]) {
-        self.id = id; self.make = make; self.isolates = isolates; self.children = children
     }
 
     /// A subtree with its own private copy of the listed services.
@@ -138,15 +136,30 @@ public struct FeatureNode {
 extension Array where Element == FeatureNode {
     /// The same tree without the named features (full path ids) and everything below them.
     public func excluding(_ ids: Set<String>) -> [FeatureNode] {
-        func prune(_ nodes: [FeatureNode], parent: String?) -> [FeatureNode] {
+        guard !ids.isEmpty else { return self }
+        return pruning { id, _ in ids.contains(id) }
+    }
+
+    /// Removes the contributions of these plugins in the realms present in this tree.
+    public func excluding(plugins: [PluginDescriptor],
+                          where isExcluded: (PluginDescriptor, String?) -> Bool = { _, _ in true }) -> [FeatureNode] {
+        guard !plugins.isEmpty else { return self }
+        return pruning { id, realm in
+            plugins.contains { $0.owns(id, inRealm: realm) && isExcluded($0, realm) }
+        }
+    }
+
+    private func pruning(_ excludes: (String, String?) -> Bool) -> [FeatureNode] {
+        func prune(_ nodes: [FeatureNode], parent: String?, realm: String?) -> [FeatureNode] {
             nodes.compactMap { node in
                 let id = parent.map { "\($0)/\(node.id)" } ?? node.id
-                guard !ids.contains(id) else { return nil }
-                return FeatureNode(id: node.id, make: node.make, isolates: node.isolates,
-                                   children: prune(node.children, parent: id))
+                guard !excludes(id, realm) else { return nil }
+                var kept = node
+                kept.children = prune(node.children, parent: id, realm: node.isRealm ? id : realm)
+                return kept
             }
         }
-        return ids.isEmpty ? self : prune(self, parent: nil)
+        return prune(self, parent: nil, realm: nil)
     }
 }
 

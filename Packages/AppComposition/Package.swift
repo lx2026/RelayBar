@@ -3,7 +3,7 @@ import PackageDescription
 
 let package = Package(
     name: "AppComposition",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v13), .iOS("27.0")],
     products: [
         .library(name: "Composition", targets: ["Composition", "CompositionUI"]),
         .library(name: "PreviewSupport", targets: ["PreviewSupport"]),
@@ -33,6 +33,7 @@ let package = Package(
             .product(name: "SwiftMath", package: "SwiftMath")
         ]),
         .testTarget(name: "CompositionTests", dependencies: ["Composition", "CompositionUI", "CompositionFixtures", "PreviewSupport", "BridgeProtocol", "AssetGrouping", "HouseStyle"]),
-        .testTarget(name: "MarkdownRenderingTests", dependencies: ["MarkdownRendering", "CompositionFixtures"])
+        .testTarget(name: "MarkdownRenderingTests", dependencies: ["MarkdownRendering", "CompositionFixtures"],
+                    resources: [.copy("ReferencePages")])
     ]
 )

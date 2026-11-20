@@ -1,3 +1,4 @@
+#if os(macOS)
 import AppKit
 
 /// The window RelayBar's and the shared package's tests make. It never appears: every frame it is given is moved far
@@ -82,3 +83,4 @@ open class QuietWindow: NSWindow {
         super.order(.below, relativeTo: 0)
     }
 }
+#endif

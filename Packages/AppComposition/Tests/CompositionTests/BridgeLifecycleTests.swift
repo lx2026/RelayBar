@@ -1,3 +1,4 @@
+#if os(macOS)
 import Darwin
 import Foundation
 import XCTest
@@ -395,3 +396,4 @@ private final class LegacyServer: @unchecked Sendable {
     }
     func stop() { Darwin.close(descriptor) }
 }
+#endif

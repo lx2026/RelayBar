@@ -1,4 +1,5 @@
-import AppKit
+import CoreGraphics
+import CoreText
 import Foundation
 import Highlighter
 
@@ -55,21 +56,23 @@ final class CodeHighlighter: @unchecked Sendable {
         text.enumerateAttributes(in: NSRange(location: 0, length: text.length)) { attributes, range, _ in
             let piece = MarkdownRenderer.escaped(text.attributedSubstring(from: range).string)
             var style = ""
-            if let color = (attributes[.foregroundColor] as? NSColor)?.usingColorSpace(.sRGB) {
+            if let color = attributes[.foregroundColor] as? HRColor,
+               let rgb = color.cgColor.converted(to: Self.sRGB, intent: .defaultIntent, options: nil)?.components {
                 style += String(format: "color:#%02x%02x%02x;",
-                                Int((color.redComponent * 255).rounded()),
-                                Int((color.greenComponent * 255).rounded()),
-                                Int((color.blueComponent * 255).rounded()))
+                                Int((rgb[0] * 255).rounded()), Int((rgb[1] * 255).rounded()), Int((rgb[2] * 255).rounded()))
             }
-            if let traits = (attributes[.font] as? NSFont)?.fontDescriptor.symbolicTraits {
-                if traits.contains(.bold) { style += "font-weight:600;" }
-                if traits.contains(.italic) { style += "font-style:italic;" }
+            if let font = attributes[.font] as? HRFont {
+                let traits = CTFontGetSymbolicTraits(font as CTFont)
+                if traits.contains(.traitBold) { style += "font-weight:600;" }
+                if traits.contains(.traitItalic) { style += "font-style:italic;" }
             }
             let blank = piece.allSatisfy { $0 == " " || $0 == "\n" || $0 == "\t" }
             result += style.isEmpty || blank ? piece : "<span style=\"\(style)\">\(piece)</span>"
         }
         return result
     }
+
+    private static let sRGB = CGColorSpace(name: CGColorSpace.sRGB)!
 
     private static let aliases = [
         "c++": "cpp", "cs": "csharp", "html": "xml", "js": "javascript", "jsx": "javascript",

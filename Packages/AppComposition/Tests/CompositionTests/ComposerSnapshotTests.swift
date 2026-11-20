@@ -1,5 +1,6 @@
-import AppKit
 import Composition
+#if os(macOS)
+import AppKit
 import CompositionFixtures
 import CompositionUI
 import SwiftUI
@@ -29,13 +30,49 @@ final class ComposerSnapshotTests: XCTestCase {
         }
     }
 
+    func testWritesMobilePluginSnapshots() async throws {
+        guard let path = ProcessInfo.processInfo.environment["COMPOSITION_SNAPSHOT_DIR"], !path.isEmpty else {
+            throw XCTSkip("Set COMPOSITION_SNAPSHOT_DIR to write mobile plugin snapshots.")
+        }
+        let directory = URL(fileURLWithPath: path, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        QuietWindow.prepareTestProcess()
+        let runtime = try await MobilePluginFixture.runtime()
+        let catalog = MobilePluginFixture.catalog
+        let composer = PluginComposer(runtime: runtime, plugins: catalog,
+                                      globalChoice: { $0.id != "table" }, setEnabled: { _, _ in },
+                                      hostChoice: { _, realm in realm == "studio" ? .on : .inherit },
+                                      setHostChoice: { _, _, _ in })
+        composer.selection = "studio/routes"
+        let phone = CGSize(width: 390, height: 844)
+        let views: [(String, CGSize, AnyView)] = [
+            ("list", phone, AnyView(NavigationStack {
+                MobilePluginsList(composer: composer, groupTitle: MobilePluginFixture.group)
+            })),
+            ("detail", phone, AnyView(MobilePluginDetail(composer: composer, plugin: MobilePluginFixture.network))),
+            ("workspace", CGSize(width: 1194, height: 834),
+             AnyView(MobilePluginsWorkspace(composer: composer, groupTitle: MobilePluginFixture.group)))
+        ]
+        for (name, size, view) in views {
+            for (look, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                let png = try render(view, size: size, appearance: appearance)
+                try png.write(to: directory.appendingPathComponent("plugins-\(name)-\(look).png"))
+            }
+        }
+        await runtime.shutdown()
+    }
+
     private func render(selection: String?, appearance: NSAppearance.Name) throws -> Data {
         let composer = PluginComposer(graph: ComposerFixture.graph, plugins: ComposerFixture.plugins,
                                       enabled: ComposerFixture.enabled, dependents: ComposerFixture.dependents)
         composer.selection = selection
-        let bounds = NSRect(x: 0, y: 0, width: 1180, height: 640)
-        let host = NSHostingView(rootView: PluginComposerView(composer: composer)
-            .background(Color(nsColor: .windowBackgroundColor)))
+        return try render(PluginComposerView(composer: composer).background(Color(nsColor: .windowBackgroundColor)),
+                          size: CGSize(width: 1180, height: 640), appearance: appearance)
+    }
+
+    private func render(_ view: some View, size: CGSize, appearance: NSAppearance.Name) throws -> Data {
+        let bounds = NSRect(origin: .zero, size: size)
+        let host = NSHostingView(rootView: view)
         let window = QuietWindow(size: bounds.size)
         window.appearance = NSAppearance(named: appearance)
         window.contentView = host
@@ -43,7 +80,8 @@ final class ComposerSnapshotTests: XCTestCase {
         host.layoutSubtreeIfNeeded()
         RunLoop.main.run(until: Date().addingTimeInterval(0.5))
         host.layoutSubtreeIfNeeded()
-        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: 2360, pixelsHigh: 1280,
+        let bitmap = try XCTUnwrap(NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(size.width * 2),
+                                                    pixelsHigh: Int(size.height * 2),
                                                     bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
                                                     colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0))
         bitmap.size = bounds.size
@@ -51,6 +89,8 @@ final class ComposerSnapshotTests: XCTestCase {
         return try XCTUnwrap(bitmap.representation(using: .png, properties: [:]))
     }
 }
+
+#endif
 
 /// A static graph shaped like Frame's tree, shared by the layout tests and the snapshots.
 /// The link runs without a session, so the whole remote realm waits; one plugin feature has failed.

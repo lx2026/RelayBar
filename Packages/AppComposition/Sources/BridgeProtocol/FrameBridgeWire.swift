@@ -1,3 +1,4 @@
+#if os(macOS)
 import Foundation
 import Darwin
 import Security
@@ -589,3 +590,4 @@ private final class BridgeServerConnections: @unchecked Sendable {
     group.notify(queue: .global(qos: .userInitiated), execute: completion)
   }
 }
+#endif

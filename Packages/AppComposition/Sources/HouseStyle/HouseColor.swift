@@ -1,19 +1,41 @@
-import AppKit
 import Combine
 import Observation
 import SwiftUI
+
+#if os(iOS)
+/// A scene may draw a different host's appearance without changing the other scenes.
+public extension EnvironmentValues {
+    @Entry var hostHouseForm: HouseForm? = nil
+}
+
+private struct HostColor: ShapeStyle, Hashable {
+    let token: HouseToken
+    let fallback: HouseForm
+    static func == (lhs: Self, rhs: Self) -> Bool { lhs.token === rhs.token && lhs.fallback == rhs.fallback }
+    func hash(into hasher: inout Hasher) { hasher.combine(ObjectIdentifier(token)); hasher.combine(fallback) }
+    func resolve(in environment: EnvironmentValues) -> Color.Resolved {
+        token.swiftUI[environment.hostHouseForm ?? fallback]!.resolve(in: environment)
+    }
+}
+#endif
 
 public extension HouseToken {
     /// The colour for SwiftUI. A view that reads it while drawing its body is drawn again when the form changes,
     /// keeping its state; on macOS 13 that needs a `HouseTracking` property in the view.
     var color: Color {
         HouseFormTracking.read()
-        return swiftUI[HousePalette.form] ?? Color(nsColor: nsColor)
+        #if os(iOS)
+        return Color(HostColor(token: self, fallback: HousePalette.form))
+        #else
+        return swiftUI[HousePalette.form]!
+        #endif
     }
 }
 
 /// The house palette's tokens for SwiftUI.
 public enum HouseColor {
+    /// The app accent used for selections and plugin features.
+    public static var accent: Color { .accentColor }
     public static var paper: Color { HousePalette.paper.color }
     public static var panel: Color { HousePalette.panel.color }
     public static var stage: Color { HousePalette.stage.color }

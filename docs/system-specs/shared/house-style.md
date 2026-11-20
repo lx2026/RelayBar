@@ -4,7 +4,7 @@ RelayBar and Frame draw from one palette, `HousePalette` in the `HouseStyle` mod
 
 ## Tokens and forms
 
-Each token has two forms. **Paper** is Frame's warm palette, light and dark. **Standard** uses the matching macOS semantic colour.
+Each token has two forms. **Paper** is Frame's warm palette, light and dark. **Standard** uses the matching macOS semantic colour. UIKit uses the measured light and dark sRGB values of the macOS 27 standard appearance as inputs to the same mixing and contrast calculations.
 
 | Token | Role | Paper (light / dark) | Standard |
 | --- | --- | --- | --- |
@@ -31,6 +31,8 @@ macOS's own orange and red are too light for small text, so the standard form mo
 Text tokens hold at least 4.5:1 on every surface they are drawn on, in both forms and appearances: ink and muted on paper, panel, card, stage and selected, and on the fill over paper, panel and card, laid twice over paper (a pressed popover button) and at 1.6 times over paper (Frame's hovered details); warning and failure on paper, panel and card, and on the fill over paper (a highlighted popover row); amber, in the paper form, on paper, panel, stage and selected; button text on a button and paper on ink.
 
 ## Drawing and switching
+
+On iOS, `uiColor` resolves against the drawing trait collection. Form changes invalidate SwiftUI colour reads, mark views in connected window scenes for display and post `HousePalette.didChangeNotification` on the main thread. Applying the current form again does nothing.
 
 A token's `nsColor` is a dynamic colour that picks its value from the active form and the drawing appearance whenever it is drawn. `HouseColor` (or `token.color`) gives the SwiftUI colour for the active form, and reading it in a view's body records the read with Observation. Every RelayBar and Plugins-window view that reads a token also declares `@HouseTracking private var house`, which reports the form and, on macOS 13, where SwiftUI cannot see the read, draws the body again in place when the form changes. `HouseDivider` is a hairline in the line colour with a `Divider`'s size and direction.
 
