@@ -49,3 +49,11 @@ Do not commit or push merely because a task is complete; follow the Git workflow
 - Do not deploy or publish changes until the user explicitly approves the specific deployment.
 - Approval to design, implement, test, commit, or push is not deployment approval.
 - Deployment includes publishing a GitHub release, uploading distributable artifacts, notarizing for distribution, changing production hosting, or running any release/deployment command against an external service.
+
+## UX parity
+
+`docs/system-specs/shared/ux-parity.md` lists each behaviour a person can notice in more than one of RelayBar, Frame and the mobile app.
+
+- When a change alters a listed behaviour in any app, update its row in the same change, including what the other apps still owe.
+- Add a row for each new behaviour a person could notice in more than one app.
+- Prefer one definition in `Packages/AppComposition` over a copy per app. `./scripts/test.sh parity` reports the counts.

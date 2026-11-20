@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
       - name: Select Xcode with Swift 6.2 or newer
         run: bash ./scripts/select-ci-xcode.sh
-      - name: Test both apps and shared packages
+      - name: Test desktop and mobile apps, shared packages and SSH transport
         run: ./scripts/test.sh
       - name: Build Frame app
         run: swift build --package-path Apps/Frame --product Frame -Xswiftc -warnings-as-errors
