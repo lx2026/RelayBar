@@ -4,6 +4,7 @@ Notable RelayBar changes are recorded here, with Frame from 2.0.0.
 
 ## Unreleased
 
+- RelayBar opens its popover on the first click even when macOS launched the app hidden.
 - RelayBar Remote Files and Frame list folders and files newest first and tuck dot names into a counted Show row. RelayBar explains how to recover from recognized SSH failures, including changed and untrusted host keys. Frame displays those messages for remote folders.
 - File Search drops stale results from unreadable folders and uses space freed by removed folders when indexing replacements. Frame supports explicit keyboard activation of the hidden-items row. All three apps include the count in its accessibility label.
 - Frame reads compressed PNG prompts locally. Frame and mobile show generation settings and camera details under the same labels. Mobile sorts equal timestamps by name and uses the shared recovery text for recognized connection failures.

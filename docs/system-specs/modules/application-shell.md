@@ -5,6 +5,7 @@ RelayBar is a native SwiftUI `MenuBarExtra` application for macOS 13 or newer.
 ## Contract
 
 - The app runs as a menu-bar accessory with no Dock icon (`LSUIElement`).
+- Clicking the menu bar icon after a hidden launch shows the popover on the first click.
 - The popover is a 380 × 440 point window containing the tunnel list or the
   profile editor. Its size, header height and icon-button shape are defined
   once, in `RelayBarPopoverLayout`.

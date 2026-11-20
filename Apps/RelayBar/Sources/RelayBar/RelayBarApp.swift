@@ -33,6 +33,7 @@ private struct RelayBarMenuContent: View {
                 }.padding().frame(width: RelayBarPopoverLayout.width)
             }
         }
+        .onAppear { NSApp.unhideWithoutActivation() }
         .alert("RelayBar", isPresented: Binding(get: { composition.errorMessage != nil }, set: {
             if !$0 { composition.errorMessage = nil }
         })) { Button("OK") { composition.errorMessage = nil } } message: { Text(composition.errorMessage ?? "") }
