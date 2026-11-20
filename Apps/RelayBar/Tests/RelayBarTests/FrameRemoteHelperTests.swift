@@ -1,3 +1,4 @@
+import PreviewSupport
 import BridgeProtocol
 import AssetGrouping
 import CompositionFixtures
@@ -265,6 +266,32 @@ final class FrameRemoteHelperTests: XCTestCase {
         XCTAssertNotNil(try call(input, script: script).error)
         XCTAssertEqual(try entries(root).count, 2)
     }
+    func testBrowsingFixtures() throws {
+        for sample in BrowsingFixture.allCases { XCTAssertEqual(sample.observed, sample.expected, sample.rawValue) }
+        for sample in connectionFixtures {
+            let message = SFTPRemoteFileService.friendlyMessage(from: sample.diagnostic)
+            XCTAssertEqual(message, sample.cause.message)
+            XCTAssertEqual(message.components(separatedBy: "\n").first, sample.title)
+        }
+    }
+
+    func testSharedPNGFixtures() throws {
+        let root = try fixture()
+        for sample in PNGFixture.allCases {
+            let data = try sample.data()
+            XCTAssertEqual(PNGTextReader.read(data: data)["prompt"], sample.prompt)
+            guard ProcessInfo.processInfo.environment["FRAME_HELPER_PYTHON"] != nil else {
+                throw XCTSkip("Set FRAME_HELPER_PYTHON to Python 3 with Pillow.")
+            }
+            try data.write(to: root.appendingPathComponent("fixture.png"))
+            var input = BridgeAssetInput(action: "preview", root: root.path)
+            input.members = [try XCTUnwrap(entries(root).first { $0.name == "fixture.png" })]
+            let result = try call(input)
+            if sample != .oversized { XCTAssertNil(result.error) }
+            XCTAssertEqual(result.text?["prompt"], sample.prompt)
+        }
+    }
+
     func testPreviewDimensionsMetadataAndConditionalCache() throws {
         guard ProcessInfo.processInfo.environment["FRAME_HELPER_PYTHON"] != nil else { throw XCTSkip("Set FRAME_HELPER_PYTHON to Python 3 with Pillow.") }
         let root = try fixture()

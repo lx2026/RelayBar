@@ -20,6 +20,8 @@ public enum PreviewFileTypes {
 }
 
 public enum PreviewLimits {
+  public static let pngChunk = 1 << 20
+  public static let pngText = 2 << 20
     public static let document = 10 << 20
     public static let asset = 32 << 20
     public static let page = 64 << 20

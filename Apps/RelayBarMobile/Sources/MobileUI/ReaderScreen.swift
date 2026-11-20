@@ -359,11 +359,10 @@ struct ReaderScreen: View {
       guard let service = files.value else { return }
       if let rows = try? await service.list((path as NSString).deletingLastPathComponent) {
         let extended = profiles.value.enabled(PreviewPlugins.moreImages, host: profile.id)
-        position = imagePosition(path, rows: rows, extended: extended)
+        let order = profiles.value.folderOrder?[profile.id] ?? .modified
+        position = imagePosition(path, rows: rows, extended: extended, order: order)
         let parent = (path as NSString).deletingLastPathComponent as NSString
-        siblings = sortedFolderFiles(
-          groupedRows(rows, extendedImages: extended), order: profiles.value.folderOrder?[profile.id] ?? .modified, extended: extended
-        )
+        siblings = sortedFolderFiles(groupedRows(rows, extendedImages: extended), order: order)
         .filter { !$0.stamp.directory && !$0.name.hasPrefix(".") }.map {
           parent.appendingPathComponent($0.name)
         }
@@ -534,39 +533,35 @@ struct ImagePage: View {
               ].compactMap { $0 }.joined(separator: " · ")
             ).secondaryText()
           }
-          if let prompt = doc.imagePrompt {
-            Text("Prompt").secondaryText().padding(.top, 6)
-            Text(prompt).mobileFont(15).textSelection(.enabled)
+          let details = doc.imageDetails
+          ForEach(details.prompts) { row in
+            Text(row.label).secondaryText().padding(.top, 6)
+            Text(row.value).mobileFont(15).textSelection(.enabled)
           }
-          let metadata = ["template", "seed", "steps", "sampler", "guidance"].compactMap { name in
-            doc.details.keys.first { $0.lowercased() == name }
-          }
-          let keys = pad ? ["Dimensions", "File size"] + metadata : metadata
+          let identity = pad ? [
+            MetadataRow(label: "Dimensions", value: doc.details["Dimensions"] ?? ""),
+            MetadataRow(label: "File size", value: ByteCountFormatter.string(fromByteCount: Int64(doc.file.data.count), countStyle: .file))
+          ] : []
           LazyVGrid(
             columns: pad
               ? Array(repeating: GridItem(.flexible()), count: 2)
               : [GridItem(.adaptive(minimum: 85), alignment: .topLeading)], alignment: .leading,
             spacing: 8
           ) {
-            ForEach(keys, id: \.self) { key in
-              let value =
-                key == "File size"
-                ? ByteCountFormatter.string(
-                  fromByteCount: Int64(doc.file.data.count), countStyle: .file)
-                : doc.details[key] ?? ""
+            ForEach(details.rows + details.capture + identity) { row in
               if pad {
                 VStack(spacing: 5) {
                   Hairline()
                   HStack {
-                    Text(key.capitalized).secondaryText()
+                    Text(row.label).secondaryText()
                     Spacer()
-                    Text(value).mobileFont(14)
+                    Text(row.value).mobileFont(14)
                   }
                 }
               } else {
                 VStack(alignment: .leading, spacing: 2) {
-                  Text(key.capitalized).secondaryText()
-                  Text(value).mobileFont(15).textSelection(.enabled)
+                  Text(row.label).secondaryText()
+                  Text(row.value).mobileFont(15).textSelection(.enabled)
                 }
               }
             }

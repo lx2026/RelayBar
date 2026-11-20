@@ -1,3 +1,4 @@
+import PreviewSupport
 import AVKit
 import HouseStyle
 import SwiftUI
@@ -926,8 +927,9 @@ struct RemoteFilesView: View {
     }
 
     private var fileList: some View {
-        List {
-            ForEach(model.entries) { entry in
+        let listing = model.listing
+        return List {
+            ForEach(listing.shown) { entry in
                 RemoteFileRow(
                     entry: entry,
                     isSelected: model.selectedEntryID == entry.id,
@@ -946,6 +948,13 @@ struct RemoteFilesView: View {
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.visible)
                 .listRowSeparatorTint(Color.primary.opacity(0.08))
+            }
+            if listing.hidden > 0 {
+                HStack {
+                    Text(FolderListing.hiddenLabel(listing.hidden))
+                    Spacer()
+                    Button(FolderListing.show) { model.showsHidden = true }
+                }
             }
         }
         .listStyle(.plain)

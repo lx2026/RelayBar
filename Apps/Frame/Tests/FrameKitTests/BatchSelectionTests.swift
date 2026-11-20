@@ -121,7 +121,7 @@ final class BatchSelectionTests: XCTestCase {
     await store.setIncludesSubfolders(false)
     store.setViewMode(.contactSheet)
     XCTAssertEqual(store.viewMode, .contactSheet)
-    let photos = store.photos
+    let photos = store.visiblePhotos
     let ids = Set(photos.prefix(3).map(\.id))
     store.updateGridSelection(ids, currentID: photos[1].id)
     XCTAssertEqual(store.actionPhotos.count, 3)
@@ -204,7 +204,7 @@ final class BatchSelectionTests: XCTestCase {
     let store = LibraryStore(defaults: UserDefaults(suiteName: "FrameInspectTest.\(UUID())")!)
     await store.start(modelContext: container.mainContext)
     await store.openRoot(root)
-    let photos = store.photos
+    let photos = store.visiblePhotos
     let ids = Set(photos.prefix(3).map(\.id))
     store.updateGridSelection(ids, currentID: photos[1].id)
     store.inspect(photos[1])

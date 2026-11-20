@@ -1,76 +1,86 @@
-import Compression
+import CZlib
 import Foundation
 
 public enum PNGTextReader {
   private static let signature = Data([137, 80, 78, 71, 13, 10, 26, 10])
 
   public static func read(from url: URL) throws -> [String: String] {
-    try read(data: Data(contentsOf: url, options: [.mappedIfSafe]))
+    read(data: try Data(contentsOf: url, options: [.mappedIfSafe]))
   }
 
-  public static func read(data: Data) throws -> [String: String] {
+  public static func read(data: Data) -> [String: String] {
     guard data.count >= signature.count, data.prefix(signature.count) == signature else {
       return [:]
     }
-    var offset = signature.count
+    var offset = data.startIndex + signature.count
     var values: [String: String] = [:]
 
-    while offset + 12 <= data.count {
+    var remaining = PreviewLimits.pngText
+    while remaining > 0, offset + 12 <= data.endIndex {
       let length = Int(readUInt32(data, at: offset))
       let typeStart = offset + 4
       let payloadStart = typeStart + 4
       let payloadEnd = payloadStart + length
       let chunkEnd = payloadEnd + 4
-      guard length >= 0, chunkEnd <= data.count else { break }
+      guard chunkEnd <= data.endIndex else { break }
 
       let typeData = data[typeStart..<(typeStart + 4)]
       let type = String(data: typeData, encoding: .ascii) ?? ""
-      // Only text chunks are copied out of the mapped file; image data is skipped where it lies.
-      func payload() -> Data { Data(data[payloadStart..<payloadEnd]) }
+      let payload = data[payloadStart..<payloadEnd]
 
+      var entry: (key: String, value: String, bytes: Int)?
       switch type {
       case "tEXt":
-        if let entry = parseText(payload()) { values[entry.key] = entry.value }
+        entry = parseText(payload)
       case "zTXt":
-        if let entry = parseCompressedText(payload()) { values[entry.key] = entry.value }
+        entry = parseCompressedText(payload)
       case "iTXt":
-        if let entry = parseInternationalText(payload()) { values[entry.key] = entry.value }
+        entry = parseInternationalText(payload)
       case "IEND":
         return values
       default:
         break
+      }
+      if let entry, entry.bytes <= min(PreviewLimits.pngChunk, remaining) {
+        values[entry.key] = entry.value
+        remaining -= entry.bytes
       }
       offset = chunkEnd
     }
     return values
   }
 
-  private static func parseText(_ payload: Data) -> (key: String, value: String)? {
+  private static func parseText(_ payload: Data) -> (key: String, value: String, bytes: Int)? {
     guard let separator = payload.firstIndex(of: 0) else { return nil }
+    guard (1...79).contains(separator - payload.startIndex) else { return nil }
     let key = decodeLatin1(payload[..<separator])
-    let value = decodeLatin1(payload[payload.index(after: separator)...])
+    let bytes = payload[payload.index(after: separator)...]
+    guard bytes.count <= PreviewLimits.pngChunk else { return nil }
+    let value = decodeLatin1(bytes)
     guard !key.isEmpty else { return nil }
-    return (key, value)
+    return (key, value, bytes.count)
   }
 
-  private static func parseCompressedText(_ payload: Data) -> (key: String, value: String)? {
+  private static func parseCompressedText(_ payload: Data) -> (key: String, value: String, bytes: Int)? {
     guard let separator = payload.firstIndex(of: 0) else { return nil }
     let methodIndex = payload.index(after: separator)
     guard methodIndex < payload.endIndex, payload[methodIndex] == 0 else { return nil }
     let compressedStart = payload.index(after: methodIndex)
-    let compressed = Data(payload[compressedStart...])
+    let compressed = payload[compressedStart...]
     guard let decompressed = decompressZlib(compressed) else { return nil }
+    guard (1...79).contains(separator - payload.startIndex) else { return nil }
     let key = decodeLatin1(payload[..<separator])
-    let value = String(data: decompressed, encoding: .utf8) ?? decodeLatin1(decompressed[...])
+    let value = decodeLatin1(decompressed[...])
     guard !key.isEmpty else { return nil }
-    return (key, value)
+    return (key, value, decompressed.count)
   }
 
-  private static func parseInternationalText(_ payload: Data) -> (key: String, value: String)? {
+  private static func parseInternationalText(_ payload: Data) -> (key: String, value: String, bytes: Int)? {
     guard let keywordEnd = payload.firstIndex(of: 0) else { return nil }
+    guard (1...79).contains(keywordEnd - payload.startIndex) else { return nil }
     let flagIndex = payload.index(after: keywordEnd)
     let methodIndex = payload.index(after: flagIndex)
-    guard methodIndex < payload.endIndex else { return nil }
+    guard methodIndex < payload.endIndex, payload[methodIndex] == 0 else { return nil }
 
     var cursor = payload.index(after: methodIndex)
     guard let languageEnd = payload[cursor...].firstIndex(of: 0) else { return nil }
@@ -78,49 +88,37 @@ public enum PNGTextReader {
     guard let translatedEnd = payload[cursor...].firstIndex(of: 0) else { return nil }
     cursor = payload.index(after: translatedEnd)
 
-    let textData = Data(payload[cursor...])
+    let textData = payload[cursor...]
     let decoded: Data
     if payload[flagIndex] == 1 {
-      guard payload[methodIndex] == 0, let decompressed = decompressZlib(textData) else {
+      guard let decompressed = decompressZlib(textData) else {
         return nil
       }
       decoded = decompressed
     } else {
+      guard payload[flagIndex] == 0, textData.count <= PreviewLimits.pngChunk else { return nil }
       decoded = textData
     }
 
     let key = decodeLatin1(payload[..<keywordEnd])
-    let value = String(data: decoded, encoding: .utf8) ?? decodeLatin1(decoded[...])
-    guard !key.isEmpty else { return nil }
-    return (key, value)
+    guard let value = String(data: decoded, encoding: .utf8), !key.isEmpty else { return nil }
+    return (key, value, decoded.count)
   }
 
   private static func decompressZlib(_ compressed: Data) -> Data? {
-    guard !compressed.isEmpty else { return Data() }
-    var capacity = max(4_096, compressed.count * 8)
-    let maximum = 64 * 1_024 * 1_024
-
-    while capacity <= maximum {
-      var output = Data(count: capacity)
-      let decodedCount = output.withUnsafeMutableBytes { destination in
-        compressed.withUnsafeBytes { source in
-          compression_decode_buffer(
-            destination.bindMemory(to: UInt8.self).baseAddress!,
-            capacity,
-            source.bindMemory(to: UInt8.self).baseAddress!,
-            compressed.count,
-            nil,
-            COMPRESSION_ZLIB
-          )
-        }
+    guard !compressed.isEmpty else { return nil }
+    var length = uLongf(PreviewLimits.pngChunk)
+    var output = Data(count: Int(length))
+    let status = output.withUnsafeMutableBytes { destination in
+      compressed.withUnsafeBytes { source in
+        uncompress(
+          destination.bindMemory(to: UInt8.self).baseAddress, &length,
+          source.bindMemory(to: UInt8.self).baseAddress, UInt(compressed.count))
       }
-      if decodedCount > 0 {
-        output.count = decodedCount
-        return output
-      }
-      capacity *= 2
     }
-    return nil
+    guard status == Z_OK else { return nil }
+    output.count = Int(length)
+    return output
   }
 
   private static func readUInt32(_ data: Data, at offset: Int) -> UInt32 {

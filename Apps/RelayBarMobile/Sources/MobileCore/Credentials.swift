@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import CryptoKit
 import Foundation
@@ -170,7 +171,7 @@ package actor EnclaveKeys: KeyProvider {
       return false
     }
     if let pinned {
-      if pinned != identity { failureReason = "The host key has changed. Connection blocked." }
+      if pinned != identity { failureReason = ConnectionFailure.hostKeyChanged.message }
       return pinned == identity
     }
     guard !peers.isEmpty else { return nil }

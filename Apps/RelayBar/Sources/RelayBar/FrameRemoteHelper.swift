@@ -405,13 +405,21 @@ def preview(q):
                 from PIL import Image, ImageOps, ExifTags, PngImagePlugin
             except ImportError: raise ValueError('Install Pillow for Python 3 on this host to show previews and metadata.')
             Image.MAX_IMAGE_PIXELS=80000000
-            PngImagePlugin.MAX_TEXT_CHUNK=1024*1024; PngImagePlugin.MAX_TEXT_MEMORY=2*1024*1024
+            PngImagePlugin.MAX_TEXT_CHUNK=\#(PreviewLimits.pngChunk); PngImagePlugin.MAX_TEXT_MEMORY=\#(PreviewLimits.pngText)
             warnings.simplefilter('error', Image.DecompressionBombWarning)
             with os.fdopen(os.dup(fd),'rb') as src, Image.open(src) as im:
                 meta['Dimensions']='%s × %s'%im.size
                 im.load()
-                for key,value in list(im.info.items())[:128]:
-                    if isinstance(value,(str,int,float)): text[str(key)]=bounded(value)
+                remaining=PngImagePlugin.MAX_TEXT_MEMORY
+                for key,value in (im.text if im.format == 'PNG' else im.info).items():
+                    if not isinstance(value,(str,int,float)): continue
+                    if im.format != 'PNG':
+                        if len(text)<128: text[str(key)]=bounded(value)
+                        continue
+                    value_size=len(str(value).encode('utf8' if isinstance(value,PngImagePlugin.iTXt) else 'latin1'))
+                    if value_size<=min(remaining,PngImagePlugin.MAX_TEXT_CHUNK):
+                        text[str(key)]=str(value)
+                        remaining-=value_size
                 exif=im.getexif()
                 try: exif.update(exif.get_ifd(34665))
                 except (KeyError,ValueError,TypeError): pass

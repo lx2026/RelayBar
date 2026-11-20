@@ -56,7 +56,8 @@ Local 1.6.0 keeps all Frame navigation history-neutral, including explicit subfo
   and **Upload…**. **Select** appears only when the folder contains a regular
   file and no operation is active.
 - The list shows supported folders, regular files, and symbolic links with modified text and size.
-- Folders sort before other items; each group uses localized name ordering.
+- Folders precede files. Each group lists the most recently modified entries first, with natural name order for ties. A final row counts dot names and reveals them with Show for this folder visit.
+- Recognized SSH failures include a recovery line. A changed host key and a key the user has yet to trust have separate messages. Frame receives the same wording when browsing through RelayBar.
 - Activating a folder presents its target path immediately. An uncached folder shows a content-local **Opening folder…** state; rows and Refresh are disabled, while Back remains available to cancel the open and restore the exact prior folder and selection.
 - Successful listings enter a session-only LRU cache keyed by exact SSH connection identity and normalized absolute path. The cache retains at most 20,000 aggregate entry units, charges an empty snapshot one unit, and evicts whole least-recently-used snapshots.
 - Cached Back and revisit navigation publish rows synchronously, then revalidate them in place. Revalidation keeps the rows visible, preserves selection when possible, and reports failure through the existing nonblocking error and retry affordance.

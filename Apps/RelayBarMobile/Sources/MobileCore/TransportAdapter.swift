@@ -165,16 +165,16 @@ extension TransportError {
   func message(for host: String) -> String {
     switch self {
     case .unreachable: "Couldn't reach \(host). Check Tailscale is connected, then retry."
-    case .hostKeyChanged: "The host key has changed. Connection blocked."
-    case .hostKeyRefused: "The host key was not trusted."
-    case .signInRefused: "The host refused sign-in."
+    case .hostKeyChanged: ConnectionFailure.hostKeyChanged.message
+    case .hostKeyRefused: ConnectionFailure.hostKeyNotTrusted.message
+    case .signInRefused: ConnectionFailure.signInRefused.message
     case .algorithmMismatch: "The host and this device could not agree on an SSH algorithm."
     case .sftpUnavailable: "The host does not provide SFTP."
     case .forwardingProhibited: "The host disallows forwarding."
-    case .connectionRefused: "The service refused the connection."
+    case .connectionRefused: ConnectionFailure.connectionRefused.message
     case .cancelled: "The connection was cancelled."
     case .invalidEndpoint: "The host address or port is invalid."
-    case .disconnected: "The SSH connection ended."
+    case .disconnected: ConnectionFailure.connectionLost.message
     }
   }
 }

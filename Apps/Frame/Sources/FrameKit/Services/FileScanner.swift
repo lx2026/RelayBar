@@ -1,3 +1,4 @@
+import PreviewSupport
 import Foundation
 
 public struct ScanResult: Sendable {
@@ -19,15 +20,17 @@ public enum FileScanner {
   public static func directory(rootURL: URL, rootID: UUID, path: String) throws -> ScanResult {
     let folder = path.isEmpty ? rootURL : try AssetPaths.below(rootURL, relativePath: path)
     let urls = try FileManager.default.contentsOfDirectory(at: folder,
-      includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey], options: .skipsHiddenFiles)
+      includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .contentModificationDateKey], options: [])
     var photos: [PhotoItem] = [], extras: [AssetFile] = [], children: [FolderNode] = []
+    var folderDates: [String: Date] = [:]
     for url in urls {
       try Task.checkCancellation()
-      let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey])
+      let values = try url.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey, .contentModificationDateKey])
       if values.isSymbolicLink == true { continue }
       let relative = relativePath(for: url, below: rootURL)
       if values.isDirectory == true {
         if relative == "Archive", ArchiveService.isManaged(url) { continue }
+        folderDates[relative] = values.contentModificationDate
         children.append(FolderNode(id: relative, name: url.lastPathComponent, relativePath: relative, photoCount: 0, children: []))
       } else if values.isRegularFile == true {
         let file = try AssetFile.snapshot(url, relativePath: relative)
@@ -36,9 +39,12 @@ public enum FileScanner {
         } else { extras.append(file) }
       }
     }
-    photos = AssetPairing.pair(photos, sidecars: extras).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    photos = AssetPairing.pair(photos, sidecars: extras).sorted(by: newestFirst)
     return ScanResult(photos: photos, rootFolder: FolderNode(id: path, name: folder.lastPathComponent,
-      relativePath: path, photoCount: photos.count, children: children.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }),
+      relativePath: path, photoCount: photos.count, children: children.sorted {
+        FolderListing.precedes(($0.name, true, folderDates[$0.id]?.timeIntervalSince1970),
+                               ($1.name, true, folderDates[$1.id]?.timeIntervalSince1970))
+      }),
       files: allFiles(photos: photos, extras: extras, rootID: rootID))
   }
   public static func item(_ file: AssetFile, rootID: UUID, format: PhotoFormat = .text) -> PhotoItem {
@@ -47,13 +53,18 @@ public enum FileScanner {
       name: file.url.lastPathComponent, format: format, fileSize: file.size, createdAt: nil,
       modifiedAt: file.modifiedAt, fileIdentifier: file.identifier)
   }
+  static func newestFirst(_ a: PhotoItem, _ b: PhotoItem) -> Bool {
+    FolderListing.precedes((a.name, false, a.modifiedAt?.timeIntervalSince1970),
+                           (b.name, false, b.modifiedAt?.timeIntervalSince1970))
+  }
+
   static func allFiles(photos: [PhotoItem], extras: [AssetFile], rootID: UUID) -> [PhotoItem] {
     let owners = Dictionary(photos.flatMap { photo in photo.companions.map { ($0.relativePath, photo.id) } }, uniquingKeysWith: { first, _ in first })
     return (photos + extras.map { file in
       var value = item(file, rootID: rootID, format: .browsing(pathExtension: file.url.pathExtension))
       value.companionOwnerID = owners[file.relativePath]
       return value
-    }).sorted { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+    }).sorted(by: newestFirst)
   }
   public static func scan(rootURL: URL, rootID: UUID) throws -> ScanResult {
     let rootURL = rootURL.resolvingSymlinksInPath().standardizedFileURL
@@ -72,7 +83,7 @@ public enum FileScanner {
       .isSymbolicLinkKey,
     ]
     let options: FileManager.DirectoryEnumerationOptions = [
-      .skipsHiddenFiles, .skipsPackageDescendants,
+      .skipsPackageDescendants,
     ]
 
     guard
@@ -88,7 +99,7 @@ public enum FileScanner {
     let standardizedRoot = rootURL.standardizedFileURL
     var photos: [PhotoItem] = []
     var sidecars: [AssetFile] = []
-    var folders: [String] = []
+    var folderDates: [String: Date] = [:]
     let archiveURL = standardizedRoot.appendingPathComponent("Archive")
     let managedArchive = ArchiveService.isManaged(archiveURL)
 
@@ -100,7 +111,10 @@ public enum FileScanner {
       let kind = try fileURL.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
       if kind.isSymbolicLink == true { enumerator.skipDescendants(); continue }
       if kind.isDirectory == true {
-        folders.append(relativePath(for: fileURL, below: standardizedRoot)); continue
+        let relative = relativePath(for: fileURL, below: standardizedRoot)
+        folderDates[relative] = try fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate ?? .distantPast
+        if fileURL.lastPathComponent.hasPrefix(".") { enumerator.skipDescendants() }
+        continue
       }
       guard let format = PhotoFormat(pathExtension: fileURL.pathExtension) else {
         if let file = try? AssetFile.snapshot(fileURL, relativePath: relativePath(for: fileURL, below: standardizedRoot)),
@@ -142,7 +156,7 @@ public enum FileScanner {
     let recoveryURLs = Set(archive.photos.flatMap(\.exportMembers).map(\.url))
     photos.removeAll { recoveryURLs.contains($0.url) }
     sidecars.removeAll { recoveryURLs.contains($0.url) }
-    let rootFolder = FolderTreeBuilder.build(rootURL: standardizedRoot, photos: photos, folders: folders)
+    let rootFolder = FolderTreeBuilder.build(rootURL: standardizedRoot, photos: photos, folderDates: folderDates)
     return ScanResult(photos: photos + archive.photos, rootFolder: rootFolder, warnings: archive.warnings,
       files: allFiles(photos: photos, extras: sidecars, rootID: rootID) + archive.photos)
   }
@@ -168,10 +182,10 @@ enum FolderTreeBuilder {
     }
   }
 
-  static func build(rootURL: URL, photos: [PhotoItem], folders: [String] = []) -> FolderNode {
+  static func build(rootURL: URL, photos: [PhotoItem], folderDates: [String: Date] = [:]) -> FolderNode {
     let root = MutableNode(name: rootURL.lastPathComponent, relativePath: "")
 
-    for folder in folders {
+    for folder in folderDates.keys {
       var node = root, components: [String] = []
       for part in folder.split(separator: "/").map(String.init) {
         components.append(part)
@@ -199,13 +213,14 @@ enum FolderTreeBuilder {
       }
     }
 
-    return freeze(root)
+    return freeze(root, dates: folderDates)
   }
 
-  private static func freeze(_ node: MutableNode) -> FolderNode {
+  private static func freeze(_ node: MutableNode, dates: [String: Date]) -> FolderNode {
     let children = node.children.values
-      .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-      .map(freeze)
+      .sorted { FolderListing.precedes(($0.name, true, dates[$0.relativePath]?.timeIntervalSince1970),
+                                      ($1.name, true, dates[$1.relativePath]?.timeIntervalSince1970)) }
+      .map { freeze($0, dates: dates) }
     return FolderNode(
       id: node.relativePath.isEmpty ? "root" : node.relativePath,
       name: node.name,

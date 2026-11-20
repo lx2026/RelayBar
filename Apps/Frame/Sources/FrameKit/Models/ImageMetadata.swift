@@ -1,17 +1,8 @@
 import BridgeProtocol
 import Foundation
+import PreviewSupport
 
-public struct MetadataRow: Identifiable, Hashable, Sendable {
-  public let id: String
-  public let label: String
-  public let value: String
-
-  public init(label: String, value: String) {
-    self.id = "\(label):\(value)"
-    self.label = label
-    self.value = value
-  }
-}
+public typealias MetadataRow = PreviewSupport.MetadataRow
 
 public struct ImageMetadata: Hashable, Sendable {
   public var prompt: String?

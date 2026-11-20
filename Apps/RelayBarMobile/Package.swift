@@ -25,11 +25,9 @@ let package = Package(
     .package(path: "../../Packages/RelayTransport"),
   ],
   targets: [
-    .systemLibrary(name: "CZlib"),
     .target(
       name: "MobileCore",
       dependencies: [
-        "CZlib",
         .product(name: "RelayWebRoutes", package: "RelayTransport"),
         .product(name: "Composition", package: "AppComposition"),
         .product(name: "PreviewSupport", package: "AppComposition"),

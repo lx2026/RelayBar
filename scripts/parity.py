@@ -17,6 +17,14 @@ def selected_cases(source, loop):
     return set(re.findall(r'"([^"]+)"', match[1]))
 
 
+def enum_cases(source, name):
+    declaration = re.search(r"enum " + name + r"[^{}]*\{\s*((?:case [^\n]+\s*)+)", source)
+    if not declaration:
+        return set()
+    return {alias or identifier for identifier, alias in
+            re.findall(r'(\w+)(?:\s*=\s*"([^"]+)")?', declaration[1].replace("case ", ""))}
+
+
 def main():
     ledger = LEDGER.read_text()
     sources = {}
@@ -54,7 +62,23 @@ def main():
     mac = selected_cases(sources["Mac Markdown test"], "for (name, source) in")
     mobile = selected_cases(sources["Mobile Markdown test"], "for name in")
     covered = (len(groups) if wired else 0) + len(pages & mac & mobile)
-    fixtures = f"{covered}/{len(groups) + len(pages)}"
+    total = len(groups) + len(pages)
+    browsing = sources["Browsing fixtures"]
+    browsing_tests = (sources["Mac browsing test"], sources["Mobile grouping test"])
+    fixtures_dir = paths["Browsing fixtures"].parent
+    pngs = {p.stem for p in (fixtures_dir / "PNG").glob("*.png")}
+    named_pngs = enum_cases(browsing, "PNGFixture")
+    browsing_cases = enum_cases(browsing, "BrowsingFixture")
+    connections = re.findall(r"^  \(\.\w+,", browsing, re.M)
+    for loop, available, expected in [
+        ("BrowsingFixture.allCases", len(browsing_cases), len(browsing_cases)),
+        ("PNGFixture.allCases", len(pngs & named_pngs), len(pngs | named_pngs)),
+        ("connectionFixtures", len(connections), len(connections)),
+    ]:
+        total += expected
+        if all(f"for sample in {loop}" in test for test in browsing_tests):
+            covered += available
+    fixtures = f"{covered}/{total}"
     print(f"Definitions outside AppComposition: {definitions}")
     print(f"Shared fixture cases covered: {fixtures}")
     print(f"Ledger rows to fix: {outstanding}")

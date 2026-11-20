@@ -484,7 +484,9 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
                                    frameHelper: true)
         guard !result.exceededOutputLimit else { throw BridgeError("Remote preview exceeded its output limit.") }
         guard result.status == 0 else {
-            throw BridgeError("Remote helper failed. Python 3 is required on this host. " + String(result.error.prefix(500)))
+            let message = Self.friendlyMessage(from: result.error)
+            if ConnectionFailure.allCases.contains(where: { $0.message == message }) { throw BridgeError(message) }
+            throw BridgeError("Remote helper failed. Python 3 is required on this host. " + message)
         }
         let response = try JSONDecoder().decode(BridgeAssetResult.self, from: Data(result.output.utf8))
         if let error = response.error { throw BridgeError(error, resolvedFolder: response.resolvedFolder) }
@@ -1477,13 +1479,15 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
     /// Ordered: the first entry whose text appears in the detail wins, so
     /// overlapping matches resolve the same way they did as a branch chain.
     private static let messageTable: [(matches: [String], message: String)] = [
+        (["remote host identification has changed", "offending key"], ConnectionFailure.hostKeyChanged.message),
+        (["host key verification failed"], ConnectionFailure.hostKeyNotTrusted.message),
+        (["permission denied ("], ConnectionFailure.signInRefused.message),
         (["permission denied"], "Permission was denied for this server or path."),
-        (["host key verification failed"], "SSH could not verify this server’s host key."),
+        (["could not resolve hostname"], ConnectionFailure.hostNotFound.message),
         (["no such file", "not found"], "The remote path wasn’t found."),
-        (["could not resolve hostname"], "The saved server could not be found."),
-        (["operation timed out", "connection timed out"], "The connection timed out."),
-        (["connection refused"], "The server refused the connection."),
-        (["connection closed", "connection reset"], "The connection was lost.")
+        (["operation timed out", "connection timed out"], ConnectionFailure.timedOut.message),
+        (["connection refused"], ConnectionFailure.connectionRefused.message),
+        (["connection closed", "connection reset", "broken pipe"], ConnectionFailure.connectionLost.message)
     ]
 
     static func friendlyMessage(from errorOutput: String) -> String {
@@ -1504,7 +1508,7 @@ final class SFTPRemoteFileService: RemoteFileServing, @unchecked Sendable {
         let detail = String(String.UnicodeScalarView(safeScalars).prefix(512))
 
         let match = Self.messageTable.first { entry in
-            entry.matches.contains { detail.localizedCaseInsensitiveContains($0) }
+            entry.matches.contains { pattern in lines.contains { $0.localizedCaseInsensitiveContains(pattern) } }
         }
         if let match { return match.message }
         return detail.isEmpty ? "The remote operation failed." : detail

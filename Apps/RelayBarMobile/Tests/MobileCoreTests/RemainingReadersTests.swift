@@ -1,3 +1,5 @@
+import RelayTransport
+import PreviewSupport
 import CompositionFixtures
 import Foundation
 import HouseStyle
@@ -201,7 +203,7 @@ func folderRowsKeepCompanionsWithTheirOwner(_ fixture: CompanionGroupingFixture)
     .init(name: name, stamp: .init(modified: time, directory: false))
   }
   let rows = [file("10.md", 2), file(".old", 0), file("2.md", 2), file("a.txt", 3)]
-  #expect(hiddenEntryCount(rows) == 1)
+  #expect(FolderListing.split(rows, name: \.name).hidden == 1)
   let visible = rows.filter { !$0.name.hasPrefix(".") }
   #expect(sortedFolderFiles(visible, order: .modified).map(\.name) == ["a.txt", "2.md", "10.md"])
   #expect(sortedFolderFiles(visible, order: .name).map(\.name) == ["2.md", "10.md", "a.txt"])
@@ -280,5 +282,24 @@ private actor PreviewFiles: RangeFiles {
   let section = try #require(context.evaluateScript(script))
   for i in 0..<40 {
     #expect(section.call(withArguments: [i * 120 + 50])?.toInt32() == Int32(i))
+  }
+}
+
+@Test @MainActor func browsingFixtures() throws {
+  for sample in BrowsingFixture.allCases { #expect(sample.observed == sample.expected) }
+  for sample in PNGFixture.allCases { #expect(try PNGTextReader.read(data: sample.data())["prompt"] == sample.prompt) }
+  for sample in connectionFixtures {
+    #expect(sample.cause.wording.title == sample.title)
+    let message: String
+    switch sample.cause {
+    case .hostKeyChanged: message = TransportError.hostKeyChanged(.init(type: "test", fingerprint: "changed")).message(for: "example.invalid")
+    case .hostKeyNotTrusted: message = TransportError.hostKeyRefused.message(for: "example.invalid")
+    case .signInRefused: message = TransportError.signInRefused([]).message(for: "example.invalid")
+    case .connectionRefused: message = TransportError.connectionRefused.message(for: "example.invalid")
+    case .connectionLost: message = TransportError.disconnected.message(for: "example.invalid")
+    case .hostNotFound: message = ServiceBrowser.failureMessage(URLError(.cannotFindHost))
+    case .timedOut: message = ServiceBrowser.failureMessage(URLError(.timedOut))
+    }
+    #expect(message == sample.cause.message)
   }
 }

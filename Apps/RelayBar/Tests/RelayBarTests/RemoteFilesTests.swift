@@ -1,3 +1,4 @@
+import PreviewSupport
 import MarkdownRendering
 import AppKit
 import AVFoundation
@@ -2583,7 +2584,7 @@ final class SFTPListingParserTests: XCTestCase {
 
         XCTAssertEqual(
             entries.map(\.name),
-            ["report[2026]", "draft?.md", "notes*.md"]
+            ["report[2026]", "notes*.md", "draft?.md"]
         )
         XCTAssertEqual(entries[0].path, "/srv/app/report[2026]")
     }
@@ -2601,13 +2602,13 @@ final class SFTPListingParserTests: XCTestCase {
 
         XCTAssertEqual(
             entries.map(\.name),
-            ["reports", "screenshots", "dashboard final.png", "latest", "README.md"]
+            ["reports", "screenshots", "latest", "dashboard final.png", "README.md"]
         )
         XCTAssertEqual(entries[0].kind, .directory)
-        XCTAssertEqual(entries[2].size, 1_258_291)
-        XCTAssertTrue(entries[2].isPreviewableImage)
-        XCTAssertEqual(entries[3].kind, .symbolicLink)
-        XCTAssertEqual(entries[2].path, "/srv/app/output/dashboard final.png")
+        XCTAssertEqual(entries[3].size, 1_258_291)
+        XCTAssertTrue(entries[3].isPreviewableImage)
+        XCTAssertEqual(entries[2].kind, .symbolicLink)
+        XCTAssertEqual(entries[3].path, "/srv/app/output/dashboard final.png")
     }
 
     func testParsesAbsoluteDirectChildNamesProducedByOpenSSHServers() throws {
@@ -3654,8 +3655,8 @@ final class SFTPRemoteFileServiceTests: XCTestCase {
     func testNormalizesActionableConnectionErrors() async {
         let service = makeFixtureService()
         let cases: [(host: String, message: String)] = [
-            ("hostkey", "SSH could not verify this server’s host key."),
-            ("refused", "The server refused the connection.")
+            ("hostkey", ConnectionFailure.hostKeyNotTrusted.message),
+            ("refused", ConnectionFailure.connectionRefused.message)
         ]
 
         for testCase in cases {

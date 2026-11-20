@@ -186,9 +186,11 @@ final class RemoteFolderTreeTests: XCTestCase {
     try Data("fixture".utf8).write(to: root.appendingPathComponent("a.jpg"))
     try Data("fixture".utf8).write(to: root.appendingPathComponent("Empty/Deeper/b.jpg"))
     try FileManager.default.createDirectory(at: root.appendingPathComponent("No media"), withIntermediateDirectories: true)
+    try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSince1970: 10)],
+                                          ofItemAtPath: root.appendingPathComponent("Empty").path)
     let result = try FileScanner.scan(rootURL: root, rootID: UUID())
-    XCTAssertEqual(result.rootFolder.children.map(\.name), ["Empty", "No media"])
-    XCTAssertEqual(result.rootFolder.children.last?.photoCount, 0)
+    XCTAssertEqual(result.rootFolder.children.map(\.name), ["No media", "Empty"])
+    XCTAssertEqual(result.rootFolder.children.first?.photoCount, 0)
     XCTAssertEqual(PhotoQuery.visiblePhotos(in: result.photos, folderRelativePath: "", filter: .all, favorites: [], includeSubfolders: false).count, 1)
     XCTAssertEqual(PhotoQuery.visiblePhotos(in: result.photos, folderRelativePath: "Empty", filter: .all, favorites: [], includeSubfolders: false).count, 0)
     XCTAssertEqual(PhotoQuery.visiblePhotos(in: result.photos, folderRelativePath: "Empty", filter: .all, favorites: []).count, 1)

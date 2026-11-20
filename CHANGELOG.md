@@ -4,6 +4,9 @@ Notable RelayBar changes are recorded here, with Frame from 2.0.0.
 
 ## Unreleased
 
+- RelayBar Remote Files and Frame list folders and files newest first and tuck dot names into a counted Show row. RelayBar explains how to recover from recognized SSH failures, including changed and untrusted host keys. Frame displays those messages for remote folders.
+- Frame reads compressed PNG prompts locally. Frame and mobile show generation settings and camera details under the same labels. Mobile sorts equal timestamps by name and uses the shared recovery text for recognized connection failures.
+
 - RelayBar previews MOV, M4V and WebP, and opens Markdown up to 10 MiB on reader paper. Website Labels is the new name for Service Labels.
 - Frame opens `.mdown` and `.mkd` as Markdown and `.text` as plain text. Pin and Unpin use a pin icon and keep existing saved items.
 - Both apps include More Image Formats by default. Switching it off leaves JPEG and PNG previews enabled.

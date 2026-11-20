@@ -36,17 +36,31 @@ final class ReaderLayoutTests: XCTestCase {
     return (store, root)
   }
 
+  func testHiddenFilesAndFoldersShareOneVisit() async throws {
+    let (store, _) = try await makeStore([".notes.md", "visible.md"], folders: [".private", "next"])
+    XCTAssertEqual(store.treeFiles(in: "").map(\.name), ["visible.md"])
+    XCTAssertEqual(store.subfolders.map(\.name), ["next"])
+    XCTAssertEqual(store.hiddenCount(in: ""), 2)
+    store.revealHidden(in: "")
+    XCTAssertEqual(Set(store.visiblePhotos.map(\.name)), [".notes.md", "visible.md"])
+    XCTAssertEqual(Set(store.subfolders.map(\.name)), [".private", "next"])
+    store.selectFolder("next")
+    store.selectFolder("")
+    XCTAssertEqual(store.hiddenCount(in: ""), 2)
+    await store.shutdown()
+  }
+
   func testSidecarsAreFoldedIntoTheirFileUntilShown() async throws {
     let (store, _) = try await makeStore(["glass.png", "glass.png.json", "notes.md"])
-    XCTAssertEqual(store.visiblePhotos.map(\.name), ["glass.png", "notes.md"])
-    XCTAssertEqual(store.treeFiles(in: "").map(\.name), ["glass.png", "notes.md"])
+    XCTAssertEqual(Set(store.visiblePhotos.map(\.name)), ["glass.png", "notes.md"])
+    XCTAssertEqual(Set(store.treeFiles(in: "").map(\.name)), ["glass.png", "notes.md"])
     XCTAssertEqual(store.folderFileCount, 2)
     let glass = try XCTUnwrap(store.visiblePhotos.first { $0.name == "glass.png" })
     XCTAssertEqual(store.companionItems(of: glass).map(\.name), ["glass.png.json"])
     XCTAssertEqual(glass.exportMembers.map { $0.url.lastPathComponent }, ["glass.png", "glass.png.json"],
                    "An operation on the file still carries its sidecar")
     store.setShowsSidecarFiles(true)
-    XCTAssertEqual(store.visiblePhotos.map(\.name), ["glass.png", "glass.png.json", "notes.md"])
+    XCTAssertEqual(Set(store.visiblePhotos.map(\.name)), ["glass.png", "glass.png.json", "notes.md"])
     XCTAssertEqual(store.treeFiles(in: "").count, 3)
     store.setShowsSidecarFiles(false)
     store.setViewMode(.contactSheet)

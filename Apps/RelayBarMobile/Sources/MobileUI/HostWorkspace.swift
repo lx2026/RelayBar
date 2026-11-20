@@ -799,7 +799,7 @@ struct GoPage: View {
                     Text(host.account + "@" + host.host + ":" + String(address.port))
                   case .host(let name): Text("Host · " + name)
                   case .path(let path): Text("File · " + path)
-                  case .service(let address): Text("Website · :\(address.port)")
+                  case .service(let address): Text(verbatim: "Website · :" + String(address.port))
                   }
                 }.frame(minHeight: 44)
               }

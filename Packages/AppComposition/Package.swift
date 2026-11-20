@@ -22,8 +22,9 @@ let package = Package(
         .target(name: "Composition"),
         .target(name: "CompositionUI", dependencies: ["Composition", "HouseStyle"]),
         .target(name: "HouseStyle", dependencies: ["Composition"]),
-        .target(name: "PreviewSupport", dependencies: ["Composition"]),
-        .target(name: "CompositionFixtures", dependencies: ["Composition"]),
+        .systemLibrary(name: "CZlib"),
+        .target(name: "PreviewSupport", dependencies: ["Composition", "CZlib"]),
+        .target(name: "CompositionFixtures", dependencies: ["Composition", "PreviewSupport"], resources: [.copy("PNG")]),
         .target(name: "BridgeProtocol"),
         .target(name: "AssetGrouping", dependencies: ["PreviewSupport"]),
         .target(name: "MarkdownRendering", dependencies: [

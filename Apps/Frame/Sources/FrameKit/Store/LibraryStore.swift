@@ -103,11 +103,21 @@ public final class LibraryStore: ObservableObject {
   @Published public private(set) var isLoadingOriginal = false
   private var originalTask: Task<Void, Never>?
   @Published public private(set) var rootName = ""
-  @Published public private(set) var activeRootID: UUID?
+  @Published public private(set) var activeRootID: UUID? { didSet { if oldValue != activeRootID { revealedFolder = nil } } }
   @Published public private(set) var rootUnavailable = false
   @Published public private(set) var selectionMissing = false
   @Published public private(set) var recentFolders: [RecentFolder] = []
-  @Published public private(set) var selectedFolderPath = "" { didSet { scopeChanged() } }
+  @Published public private(set) var selectedFolderPath = "" {
+    didSet {
+      if oldValue != selectedFolderPath, revealedFolder != selectedFolderPath { revealedFolder = nil }
+      scopeChanged()
+    }
+  }
+  @Published public private(set) var revealedFolder: String? { didSet { scopeChanged() } }
+  public func revealHidden(in path: String) {
+    if selectedFolderPath != path { selectFolder(path) }
+    revealedFolder = path
+  }
   @Published public private(set) var filter: PhotoFilter = .all { didSet { scopeChanged() } }
   @Published public private(set) var fileTypeFilter: FileTypeFilter = .all { didSet { scopeChanged() } }
   /// Companion files are folded into the file they describe unless this is on.
@@ -320,8 +330,18 @@ public final class LibraryStore: ObservableObject {
     return result
   }
   /// The current folder after its filters, before Prompt Search narrows it.
+  private var listedPhotos: [PhotoItem] {
+    let items = displayed(photos)
+    if filter == .archive { return items }
+    return items.filter { photo in
+      let relative = photo.relativePath.split(separator: "/").dropFirst(selectedFolderPath.split(separator: "/").count)
+      return !relative.enumerated().contains { index, name in
+        name.hasPrefix(".") && !(index == 0 && revealedFolder == selectedFolderPath)
+      }
+    }.sorted(by: FileScanner.newestFirst)
+  }
   private var searchScope: [PhotoItem] {
-    PhotoQuery.visiblePhotos(in: displayed(photos), folderRelativePath: selectedFolderPath,
+    PhotoQuery.visiblePhotos(in: listedPhotos, folderRelativePath: selectedFolderPath,
                              filter: filter, favorites: favorites, includeSubfolders: includesSubfolders,
                              fileType: fileTypeFilter, includeCompanions: showsSidecarFiles)
   }
@@ -400,8 +420,15 @@ public final class LibraryStore: ObservableObject {
   }
   /// The files the tree lists in a folder: companions are folded into their owner unless Show Sidecar Files is on.
   public func treeFiles(in path: String) -> [PhotoItem] {
+    fileListing(in: path).shown
+  }
+  public func fileListing(in path: String) -> (shown: [PhotoItem], hidden: Int) {
     let all = files(in: path)
-    return showsSidecarFiles ? all : all.filter { $0.companionOwnerID == nil }
+    let rows = showsSidecarFiles ? all : all.filter { $0.companionOwnerID == nil }
+    return FolderListing.split(rows.sorted(by: FileScanner.newestFirst), name: \.name, revealed: revealedFolder == path)
+  }
+  public func hiddenCount(in path: String) -> Int {
+    fileListing(in: path).hidden + folderListing(in: path).hidden
   }
   /// An asset's companion files, in its own order, made from its own companion list so they do not depend on
   /// the folder still being cached. A listed item is used when there is one.
@@ -448,12 +475,18 @@ public final class LibraryStore: ObservableObject {
   /// Subfolders of the folder on show, as Icons mode lists them before its files.
   public var subfolders: [FolderTile] {
     guard filter != .archive else { return [] }
+    return folderListing(in: selectedFolderPath).shown
+  }
+  public func folderListing(in path: String) -> (shown: [FolderTile], hidden: Int) {
+    let folders: [FolderTile]
     if let remoteFolders {
-      return (remoteFolders.nodes[selectedFolderPath]?.children ?? [])
+      folders = (remoteFolders.nodes[path]?.children ?? [])
         .map { FolderTile(path: $0, name: ($0 as NSString).lastPathComponent) }
+    } else {
+      folders = (localFolders?.results[path]?.rootFolder.children ?? rootFolderChildren(path))
+        .map { FolderTile(path: $0.relativePath, name: $0.name) }
     }
-    return (localFolders?.results[selectedFolderPath]?.rootFolder.children ?? rootFolderChildren(selectedFolderPath))
-      .map { FolderTile(path: $0.relativePath, name: $0.name) }
+    return FolderListing.split(folders, name: \.name, revealed: revealedFolder == path)
   }
   private func rootFolderChildren(_ path: String) -> [FolderNode] {
     func find(_ node: FolderNode) -> FolderNode? {
@@ -469,7 +502,7 @@ public final class LibraryStore: ObservableObject {
   /// How many files of each kind the folder holds after its favourite filter, before the kind filter.
   public var kindCounts: [FileTypeFilter: Int] {
     if let kindCountsCache { return kindCountsCache }
-    let scope = PhotoQuery.visiblePhotos(in: displayed(photos), folderRelativePath: selectedFolderPath, filter: filter,
+    let scope = PhotoQuery.visiblePhotos(in: listedPhotos, folderRelativePath: selectedFolderPath, filter: filter,
       favorites: favorites, includeSubfolders: includesSubfolders, includeCompanions: showsSidecarFiles)
     var counts: [FileTypeFilter: Int] = [:]
     for photo in scope {
@@ -848,7 +881,7 @@ public final class LibraryStore: ObservableObject {
     let old = selectedPhoto
     photos.removeAll { $0.folderRelativePath == path && $0.archiveID == nil }
     photos += result.files
-    photos.sort { $0.relativePath.localizedStandardCompare($1.relativePath) == .orderedAscending }
+    photos.sort(by: FileScanner.newestFirst)
     if let old, old.folderRelativePath == path {
       if let updated = result.files.first(where: { $0.id == old.id }) {
         selectionMissing = false; missingPreview = nil
@@ -895,7 +928,7 @@ public final class LibraryStore: ObservableObject {
   }
   public var folderFileCount: Int {
     if let folderFileCountCache { return folderFileCountCache }
-    let count = PhotoQuery.visiblePhotos(in: displayed(photos), folderRelativePath: selectedFolderPath,
+    let count = PhotoQuery.visiblePhotos(in: listedPhotos, folderRelativePath: selectedFolderPath,
       filter: filter == .archive ? .archive : .all, favorites: [], includeSubfolders: includesSubfolders,
       includeCompanions: showsSidecarFiles).count
     folderFileCountCache = count

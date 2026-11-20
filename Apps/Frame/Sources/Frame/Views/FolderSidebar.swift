@@ -1,3 +1,4 @@
+import PreviewSupport
 import AppKit
 import FrameKit
 import SwiftUI
@@ -147,6 +148,7 @@ private struct FileTree: NSViewRepresentable {
       var name: String
       var file: PhotoItem?
       var children: [Node] = []
+      var isHiddenRow = false
       var isRoot = false
       init(path: String, name: String) { self.path = path; self.name = name }
     }
@@ -162,7 +164,7 @@ private struct FileTree: NSViewRepresentable {
     func update(_ store: LibraryStore) {
       self.store = store
       guard let outline else { return }
-      let key = "\(store.activeRootID?.uuidString ?? "")|\(store.remoteFolders?.rootPath ?? "")|\(store.localFolders?.revision ?? store.remoteFolders?.revision ?? 0)|\(store.showsSidecarFiles)"
+      let key = "\(store.activeRootID?.uuidString ?? "")|\(store.remoteFolders?.rootPath ?? "")|\(store.localFolders?.revision ?? store.remoteFolders?.revision ?? 0)|\(store.showsSidecarFiles)|\(String(describing: store.revealedFolder))"
       updating = true
       defer { updating = false }
       if key != signature {
@@ -176,14 +178,16 @@ private struct FileTree: NSViewRepresentable {
       func build(_ path: String, _ name: String, depth: Int) -> Node {
         let value = node(path, name)
         guard depth < 64 else { return value }
-        let children: [(String, String)]
-        if let tree = store.remoteFolders {
-          children = (tree.nodes[path]?.children ?? []).map { ($0, ($0 as NSString).lastPathComponent) }
-        } else {
-          children = (store.localFolders?.results[path]?.rootFolder.children ?? []).map { ($0.relativePath, $0.name) }
+        let folders = store.folderListing(in: path)
+        let files = store.fileListing(in: path)
+        value.children = folders.shown.map { build($0.path, $0.name, depth: depth + 1) }
+          + files.shown.map { node($0.relativePath, $0.name, file: $0) }
+        let count = folders.hidden + files.hidden
+        if count > 0 {
+          let row = Node(path: path, name: FolderListing.hiddenLabel(count))
+          row.isHiddenRow = true
+          value.children.append(row)
         }
-        value.children = children.map { build($0.0, $0.1, depth: depth + 1) }
-          + store.treeFiles(in: path).map { node($0.relativePath, $0.name, file: $0) }
         return value
       }
       let rootPath = store.remoteFolders?.rootPath ?? ""
@@ -227,12 +231,16 @@ private struct FileTree: NSViewRepresentable {
     }
     func outlineView(_ outlineView: NSOutlineView, numberOfChildrenOfItem item: Any?) -> Int { (item as? Node)?.children.count ?? (root == nil ? 0 : 1) }
     func outlineView(_ outlineView: NSOutlineView, child index: Int, ofItem item: Any?) -> Any { (item as? Node)?.children[index] ?? root! }
-    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? Node)?.file == nil }
+    func outlineView(_ outlineView: NSOutlineView, isItemExpandable item: Any) -> Bool { (item as? Node)?.file == nil && (item as? Node)?.isHiddenRow == false }
     func outlineView(_ outlineView: NSOutlineView, rowViewForItem item: Any) -> NSTableRowView? {
       (outlineView.makeView(withIdentifier: TreeRowView.identifier, owner: self) as? TreeRowView) ?? TreeRowView()
     }
     func outlineView(_ outlineView: NSOutlineView, viewFor tableColumn: NSTableColumn?, item: Any) -> NSView? {
       guard let node = item as? Node else { return nil }
+      if node.isHiddenRow {
+        let button = NSButton(title: FolderListing.show, target: self, action: #selector(showHidden(_:)))
+        return NSStackView(views: [NSTextField(labelWithString: node.name), button])
+      }
       let cell = (outlineView.makeView(withIdentifier: TreeCell.identifier, owner: self) as? TreeCell) ?? TreeCell()
       let error = store.remoteFolders?.nodes[node.path]?.error ?? store.localFolders?.errors[node.path]
       let symbol = error != nil ? "exclamationmark.circle" : node.file?.format.symbol ?? "folder"
@@ -268,8 +276,13 @@ private struct FileTree: NSViewRepresentable {
     }
     func outlineViewSelectionDidChange(_ notification: Notification) {
       guard !updating, let outline, let node = outline.item(atRow: outline.selectedRow) as? Node else { return }
-      if let file = node.file { store.showFile(file) }
+      if node.isHiddenRow { store.revealHidden(in: node.path) }
+      else if let file = node.file { store.showFile(file) }
       else { store.selectFolder(node.path) }
+    }
+    @objc private func showHidden(_ sender: NSButton) {
+      guard let outline, let node = outline.item(atRow: outline.row(for: sender)) as? Node else { return }
+      store.revealHidden(in: node.path)
     }
     func deleteCurrent() {
       guard let outline, let file = (outline.item(atRow: outline.selectedRow) as? Node)?.file,

@@ -579,12 +579,31 @@ enum SFTPListingParser {
             }
         }
 
-        return entries.sorted {
-            if $0.isDirectory != $1.isDirectory {
-                return $0.isDirectory
-            }
-            return $0.name.localizedStandardCompare($1.name) == .orderedAscending
+        // OpenSSH prints a year for older files and a local time for recent ones.
+        func formatter(_ format: String) -> DateFormatter {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.dateFormat = format
+            return formatter
         }
+        let recentFormat = formatter("MMM d HH:mm yyyy")
+        let olderFormat = formatter("MMM d yyyy")
+        let calendar = Calendar(identifier: .gregorian)
+        let now = Date()
+        let year = calendar.component(.year, from: now)
+        let dated = entries.map { entry -> (RemoteFileEntry, TimeInterval?) in
+            let recent = entry.modificationText.contains(":")
+            let formatter = recent ? recentFormat : olderFormat
+            let text = entry.modificationText + (recent ? " " + String(year) : "")
+            var date = formatter.date(from: text)
+            if recent, let candidate = date, candidate > now.addingTimeInterval(3600) {
+                date = calendar.date(byAdding: .year, value: -1, to: candidate)
+            }
+            return (entry, date?.timeIntervalSince1970)
+        }
+        return dated.sorted { a, b in
+            FolderListing.precedes((a.0.name, a.0.isDirectory, a.1), (b.0.name, b.0.isDirectory, b.1))
+        }.map(\.0)
     }
 
     private static func isSafeEntryName(_ name: String) -> Bool {

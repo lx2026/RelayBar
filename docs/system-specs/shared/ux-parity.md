@@ -6,8 +6,8 @@ Read across for current behaviour. The last column records the direction of chan
 
 | Behaviour | RelayBar | Frame | Mobile | Where decided | Status | Direction |
 |---|---|---|---|---|---|---|
-| Folder order | Folders first, then name | Folder tree first, name within groups | Folders first, newest within groups by default | [Listing], [Scanner], [Sidebar], [Folder] | To fix | Folders list newest first by default. |
-| Hidden entries | Lists dot names inline | Local scanner skips them, bridge lists them | Collapsed hidden count with Show | [Listing], [Scanner], [Helper], [Remote client], [Folder] | To fix | Names that begin with a dot are tucked into one row with Show. |
+| Folder order | Newest first within folders and files | Same | Same by default, with a saved Name option | [Folder listing] | Same | Break ties by natural name order. |
+| Hidden entries | Count and Show | Count and Show in local and remote folders | Count and Show | [Folder listing] | Same | Reveal dot names for the current folder visit. |
 | Keeping an item | — | Pin / Unpin | Pin / Unpin | [Sidebar], [Screen], [Website browser] | Same | Use the pin glyph. |
 | Markdown extensions | md, markdown, mdown, mkd | md, markdown, mdown, mkd | md, markdown, mdown, mkd | [Preview policy], [Grouping] | Same | Group and render all four extensions. |
 | Image formats | JPEG and PNG plus More Image Formats | JPEG and PNG plus More Image Formats | JPEG and PNG plus More Image Formats | [Preview policy] | Same | More Image Formats starts enabled. |
@@ -26,9 +26,9 @@ Read across for current behaviour. The last column records the direction of chan
 | Markdown size | 10 MiB | 10 MiB | 10 MiB | [Preview policy] | Same | Apply the document limit. |
 | HTML size | 10 MiB | 10 MiB | 10 MiB | [Preview policy] | Same | Apply the document limit. |
 | HTML page assets | 32 MiB per asset, 64 MiB total, 128 distinct requests | Same budgets | Same budgets | [Preview policy], [Relay HTML], [Frame resources], [Document scheme] | Same | Bound resources per page. |
-| PNG text | Bridge helper reads Pillow text fields | Swift chunk reader | Separate Swift chunk reader | [Helper], [Frame PNG], [Mobile PNG] | To fix | Share decoding rules and bounded-text fixtures. |
-| Embedded PNG text limits | Pillow caps decompressed chunks at 1 MiB, total at 2 MiB | Decompresses a chunk with a 64 MiB ceiling | 256,000-byte buffer and combined text budget | [Helper], [Frame PNG], [Mobile PNG] | To fix | Agree on the limits for readable embedded text. |
-| Image details | Helper supplies text and EXIF to Frame | Interprets generator parameters and camera fields | Reads raw keys and presents selected fields | [Helper], [Frame metadata], [Reader], [Screen] | To fix | Give equivalent metadata the same labels. |
+| PNG text | Bridge reads text with Pillow | Shared Swift reader | Shared Swift reader | [Helper], [PNG reader] | Same | Read Latin-1 and international text, including compressed chunks. |
+| Embedded PNG text limits | 1 MiB per chunk, 2 MiB per image | Same | Same | [Preview policy], [PNG reader], [Helper] | Same | Bound decompressed text. |
+| Image details | Helper supplies text and EXIF to Frame | Prompt, negative prompt, settings, camera | Same | [Image details], [Frame metadata], [Reader] | Same | Use the shared labels and field order. |
 | Graph in the Prompt field | Helper forwards raw metadata | Suppresses object-shaped prompt text | Suppresses node graphs for display and prompt search | [Helper], [Frame metadata], [Reader], [Observers], [Screen] | Same | Keep workflow graphs out of the prompt. |
 | Companion text budget | 32 files, 2 MiB each, 256,000 characters total | Same limits | Same limits | [Preview policy], [Helper], [Frame metadata], [Reader] | Same | Clip decoded text to the remaining budget. |
 
@@ -38,8 +38,8 @@ Read across for current behaviour. The last column records the direction of chan
 |---|---|---|---|---|---|---|
 | Web service noun | Website Labels | — | Website Labels | [Preview policy], [Tunnel list], [Website browser] | Same | Use Website for the page and tunnel for the forwarding rule. |
 | Website name | Known product, then page title | — | Known product, then page title | [Website name policy] | Same | Use the same recognition order and title limit. |
-| Host-key failure | Could not verify the server’s key | Remote access through RelayBar | Distinguishes changed and refused keys | [SFTP], [Transport], [Remote client] | To fix | Use consistent trust wording for equivalent failures. |
-| Connection failure | Server refused, timed out or connection lost | Remote access through RelayBar | Service refused or SSH connection ended | [SFTP], [Transport], [Remote client] | To fix | Match equivalent causes and keep actionable recovery details. |
+| Host-key failure | Distinct changed and untrusted key messages | Receives the RelayBar message | Same | [Connection failures], [SFTP], [Transport] | Same | Verify the fingerprint before trusting the key. |
+| Connection failure | Title and recovery for each recognized cause | Receives the RelayBar message | Same for recognized causes | [Connection failures], [SFTP], [Transport], [Website browser] | Same | Keep generic reachability wording when SSH reports no specific cause. |
 | Shared plugin text | Website Labels and appearance | Prompt Search and appearance | Website Labels, Prompt Search and appearance | [Preview policy], [Paper appearance] | Same | Use one title and summary per shared plugin, including More Image Formats. |
 
 ### Counting rules
@@ -48,17 +48,14 @@ Read across for current behaviour. The last column records the direction of chan
 
 | Kind | Source | Definitions |
 |---|---|---|
-| PNG | [Helper] | `im.info.items()` |
-| PNG | [Frame PNG] | `case "tEXt":` |
-| PNG | [Mobile PNG] | `case "tEXt":` |
-| Limit | [Frame PNG] | `let maximum = 64 *` |
-| Limit | [Mobile PNG] | `var remaining = 256_000`, `var length: uLongf = 256_000` |
-| Limit | [Helper] | `MAX_TEXT_CHUNK=1024*1024`, `MAX_TEXT_MEMORY=2*1024*1024` |
+| PNG | [Helper] | `im.text if im.format == 'PNG'` |
 | Limit | [Relay JSON] | `maximumByteCount = 2 *` |
 | Limit | [Relay video] | `maximumByteCount: Int64 = 512 *` |
 | Limit | [Structured reader] | `static let limit = 2 << 20` |
 
-**Fixture coverage.** The denominator is one case per named entry in [Grouping fixtures] and one per HTML reference page alongside [ordinary] and [extended]. Count a grouping case in the numerator when both the [Mac grouping test] and [mobile grouping test] enumerate the whole fixture array. Count a Markdown case when both the [Mac Markdown test] and [mobile Markdown test] select its name in their fixture loops. This measures test wiring. The mobile Markdown test checks the complete stylesheet and paper palette before comparing the fixture markup.
+**Fixture coverage.** The grouping and Markdown counts include one case per named entry in [Grouping fixtures] and one per HTML reference page alongside [ordinary] and [extended]. Count a grouping case in the numerator when both the [Mac grouping test] and [mobile grouping test] enumerate the whole fixture array. Count a Markdown case when both the [Mac Markdown test] and [mobile Markdown test] select its name in their fixture loops. This measures test wiring. The mobile Markdown test checks the complete stylesheet and paper palette before comparing the fixture markup.
+
+The browsing cases in [Browsing fixtures] cover both sort orders, hidden names, image metadata and connection failures. The [Mac browsing test] and [mobile grouping test] run those cases and read every PNG in the fixture directory. The Mac suite also sends those PNGs through the bridge helper when Pillow is configured.
 
 **Outstanding rows.** Count each behaviour whose Status cell reads “To fix”. The total line repeats the three measures together. Only a missing linked file makes the check fail.
 
@@ -82,7 +79,6 @@ Read across for current behaviour. The last column records the direction of chan
 [Frame renderer]: ../../../Apps/Frame/Sources/FrameKit/Services/DocumentRenderer.swift
 [Frame resources]: ../../../Apps/Frame/Sources/FrameKit/Services/DocumentResources.swift
 [Frame pairs]: ../../../Apps/Frame/Sources/FrameKit/Services/AssetPairing.swift
-[Frame PNG]: ../../../Apps/Frame/Sources/FrameKit/Services/PNGTextReader.swift
 [Frame metadata]: ../../../Apps/Frame/Sources/FrameKit/Services/ImageMetadataReader.swift
 [Frame sidecars]: ../../../Apps/Frame/Sources/FrameKit/Services/SidecarReader.swift
 [Remote client]: ../../../Apps/Frame/Sources/FrameKit/Services/RelayRemoteClient.swift
@@ -90,7 +86,6 @@ Read across for current behaviour. The last column records the direction of chan
 [Screen]: ../../../Apps/RelayBarMobile/Sources/MobileUI/ReaderScreen.swift
 [Reader]: ../../../Apps/RelayBarMobile/Sources/MobileCore/Reader.swift
 [Document scheme]: ../../../Apps/RelayBarMobile/Sources/MobileCore/DocumentScheme.swift
-[Mobile PNG]: ../../../Apps/RelayBarMobile/Sources/MobileCore/PNGTextReader.swift
 [Observers]: ../../../Apps/RelayBarMobile/Sources/MobileCore/Registries.swift
 [Transport]: ../../../Apps/RelayBarMobile/Sources/MobileCore/TransportAdapter.swift
 [Mobile labels]: ../../../Apps/RelayBarMobile/Sources/MobileCore/ServiceLabels.swift
@@ -108,3 +103,9 @@ Read across for current behaviour. The last column records the direction of chan
 [Document paper]: ../../../Packages/AppComposition/Sources/HouseStyle/DocumentPaper.swift
 [Structured reader]: ../../../Apps/RelayBarMobile/Sources/MobileCore/StructuredPreview.swift
 [Paper appearance]: ../../../Packages/AppComposition/Sources/HouseStyle/PaperAppearance.swift
+[Folder listing]: ../../../Packages/AppComposition/Sources/PreviewSupport/FolderListing.swift
+[PNG reader]: ../../../Packages/AppComposition/Sources/PreviewSupport/PNGTextReader.swift
+[Image details]: ../../../Packages/AppComposition/Sources/PreviewSupport/ImageDetails.swift
+[Connection failures]: ../../../Packages/AppComposition/Sources/PreviewSupport/ConnectionFailure.swift
+[Browsing fixtures]: ../../../Packages/AppComposition/Sources/CompositionFixtures/BrowsingFixtures.swift
+[Mac browsing test]: ../../../Apps/RelayBar/Tests/RelayBarTests/FrameRemoteHelperTests.swift

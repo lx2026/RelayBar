@@ -1,3 +1,4 @@
+import PreviewSupport
 import AppKit
 import FrameKit
 import SwiftUI
@@ -117,8 +118,8 @@ private struct GenerationSection: View {
           .buttonStyle(.plain).foregroundStyle(FramePalette.muted)
           .help("Copy generation metadata").accessibilityLabel("Copy \(title)")
       }
-      if let prompt, !prompt.isEmpty { PromptBlock(label: "Prompt", value: prompt) }
-      if let negativePrompt, !negativePrompt.isEmpty { PromptBlock(label: "Negative", value: negativePrompt) }
+      if let prompt, !prompt.isEmpty { PromptBlock(label: ImageDetails.promptLabel, value: prompt) }
+      if let negativePrompt, !negativePrompt.isEmpty { PromptBlock(label: ImageDetails.negativeLabel, value: negativePrompt) }
       ValueGrid(rows: rows)
     }
   }

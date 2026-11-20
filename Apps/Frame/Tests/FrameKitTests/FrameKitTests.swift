@@ -18,8 +18,8 @@ final class FrameKitTests: XCTestCase {
     let rootID = UUID()
     let result = try FileScanner.scan(rootURL: root, rootID: rootID)
 
-    XCTAssertEqual(result.photos.map(\.relativePath), ["nested/two.png", "one.JPG"])
-    XCTAssertEqual(result.rootFolder.photoCount, 2)
+    XCTAssertEqual(result.photos.map(\.relativePath), [".hidden.jpg", "nested/two.png", "one.JPG"])
+    XCTAssertEqual(result.rootFolder.photoCount, 3)
     XCTAssertEqual(result.rootFolder.children.count, 1)
     XCTAssertEqual(result.rootFolder.children.first?.relativePath, "nested")
     XCTAssertEqual(result.rootFolder.children.first?.photoCount, 1)

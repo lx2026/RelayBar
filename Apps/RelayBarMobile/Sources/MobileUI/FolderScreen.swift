@@ -39,10 +39,14 @@ private enum FileKind: Int {
   }
 }
 
-func imagePosition(_ path: String, rows: [FileRow], extended: Bool = true) -> String? {
-  let images = rows.filter { !$0.stamp.directory && imageFile($0.name, extended: extended) }.sorted {
-    $0.name.localizedStandardCompare($1.name) == .orderedAscending
-  }
+/// The image's place among the folder's images, in the order the folder shows them.
+func imagePosition(
+  _ path: String, rows: [FileRow], extended: Bool = true, order: FolderOrder = .modified
+) -> String? {
+  let images = sortedFolderFiles(
+    rows.filter {
+      !$0.stamp.directory && !$0.name.hasPrefix(".") && imageFile($0.name, extended: extended)
+    }, order: order)
   guard let index = images.firstIndex(where: { $0.name == (path as NSString).lastPathComponent })
   else { return nil }
   return "\(index + 1) of \(images.count)"
@@ -164,7 +168,8 @@ struct FolderScreen: View {
   private var saver: Bool {
     workspace.profiles.value.enabled("data-saver", host: workspace.profile.id)
   }
-  var hiddenCount: Int { hiddenEntryCount(rows) }
+  private var listing: (shown: [FileRow], hidden: Int) { FolderListing.split(rows, name: \.name, revealed: showsHidden) }
+  var hiddenCount: Int { listing.hidden }
 
   @State private var message = ""
   var body: some View {
@@ -316,7 +321,7 @@ struct FolderScreen: View {
         }
       } else {
         Text(
-          "\(rows.filter { !$0.stamp.directory && !$0.name.hasPrefix(".") }.count) files · \(rows.filter { $0.stamp.directory && !$0.name.hasPrefix(".") }.count) folders"
+          "\(listing.shown.filter { !$0.stamp.directory }.count) files · \(listing.shown.filter { $0.stamp.directory }.count) folders"
         ).secondaryText()
       }
     }
@@ -359,9 +364,9 @@ struct FolderScreen: View {
       }
       if hiddenCount > 0 && !showsHidden {
         HStack {
-          Text(hiddenCount == 1 ? "1 hidden item" : "\(hiddenCount) hidden items").secondaryText()
+          Text(FolderListing.hiddenLabel(hiddenCount)).secondaryText()
           Spacer()
-          Button("Show") { if pad { workspace.revealedFolder = path } else { revealed = true } }
+          Button(FolderListing.show) { if pad { workspace.revealedFolder = path } else { revealed = true } }
             .accessibilityLabel("Show hidden items")
         }.frame(minHeight: 44)
       }
@@ -374,11 +379,11 @@ struct FolderScreen: View {
   }
   func group(_ folders: Bool) -> [FileRow] {
     sortedFolderFiles(
-      rows.filter { row in
-        row.stamp.directory == folders && (showsHidden || !row.name.hasPrefix("."))
+      listing.shown.filter { row in
+        row.stamp.directory == folders
           && (query.isEmpty || row.name.localizedCaseInsensitiveContains(query))
           && (!changedOnly || visit(row).map { $0.stamp != row.stamp } == true)
-      }, order: order, extended: reader?.extendedImages ?? true)
+      }, order: order)
   }
   private var breadcrumbs: some View {
     HStack(spacing: 0) {
@@ -523,19 +528,9 @@ private struct FolderLine: View {
   }
 }
 
-func hiddenEntryCount(_ rows: [FileRow]) -> Int { rows.filter { $0.name.hasPrefix(".") }.count }
-
-func sortedFolderFiles(_ rows: [FileRow], order: FolderOrder, extended: Bool = true) -> [FileRow] {
+func sortedFolderFiles(_ rows: [FileRow], order: FolderOrder) -> [FileRow] {
   rows.sorted { a, b in
-    if a.stamp.directory != b.stamp.directory { return a.stamp.directory }
-    if order == .modified {
-      if a.stamp.modified != b.stamp.modified {
-        return (a.stamp.modified ?? 0) > (b.stamp.modified ?? 0)
-      }
-      if !a.stamp.directory && FileKind(a.name, extended: extended) != FileKind(b.name, extended: extended) {
-        return FileKind(a.name, extended: extended).rawValue < FileKind(b.name, extended: extended).rawValue
-      }
-    }
-    return a.name.localizedStandardCompare(b.name) == .orderedAscending
+    FolderListing.precedes((a.name, a.stamp.directory, a.stamp.modified.map(Double.init)),
+                           (b.name, b.stamp.directory, b.stamp.modified.map(Double.init)), newestFirst: order == .modified)
   }
 }

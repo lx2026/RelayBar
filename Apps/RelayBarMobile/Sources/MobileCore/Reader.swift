@@ -70,16 +70,11 @@ package struct ReadDocument: Identifiable, Sendable {
   package var title: String
   package var excerpt = ""
   package var details: [String: String] = [:]
-  package var imagePrompt: String? {
-    details.first { key, value in
-      guard key.lowercased() == "prompt" else { return false }
-      guard value.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("{"),
-        let object = try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [String: Any]
-      else { return true }
-      return object["nodes"] as? [Any] == nil
-        && !object.values.contains { ($0 as? [String: Any])?["class_type"] != nil }
-    }?.value
+  var cameraFields: [(String, String)] = []
+  package var imageDetails: ImageDetails.Details {
+    ImageDetails.interpret(pngText: details, flattened: cameraFields)
   }
+  package var imagePrompt: String? { imageDetails.prompt }
   package var isHTML = false
   package var isVideo = false
   package var isImage = false
@@ -145,14 +140,7 @@ package enum Format: String, CaseIterable {
       {
         doc.details["Dimensions"] = "\(w) × \(h)"
       }
-      for key in [
-        kCGImagePropertyPNGDictionary, kCGImagePropertyExifDictionary,
-        kCGImagePropertyTIFFDictionary,
-      ] {
-        for (label, value) in props[key as String] as? [String: Any] ?? [:] {
-          if value is String || value is NSNumber { doc.details[label] = String(describing: value) }
-        }
-      }
+      doc.cameraFields = ImageDetails.flatten(props.filter { $0.key != kCGImagePropertyPNGDictionary as String })
       return doc
     }
     guard !file.data.contains(0), var source = String(data: file.data, encoding: .utf8) else {

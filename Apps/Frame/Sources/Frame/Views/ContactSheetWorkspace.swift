@@ -18,6 +18,14 @@ struct IconsWorkspace: View {
       } else {
         NativeContactSheet(store: store)
       }
+      let hidden = store.hiddenCount(in: store.selectedFolderPath)
+      if hidden > 0, store.filter != .archive {
+        HStack {
+          Text(FolderListing.hiddenLabel(hidden))
+          Spacer()
+          Button(FolderListing.show) { store.revealHidden(in: store.selectedFolderPath) }
+        }.padding(8)
+      }
     }
   }
 }

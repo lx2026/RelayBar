@@ -414,9 +414,13 @@ final class RemoteFilesModel: ObservableObject {
     @Published private(set) var screen: Screen = .welcome
     @Published private(set) var servers: [RemoteServer]
     @Published private(set) var recentLocations: [RemoteLocation]
-    @Published var selectedServerID: UUID?
+    @Published var selectedServerID: UUID? { didSet { if oldValue != selectedServerID { showsHidden = false } } }
     @Published var remotePath = ""
-    @Published private(set) var currentPath = ""
+    @Published private(set) var currentPath = "" { didSet { if oldValue != currentPath { showsHidden = false } } }
+    @Published var showsHidden = false
+    var listing: (shown: [RemoteFileEntry], hidden: Int) {
+        FolderListing.split(entries, name: \.name, revealed: showsHidden)
+    }
     @Published private(set) var pendingPath: String?
     @Published private(set) var entries: [RemoteFileEntry] = []
     @Published var selectedEntryID: String?
@@ -584,7 +588,7 @@ final class RemoteFilesModel: ObservableObject {
     }
 
     var previewableEntries: [RemoteFileEntry] {
-        entries.filter(\.isPreviewable)
+        listing.shown.filter(\.isPreviewable)
     }
 
     var selectedServer: RemoteServer? {
@@ -630,7 +634,7 @@ final class RemoteFilesModel: ObservableObject {
     var canBeginFileSelection: Bool {
         screen == .browser
             && isFolderOpen
-            && entries.contains(where: { $0.kind == .file })
+            && listing.shown.contains(where: { $0.kind == .file })
             && !isLoading
             && !isRefreshing
             && !isTransferRunning
@@ -1194,7 +1198,7 @@ final class RemoteFilesModel: ObservableObject {
         guard canDelete(entry), let server = activeServer else { return }
         let directory = currentPath
         let browserIndex = entries.firstIndex(where: { $0.id == entry.id }) ?? 0
-        let visibleImages = entries.filter(\.isPreviewableImage)
+        let visibleImages = listing.shown.filter(\.isPreviewableImage)
         let imageIndex = visibleImages.firstIndex(where: { $0.id == entry.id }) ?? 0
         let visiblePreviewables = previewableEntries
         let previewIndex = visiblePreviewables.firstIndex(where: { $0.id == entry.id }) ?? 0
@@ -1869,8 +1873,8 @@ final class RemoteFilesModel: ObservableObject {
 
         if deletedFromPreview {
             let candidates = entry.isPreviewableImage
-                ? entries.filter(\.isPreviewableImage)
-                : entries.filter(\.isPreviewable)
+                ? listing.shown.filter(\.isPreviewableImage)
+                : listing.shown.filter(\.isPreviewable)
             let preferredIndex = entry.isPreviewableImage ? imageIndex : previewIndex
             if !candidates.isEmpty {
                 let target = candidates[min(preferredIndex, candidates.count - 1)]

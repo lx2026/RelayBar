@@ -49,6 +49,7 @@ final class ReviewWorkspaceTests: XCTestCase {
   @MainActor func testFavoriteAdvancesWhilePreservingCheckedDeletionTargets() async throws {
     try await withStore { store in
       let photos = store.visiblePhotos
+      store.select(photos[0])
       store.toggleSelectMode()
       store.toggleCurrentSelection()
       store.select(photos[1])
@@ -90,7 +91,8 @@ final class ReviewWorkspaceTests: XCTestCase {
       store.selectFolder("Child")
       let child = try XCTUnwrap(store.selectedPhoto)
       XCTAssertEqual(store.batchSelection.ids, [child.id])
-      store.updateGridSelection([photos[0].id], currentID: photos[0].id)
+      let outside = try XCTUnwrap(photos.first { $0.folderRelativePath != "Child" })
+      store.updateGridSelection([outside.id], currentID: outside.id)
       XCTAssertTrue(store.batchSelection.ids.isEmpty)
       XCTAssertNil(store.selectedPhoto)
       XCTAssertFalse(store.canExport)

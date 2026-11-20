@@ -155,11 +155,11 @@ public actor RelayRemoteClient: RemoteAssetServing {
       return PhotoItem(id: FavoriteRecord.makeKey(rootID: rootID, relativePath: entry.path), rootID: rootID,
         url: Self.remoteURL(source: source.id, path: entry.path), relativePath: entry.path,
         folderRelativePath: expectedParent, name: entry.name, format: format, fileSize: entry.size,
-        createdAt: nil, modifiedAt: nil, fileIdentifier: nil)
+        createdAt: nil, modifiedAt: ChangeTracking.parse(entry.modified), fileIdentifier: nil)
     }
     let companions = files.filter { !AssetCompanionNames.isMedia($0.name) }.map {
       AssetFile(url: Self.remoteURL(source: source.id, path: $0.path), relativePath: $0.path,
-                size: $0.size, modifiedAt: nil, identifier: nil)
+                size: $0.size, modifiedAt: ChangeTracking.parse($0.modified), identifier: nil)
     }
     photos = AssetPairing.pair(photos, sidecars: companions).map { photo in
       var photo = photo
@@ -167,8 +167,11 @@ public actor RelayRemoteClient: RemoteAssetServing {
         entry: filesByPath[photo.relativePath]!,
         companions: photo.companions.compactMap { filesByPath[$0.relativePath] })
       return photo
-    }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-    let folders = entries.filter(\.directory).sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }.sorted(by: FileScanner.newestFirst)
+    let folders = entries.filter(\.directory).sorted {
+      FolderListing.precedes(($0.name, true, ChangeTracking.parse($0.modified)?.timeIntervalSince1970),
+                             ($1.name, true, ChangeTracking.parse($1.modified)?.timeIntervalSince1970))
+    }
       .map { FolderNode(id: $0.path, name: $0.name, relativePath: $0.path, photoCount: 0, children: []) }
     let extraFiles = companions.filter { !AssetCompanionNames.isPrimary($0.relativePath) }
     let allFiles = FileScanner.allFiles(photos: photos, extras: extraFiles, rootID: rootID).map { item in

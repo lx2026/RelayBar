@@ -1,3 +1,4 @@
+import PreviewSupport
 import Composition
 import HouseStyle
 import ImageIO
@@ -334,11 +335,19 @@ import WebKit
       route = .privateName
       load()
     } else {
-      reason = error.localizedDescription
+      reason = Self.failureMessage(error)
     }
   }
   func webView(_ view: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-    if view === web, reason.isEmpty, !Self.cancelled(error) { reason = error.localizedDescription }
+    if view === web, reason.isEmpty, !Self.cancelled(error) { reason = Self.failureMessage(error) }
+  }
+  static func failureMessage(_ error: Error) -> String {
+    switch (error as? URLError)?.code {
+    case .cannotFindHost, .dnsLookupFailed: ConnectionFailure.hostNotFound.message
+    case .timedOut: ConnectionFailure.timedOut.message
+    case .networkConnectionLost: ConnectionFailure.connectionLost.message
+    default: error.localizedDescription
+    }
   }
   private static func cancelled(_ error: Error) -> Bool {
     let e = error as NSError
