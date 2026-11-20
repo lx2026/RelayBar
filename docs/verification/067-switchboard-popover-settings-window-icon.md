@@ -123,3 +123,9 @@ An isolated app using the production menu content exercised three open-and-dismi
 Apple accepted submission `2f25e1a1-9ad8-419b-a829-ac762cba270c`. The stapled ZIP's SHA-256 was `04ea87b3deeee3d5d0f00f10cb9d3b9b36e26d2cfd73bd86d4906a7264914767`. Both executable slices matched the release dSYM. The installed copy passed strict signature verification, ticket validation and Gatekeeper assessment as Notarized Developer ID.
 
 Build 30 quit with no active SSH transfers or tunnels and was saved at `.build/app-backups/build30-before-31-20261120-133744/RelayBar.app`. Build 31 completed launch from `/Applications/RelayBar.app` and registered its menu bar icon. Desktop automation could inspect the installed icon but could not confirm a visible popover from a pointer click. The six verified cycles above used the isolated app.
+
+## GitHub prerelease, build 31
+
+On 2026-11-20, RelayBar 2.0.0 Beta 5 shipped from annotated tag `v2.0.0-beta.5` at `7de575a1a5fe06fdf54c6da13f3df1d5e42a9b92`. The anonymous GitHub download matched the stapled archive byte for byte. GitHub reported the same SHA-256 and size of 5,916,897 bytes. Both CPU slices of the downloaded app matched the release dSYM. Its signature, ticket, Gatekeeper assessment, resources and notices all passed. The executable matched the installed build 31. [GitHub release](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.5)
+
+The full local suite passed before tagging. It ran 17 release-script tests, 46 transport tests, 94 shared tests (2 skipped), 471 RelayBar tests (36 skipped), 244 Frame tests (4 skipped), 62 mobile tests and 11 web-view checks. The parity check covered all 26 shared fixtures. Public Frame Beta 5 and RelayBar Beta 5 use bridge v7. GitHub’s latest stable release, the Sparkle feed and Homebrew each reported RelayBar 1.6.0.

@@ -3,9 +3,10 @@
 Frame is a native macOS folder viewer for images, video, Markdown, HTML and text. Open an existing folder, browse its tree or thumbnails, and inspect files beside their metadata. Nothing is imported. General files stay visible even when they have no preview.
 
 - **Stable 1.6.0:** there is no stable Frame release, and stable RelayBar 1.6.0 does not include the Frame integration.
+- Frame 2.0.0 Beta 5 (build 26) runs on macOS 14 or later on Apple silicon. [Download Beta 5](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.5)
 - Frame 2.0.0 Beta 3 (build 23) runs on macOS 14 or later and is the final release for Intel Macs. Subsequent releases require Apple silicon. [Download Beta 3](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.3)
 
-Local folders work independently. For remote folders in Beta 3, use RelayBar 2.0.0 Beta 3. Development builds can pair with RelayBar from the same source revision. [RelayBar Beta 3](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.3)
+Local folders work independently. For remote folders in Frame Beta 5, use [RelayBar Beta 5](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.5). For remote folders in Beta 3, use RelayBar 2.0.0 Beta 3. Development builds can pair with RelayBar from the same source revision. [RelayBar Beta 3](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.3)
 
 Both apps use bridge v7, and older bridge versions are rejected. Frame updates manually. Hand acceptance in the running app and against live SSH hosts is not finished. See the [paired-app README](../../README.md) and the [reader layout verification](../../docs/verification/068-frame-reader-layout.md).
 

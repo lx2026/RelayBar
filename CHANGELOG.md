@@ -4,14 +4,19 @@ Notable RelayBar changes are recorded here, with Frame from 2.0.0.
 
 ## Unreleased
 
-- RelayBar opens its popover on the first click even when macOS launched the app hidden.
-- RelayBar Remote Files and Frame list folders and files newest first and tuck dot names into a counted Show row. RelayBar explains how to recover from recognized SSH failures, including changed and untrusted host keys. Frame displays those messages for remote folders.
-- File Search drops stale results from unreadable folders and uses space freed by removed folders when indexing replacements. Frame supports explicit keyboard activation of the hidden-items row. All three apps include the count in its accessibility label.
+- Frame lists folders and files newest first, groups dot names under a counted Show row and displays recovery instructions for recognized SSH failures.
+- File Search drops stale results from unreadable folders and uses space freed by removed folders when indexing replacements. Frame supports keyboard activation of the hidden-items row. Frame and mobile include the count in its accessibility label.
 - Frame reads compressed PNG prompts locally. Frame and mobile show generation settings and camera details under the same labels. Mobile sorts equal timestamps by name and uses the shared recovery text for recognized connection failures.
 
-- RelayBar previews MOV, M4V and WebP, and opens Markdown up to 10 MiB on reader paper. Website Labels is the new name for Service Labels.
 - Frame opens `.mdown` and `.mkd` as Markdown and `.text` as plain text. Pin and Unpin use a pin icon and keep existing saved items.
-- Both apps include More Image Formats by default. Switching it off leaves JPEG and PNG previews enabled.
+- Frame enables More Image Formats by default. Switching it off leaves JPEG and PNG previews enabled.
+
+## [RelayBar 2.0.0 Beta 5](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.5) - 2026-11-20
+
+- The first click on the menu bar icon opens the popover even when macOS launched RelayBar hidden.
+- Remote Files lists folders first, sorts each group newest first and puts dot names under a Show button. The button includes the number of hidden items in its accessibility label.
+- SSH errors explain how to recover from a changed or untrusted host key.
+- RelayBar previews MOV, M4V and WebP, and opens Markdown documents up to 10 MiB on reader paper. More Image Formats is on by default. Switching it off keeps JPEG and PNG previews. Website Labels is the new name for Service Labels.
 
 ## [2.0.0-beta.1] - 2026-11-17
 

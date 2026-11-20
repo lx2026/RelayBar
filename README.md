@@ -2,14 +2,14 @@
 
 RelayBar keeps SSH forwarding profiles in your Mac's menu bar and opens remote files by path. Frame is its companion for reviewing images, video and documents in a folder workspace. Both are native macOS apps; RelayBar runs the system's `/usr/bin/ssh` and `/usr/bin/sftp` directly.
 
-[Download stable RelayBar v1.6.0](https://github.com/lx2026/RelayBar/releases/download/v1.6.0/RelayBar.zip) · [RelayBar 2.0.0 Beta 1](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.1) · [Frame 2.0.0 Beta 1](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1) · [Changelog](CHANGELOG.md) · [Frame source](Apps/Frame)
+[Download stable RelayBar v1.6.0](https://github.com/lx2026/RelayBar/releases/download/v1.6.0/RelayBar.zip) · [RelayBar 2.0.0 Beta 5](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.5) · [Frame 2.0.0 Beta 5](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.5) · [Changelog](CHANGELOG.md) · [Frame source](Apps/Frame)
 
 ## Availability
 
 | | Stable 1.6.0 | 2.0.0 beta |
 | --- | --- | --- |
-| RelayBar | **1.6.0, build 11**, notarized; macOS 13+. In-app updates and Homebrew. | [**2.0.0 Beta 1, build 26**](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.1), notarized; macOS 13+. Manual download. |
-| Frame | Not part of the stable release. | [**2.0.0 Beta 1, build 20**](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1), notarized; macOS 14+. Frame's first public build. Manual download and updates. |
+| RelayBar | **1.6.0, build 11**, notarized; macOS 13+. In-app updates and Homebrew. | [**2.0.0 Beta 5, build 31**](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.5), notarized, macOS 13+ on Apple silicon and Intel. Manual download. |
+| Frame | Not part of the stable release. | [**2.0.0 Beta 5, build 26**](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.5), notarized, macOS 14+ on Apple silicon. Manual download and updates. |
 
 The two betas are a pair. They use **bridge v7** and reject older versions with an update message, so remote folders in Frame need both betas, or both apps built from the same revision. Local folders in Frame work without RelayBar. Stable 1.6.0 does not include the Frame integration, plugins, the redesigned interface or the shared Markdown renderer.
 
@@ -25,7 +25,7 @@ If RelayBar was installed manually, quit it and remove the existing `/Applicatio
 
 ## Try the 2.0.0 beta
 
-Download `RelayBar.zip` from [RelayBar 2.0.0 Beta 1](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.1) and `Frame.zip` from [Frame 2.0.0 Beta 1](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.1). Both are universal, Developer ID signed, notarized and stapled. Quit RelayBar first (quitting stops its tunnels), then move each app to Applications. RelayBar 2.0.0 keeps 1.6.0's saved profiles, hosts and recent locations, and imports its retry limit and update-check choice once.
+Download `RelayBar.zip` from [RelayBar 2.0.0 Beta 5](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.5) and `Frame.zip` from [Frame 2.0.0 Beta 5](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.5). RelayBar supports Apple silicon and Intel. Frame Beta 5 requires Apple silicon. Both apps are Developer ID signed, notarized and stapled. Quit RelayBar first (quitting stops its tunnels), then move each app to Applications. RelayBar 2.0.0 keeps 1.6.0's saved profiles, hosts and recent locations, and imports its retry limit and update-check choice once.
 
 Neither beta is offered by RelayBar's update feed or Homebrew, and Frame has no updater, so a newer beta build is downloaded by hand from its release.
 
@@ -69,14 +69,15 @@ Frame's **review aids**: Markdown and HTML have a Rendered/Source switch. Beside
 | App | Plugin | Default | What it does |
 | --- | --- | --- | --- |
 | RelayBar | Reconnect on Wake | On | Brings a waiting retry forward after wake or network return, preserving its retry budget. |
-| RelayBar | Service Labels | Off | Checks forwarded loopback HTTP endpoints for a short product or page label, every 30 seconds while enabled. |
+| RelayBar | Website Labels | Off | Checks forwarded loopback HTTP endpoints for a short product or page label, every 30 seconds while enabled. |
+| RelayBar | More Image Formats | On | Adds previews for BMP, GIF, HEIC, HEIF, TIFF and WebP. JPEG and PNG are always available. |
 | RelayBar | Open in Frame | On if Frame is installed at launch | Shows Open in Frame in Remote Files and runs the local bridge Frame uses; while off, RelayBar shows nothing of Frame. |
 | Both | Paper Appearance | On | Draws the shared warm paper colours, light and dark; off uses standard macOS colours. |
 | Frame | Prompt Search | On | Filters the current folder by filenames and companion text; Command-F focuses search. |
 
 **Paper Appearance** covers RelayBar's popover, Settings, Remote Files and Plugins window, and all of Frame. Each app keeps its own choice, and switching it redraws open windows at once. With it off, a few RelayBar surfaces do not exactly match 1.6.0: the Settings window and the Plugins window's side columns sit on a grey background, the running and retrying marks use macOS green and orange, and status text uses macOS orange and red adjusted for contrast.
 
-**Markdown** uses one shared renderer in both apps: highlighted code with Copy, typeset math, callouts, footnotes, frontmatter properties and aligned tables. Each app keeps its own palette and resource policy. Raw Markdown HTML is literal text; Mermaid remains source. Frame skips enrichment above 2 MiB; RelayBar limits Markdown input to 2 MiB.
+**Markdown** uses one shared renderer in both apps: highlighted code with Copy, typeset math, callouts, footnotes, frontmatter properties and aligned tables. Each app keeps its own palette and resource policy. Raw Markdown HTML is literal text; Mermaid remains source. Frame skips enrichment above 2 MiB. RelayBar previews Markdown up to 10 MiB.
 
 Measured on the same dense test documents, RelayBar's warm preview time fell from 0.9 s to about 0.04 s at 20 KB and from 7.2 s to about 0.5 s at 200 KB. Frame's 200 KB preview grew from 0.07 s to 0.32–0.51 s with enrichment; 1 MB took about 1.6 s. These are local fixture measurements, not startup or remote-transfer guarantees. [Renders, method and limitations](docs/verification/063-one-markdown-renderer.md).
 

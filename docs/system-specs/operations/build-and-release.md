@@ -76,6 +76,8 @@ The app is distributed outside the Mac App Store, uses the hardened runtime, and
 
 ## Stable GitHub release
 
+RelayBar’s current public prerelease is **2.0.0 Beta 5, build 31**. It runs on macOS 13 or later on Apple silicon and Intel. Beta users download the ZIP manually. [GitHub release](https://github.com/lx2026/RelayBar/releases/tag/v2.0.0-beta.5) · [Verification](../../verification/067-switchboard-popover-settings-window-icon.md#github-prerelease-build-31)
+
 Public pre-releases on 2026-11-17: **RelayBar 2.0.0 Beta 1, build 26**, published as `v2.0.0-beta.1` with `RelayBar.zip`, and **Frame 2.0.0 Beta 1, build 20**, published as `frame-v2.0.0-beta.1` with `Frame.zip`. Both tags are annotated and point at `5ca8d77`, the commit the archives were built from. Frame was published and checked first, and an anonymous download of each asset equals the verified archive byte for byte. Neither is the repository's latest release: `v1.6.0` remains stable, and the Sparkle feed, `docs/appcast.xml` and the Homebrew cask were not changed, so a 1.6.0 installation is not offered the beta. The owner asked for the beta ahead of native and live-host acceptance, which stays open. See [Task 071 verification](../../verification/071-2.0.0-beta-1-pre-releases.md).
 
 On 2026-11-20, notarized universal RelayBar 2.0.0 (31) replaced build 30 on the maintainer's Mac. To launch the installed copy in the background, use `open -g /Applications/RelayBar.app`. The additional `-j` flag requests a hidden launch. [Build 31 verification](../../verification/067-switchboard-popover-settings-window-icon.md#local-installation-build-31)
@@ -178,9 +180,11 @@ chain.
 
 ## Frame and paired releases
 
-Frame's current public pre-release is **2.0.0 Beta 3, build 23**, for macOS 14 or later on Apple silicon and Intel. It updates by manual download and pairs with RelayBar 2.0.0 Beta 3 for remote libraries. Frame uses a separate annotated tag and an immutable `Frame.zip` asset in the shared repository. The beta is published with `make_latest` false. See the [release](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.3) and [verification record](../../verification/075-frame-2.0.0-beta-3.md).
+Frame’s public prerelease is **2.0.0 Beta 5, build 26**, for macOS 14 or later on Apple silicon. It updates by manual download and uses bridge v7 for remote libraries. Each Frame release has its own annotated tag and immutable `Frame.zip` in the shared repository. GitHub lists it as a prerelease. [Frame Beta 5](https://github.com/lx2026/RelayBar/releases/tag/frame-v2.0.0-beta.5)
 
-Beta 3 is the last Intel-compatible Frame release. Starting with build 24, run Frame QA natively on Apple silicon and verify that the executable extracted from `Frame.zip` reports exactly `arm64` and matches the arm64 dSYM UUID. The minimum macOS version is 14.0.
+Beta 3, build 23, is the last Intel-compatible Frame release. [Verification](../../verification/075-frame-2.0.0-beta-3.md)
+
+Starting with build 24, run Frame QA natively on Apple silicon and verify that the executable extracted from `Frame.zip` reports exactly `arm64` and matches the arm64 dSYM UUID. The minimum macOS version is 14.0.
 
 For the next paired rollout, finish native and live-host acceptance, choose explicitly approved release versions and monotonic builds, freeze a clean commit, and notarize each app separately. Publish and independently verify Frame's archive before publishing RelayBar's archive and advancing its Sparkle feed. The companion download must be available before a RelayBar update can expose an incompatible pairing. Follow the existing RelayBar feed, prior-build rehearsal, website and Homebrew order above. Release notes must name the compatible pair and explain that Frame updates manually; bridge v7 rejects older peers. No new version or public URL is selected by these preparation scripts.
 
@@ -221,10 +225,9 @@ Homebrew or guesses the installation source.
 The GitHub Pages site is a build-free static site under `docs/`. Its
 `index.html`, `styles.css`, and local image assets are sufficient to render the
 page; it does not require a generated page runtime or third-party font request.
-The primary download and the Homebrew command stay on stable 1.6.0 and name it
-explicitly; beta links name 2.0.0 Beta 1.
+The primary download and the Homebrew command point to stable RelayBar 1.6.0. The beta download rows link to RelayBar 2.0.0 Beta 5 and Frame 2.0.0 Beta 5 on GitHub. RelayBar supports Apple silicon and Intel. The Frame row specifies Apple silicon and the download section links to Frame Beta 3 for Intel Macs.
 
-The page has five parts. The hero draws a strip of the menu bar with the RelayBar popover hanging from it, beside the headline, the stable download and a link to the beta. Three short facts follow, then Remote Files, then a dark band for Frame with its beta download, then one Download list with a row each for RelayBar 1.6.0, RelayBar 2.0.0 Beta 1 and Frame 2.0.0 Beta 1. The list and the two sentences around it carry everything about the beta: the downloads from the GitHub pre-releases (`v2.0.0-beta.1`, `frame-v2.0.0-beta.1`) and their release notes, the minimum macOS versions, that the two betas work together and an older RelayBar is refused, that Frame updates manually, and that Homebrew and RelayBar's in-app updater stay on 1.6.0. Colours are the apps' paper palette in light and dark, and the popover picture follows the colour scheme; text is the system font, with no script. Screenshots show the 2.0 beta with sample data, and the page says so. Both READMEs separate stable 1.6.0 from the 2.0.0 beta, link both pre-releases, document bridge compatibility and plugin defaults, and separate Markdown's restrictions from online HTML previews.
+The hero shows the menu bar popover, followed by product features, Remote Files, Frame and the downloads. The page lists system requirements, manual beta updates and which betas to use together. Screenshots use sample data and follow the system colour scheme.
 
 ## iPhone and iPad development
 
