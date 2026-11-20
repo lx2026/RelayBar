@@ -113,3 +113,13 @@ The clean extraction of the final ZIP and the installed bundle each passed the c
 The installed 2.0.0 (24) was archived first to `.build/local-notarized-install-2.0.0-rb25-frame19-2026-11-17/backups/RelayBar-2.0.0-build24.zip`; that archive extracts with a valid signature and the same executable as the installed app. RelayBar then quit normally, which stopped its tunnels, and `/Applications/RelayBar.app` was replaced with `ditto`. The installed executable matches the extraction. The new app completed launch and was still running ten seconds later; Launch Services resolves `com.lx2026.RelayBar` to `/Applications/RelayBar.app`, and no new crash report appeared.
 
 Frame 2.0.0 (19) was installed in the same round; see [Task 068](068-frame-reader-layout.md#local-installation-build-19). Logs, Apple's records, the final ZIPs, checksums, dSYMs and backups are in `.build/local-notarized-install-2.0.0-rb25-frame19-2026-11-17/`. No push, tag, release, feed, website or Homebrew change was made.
+
+## Local installation, build 31
+
+On 2026-11-20, RelayBar 2.0.0 (31) was built from `7de575a`. When macOS launched build 30 hidden, clicking the status item could give the popover keyboard focus while its window stayed off screen. Build 31 calls `NSApp.unhideWithoutActivation()` when the menu content appears.
+
+An isolated app using the production menu content exercised three open-and-dismiss cycles after a forced hidden launch and three after an ordinary background launch. WindowServer showed the 380 × 440 popover on every open, including the first from the hidden state, and removed it on every dismissal. The macOS suite reported 436 passes, 35 skips and zero failures. All 17 script tests passed.
+
+Apple accepted submission `2f25e1a1-9ad8-419b-a829-ac762cba270c`. The stapled ZIP's SHA-256 was `04ea87b3deeee3d5d0f00f10cb9d3b9b36e26d2cfd73bd86d4906a7264914767`. Both executable slices matched the release dSYM. The installed copy passed strict signature verification, ticket validation and Gatekeeper assessment as Notarized Developer ID.
+
+Build 30 quit with no active SSH transfers or tunnels and was saved at `.build/app-backups/build30-before-31-20261120-133744/RelayBar.app`. Build 31 completed launch from `/Applications/RelayBar.app` and registered its menu bar icon. Desktop automation could inspect the installed icon but could not confirm a visible popover from a pointer click. The six verified cycles above used the isolated app.
