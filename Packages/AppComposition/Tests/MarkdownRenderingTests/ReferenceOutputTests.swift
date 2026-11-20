@@ -17,15 +17,16 @@ final class ReferenceOutputTests: XCTestCase {
                 XCTAssertEqual(image.height, original.height)
                 let pixels = try coverage(image), referencePixels = try coverage(original)
                 guard pixels.count == referencePixels.count else { continue }
-                // Allow small Core Text antialiasing differences between SDKs.
                 let error = zip(pixels, referencePixels).reduce(0) { $0 + abs(Int($1.0) - Int($1.1)) }
                 let ink = referencePixels.reduce(0) { $0 + Int($1) }
                 XCTAssertGreaterThan(ink, 0)
+                // Core Text rasterization varies across OS releases even at identical layout metrics.
                 #if os(macOS)
-                XCTAssertEqual(error, 0, name)
+                let maximumRelativeError = 0.01
                 #else
-                XCTAssertLessThan(Double(error) / Double(ink), 0.025, name)
+                let maximumRelativeError = 0.025
                 #endif
+                XCTAssertLessThan(Double(error) / Double(ink), maximumRelativeError, "\(name) equation \(image.width)×\(image.height)")
             }
         }
     }
