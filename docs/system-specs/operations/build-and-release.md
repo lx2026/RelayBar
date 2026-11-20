@@ -218,3 +218,17 @@ The primary download and the Homebrew command stay on stable 1.6.0 and name it
 explicitly; beta links name 2.0.0 Beta 1.
 
 The page has five parts. The hero draws a strip of the menu bar with the RelayBar popover hanging from it, beside the headline, the stable download and a link to the beta. Three short facts follow, then Remote Files, then a dark band for Frame with its beta download, then one Download list with a row each for RelayBar 1.6.0, RelayBar 2.0.0 Beta 1 and Frame 2.0.0 Beta 1. The list and the two sentences around it carry everything about the beta: the downloads from the GitHub pre-releases (`v2.0.0-beta.1`, `frame-v2.0.0-beta.1`) and their release notes, the minimum macOS versions, that the two betas work together and an older RelayBar is refused, that Frame updates manually, and that Homebrew and RelayBar's in-app updater stay on 1.6.0. Colours are the apps' paper palette in light and dark, and the popover picture follows the colour scheme; text is the system font, with no script. Screenshots show the 2.0 beta with sample data, and the page says so. Both READMEs separate stable 1.6.0 from the 2.0.0 beta, link both pre-releases, document bridge compatibility and plugin defaults, and separate Markdown's restrictions from online HTML previews.
+
+## iPhone and iPad development
+
+The mobile target uses `Apps/RelayBarMobile/App/Version.xcconfig` for both build configurations. From the repository root, build it against the installed iOS Simulator SDK without launching a device:
+
+```sh
+xcodebuild -project Apps/RelayBarMobile/RelayBarMobile.xcodeproj -scheme RelayBarMobile \
+  -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/mobile-ios \
+  CODE_SIGNING_ALLOWED=NO build
+```
+
+Run `./scripts/test.sh mobile`, `./scripts/test.sh transport` and `./scripts/test.sh shared` on the Mac. Generate the off-screen phone and iPad gallery with `swift run --package-path Apps/RelayBarMobile ScreenGallery .build/screens`. Record physical-device results in the [mobile checklist](../../verification/mobile-device-checklist.md).
+
+Preview the archive step with `./scripts/archive-mobile.sh --dry-run`. For a signed archive, the maintainer supplies the confirmed boolean encryption declaration in the app’s Info.plist, sets `DEVELOPMENT_TEAM` and installs the appropriate local signing assets. Run `./scripts/archive-mobile.sh` to create `.build/RelayBarMobile.xcarchive`. Export, upload, TestFlight distribution and App Store publication require explicit maintainer approval. [Export compliance](../../release/mobile/export-compliance.md)

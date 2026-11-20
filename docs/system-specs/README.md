@@ -14,6 +14,9 @@ Concise specifications for the behavior currently implemented by RelayBar. Frame
 - [Markdown preview](modules/markdown-preview.md)
 - [JSON preview](modules/json-preview.md)
 - [Video preview](modules/video-preview.md)
+- [SSH transport](modules/ssh-transport.md)
+- [RelayBar for iPhone and iPad](modules/mobile-app.md)
+- [Web services on iPhone and iPad](modules/mobile-web-services.md)
 
 ## Shared contracts
 

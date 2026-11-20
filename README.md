@@ -121,3 +121,7 @@ After explicit distribution approval, `scripts/notarize-release.sh relaybar` or 
 - `scripts/`: tests, builds and distribution tools. `docs/`: static website, specifications and verification.
 
 The apps retain separate bundle identities and release artifacts. RelayBar's Sparkle feed and Homebrew cask remain its own. Start with the [system specs](docs/system-specs/README.md) and [adding a feature](docs/system-specs/shared/adding-a-feature.md). Dependency versions are pinned; required notices and font licenses ship in the app bundles.
+
+## iPhone and iPad
+
+An iPhone and iPad app is in development in this repository. It has not yet been released. [Mobile app design](docs/designs/relaybar-ios.md)
