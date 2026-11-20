@@ -14,7 +14,10 @@ case "${1:-all}" in
 esac
 python3 -m unittest discover -s "$ROOT/scripts/tests"
 for package in "${packages[@]}"; do
-  swift test --package-path "$ROOT/$package" -Xswiftc -warnings-as-errors
+  # The transport tests bind chosen port numbers on the one loopback port space, so they run one at a time.
+  serial=()
+  [[ "$package" == Packages/RelayTransport ]] && serial=(--no-parallel)
+  swift test --package-path "$ROOT/$package" -Xswiftc -warnings-as-errors ${serial[@]+"${serial[@]}"}
   if [[ "$package" == Apps/RelayBarMobile ]]; then
     python3 "$ROOT/$package/Tests/WebFixtures/private_tls.py" swift run --package-path "$ROOT/$package" WebViewCheck
   fi

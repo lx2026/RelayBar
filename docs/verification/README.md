@@ -29,3 +29,4 @@ Task verification reports record automated, visual, manual, security, and live-s
 - [Tasks 061–062 — Plugin Catalog, Plugins Window and Sample Plugins](061-062-plugins.md)
 - [Task 063 — One Markdown Renderer](063-one-markdown-renderer.md)
 - [Task 064 — Paired-app Release Preparation](064-release-preparation.md)
+- [Tasks 088–089: shared behaviour across RelayBar, Frame and mobile](088-089-ux-parity.md)

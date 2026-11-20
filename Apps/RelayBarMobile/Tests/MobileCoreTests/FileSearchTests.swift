@@ -43,6 +43,7 @@ private func finished(_ index: NameIndex, _ query: String) async throws -> ([Nam
     }
     try await Task.sleep(for: .milliseconds(5))
   } while .now < deadline
+  Issue.record("The index did not finish: \(await index.diagnostics)")
   throw CocoaError(.fileReadUnknown)
 }
 

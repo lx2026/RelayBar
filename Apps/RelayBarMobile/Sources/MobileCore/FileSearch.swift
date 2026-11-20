@@ -218,6 +218,13 @@ package actor NameIndex {
     try Task.checkCancellation()
   }
 
+  private var lastFailure: String?
+  /// What the walk is waiting on, for a test or log line when indexing does not finish.
+  package var diagnostics: String {
+    let pending = trees.values.reduce(0) { $0 + $1.pending.count }
+    return "stopped=\(stopped) walking=\(walking != nil) traffic=\(traffic) pending=\(pending)"
+      + " lastFailure=\(lastFailure ?? "none")"
+  }
   private func canList(_ root: String) async throws -> Bool {
     if root == home || checkedRoots.contains(root) { return true }
     // A pinned folder can itself be a link, even when its parent is outside every place.
@@ -246,6 +253,7 @@ package actor NameIndex {
         do {
           guard try await canList(root) else { continue }
         } catch {
+          lastFailure = "\(type(of: error))"
           if Task.isCancelled || error is TransportError || error as? SFTPError == .closed {
             return
           }
@@ -286,6 +294,7 @@ package actor NameIndex {
             apply(listing, folder: folder, root: root)
           }
         case .failure(let error):
+          lastFailure = "\(type(of: error))"
           if error is CancellationError || error is TransportError
             || error as? SFTPError == .closed
           {

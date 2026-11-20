@@ -303,3 +303,38 @@ private actor PreviewFiles: RangeFiles {
     #expect(message == sample.cause.message)
   }
 }
+
+@Test @MainActor func savedNameOrderAndNewProfileDefault() async throws {
+  let directory = URL.temporaryDirectory.appending(path: UUID().uuidString)
+  try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+  defer { try? FileManager.default.removeItem(at: directory) }
+  let url = directory.appending(path: "preferences.json")
+  let host = UUID()
+  // Version 1 encoded the UUID-keyed dictionary as alternating keys and values.
+  let legacy = """
+    {"version":1,"preferences":{"hosts":[],"history":[],"plugins":{},
+      "folderOrder":["\(host.uuidString)","Name"]}}
+    """
+  try Data(legacy.utf8).write(to: url)
+  let core = try MobileComposition(directory: directory, cache: directory.appending(path: "cache"), keys: DemoKeys())
+  await core.runtime.settled()
+  let preferences = try #require(core.runtime.service(Profiles.self))
+  let rows = [
+    FileRow(name: "A.txt", stamp: .init(modified: 3, directory: false)),
+    FileRow(name: "Archive", stamp: .init(modified: 1, directory: true)),
+    FileRow(name: "Z.txt", stamp: .init(modified: 4, directory: false)),
+    FileRow(name: "Work", stamp: .init(modified: 2, directory: true)),
+  ]
+  func names(for host: UUID) -> [String] {
+    var profile = Profile(host: "example.invalid", account: "")
+    profile.id = host
+    let workspace = HostWorkspace(core: core, profile: profile, profiles: preferences, initialRoute: nil,
+      choose: { _ in }, resume: { _, _ in }, add: { _ in }, settings: {}, hosts: {})
+    let screen = FolderScreen(workspace: workspace, path: "/", homePath: "/", files: workspace.files,
+      reader: nil, limit: 0, history: [], actions: nil, open: { _ in }, rows: rows)
+    return (screen.group(true) + screen.group(false)).map(\.name)
+  }
+  #expect(names(for: host) == ["Archive", "Work", "A.txt", "Z.txt"])
+  #expect(names(for: UUID()) == ["Work", "Archive", "Z.txt", "A.txt"])
+  await core.runtime.shutdown()
+}

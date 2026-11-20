@@ -163,13 +163,24 @@ final class Listeners: Sendable {
                     channel.closeFuture.whenComplete { _ in work.cancel() }
                 }
             }
-        let v4 = try await bootstrap.bind(host: "127.0.0.1", port: Int(port)).get()
-        let actual = UInt16(v4.localAddress!.port!)
-        var listeners = [v4]
-        if dual {
-            do { listeners.append(try await bootstrap.bind(host: "::1", port: Int(actual)).get()) }
-            catch { try? await v4.close(); throw error }
+        // With no port asked for, IPv4 chooses the number and IPv6 must take the same one. Another
+        // socket can hold that number on IPv6 alone, so further numbers are tried before failing.
+        var listeners: [Channel] = []
+        let attempts = port == 0 && dual ? 32 : 1
+        for attempt in 1...attempts {
+            let v4 = try await bootstrap.bind(host: "127.0.0.1", port: Int(port)).get()
+            guard dual else { listeners = [v4]; break }
+            do {
+                listeners = [v4, try await bootstrap.bind(host: "::1", port: v4.localAddress!.port!).get()]
+                break
+            } catch let error as IOError where error.errnoCode == EADDRINUSE && attempt < attempts {
+                try? await v4.close()
+            } catch {
+                try? await v4.close()
+                throw error
+            }
         }
+        let actual = UInt16(listeners[0].localAddress!.port!)
         onBound(actual)
         state.withLock { [listeners] in $0.listeners = listeners; $0.running = true }
         return actual

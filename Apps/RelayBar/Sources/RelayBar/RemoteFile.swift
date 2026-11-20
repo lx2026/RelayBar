@@ -489,7 +489,7 @@ enum SFTPListingParser {
         return .directory(try parse(output, parentPath: normalizedPath))
     }
 
-    static func parse(_ output: String, parentPath: String) throws -> [RemoteFileEntry] {
+    static func parse(_ output: String, parentPath: String, now: Date = Date()) throws -> [RemoteFileEntry] {
         var entries: [RemoteFileEntry] = []
         var sawStructuredListingLine = false
 
@@ -589,14 +589,15 @@ enum SFTPListingParser {
         let recentFormat = formatter("MMM d HH:mm yyyy")
         let olderFormat = formatter("MMM d yyyy")
         let calendar = Calendar(identifier: .gregorian)
-        let now = Date()
         let year = calendar.component(.year, from: now)
         let dated = entries.map { entry -> (RemoteFileEntry, TimeInterval?) in
             let recent = entry.modificationText.contains(":")
             let formatter = recent ? recentFormat : olderFormat
             let text = entry.modificationText + (recent ? " " + String(year) : "")
             var date = formatter.date(from: text)
-            if recent, let candidate = date, candidate > now.addingTimeInterval(3600) {
+            // The time is the server's local time read in this Mac's zone, so it can appear up to
+            // 26 hours ahead. Only a date further ahead than that belongs to last year.
+            if recent, let candidate = date, candidate > now.addingTimeInterval(26 * 3600) {
                 date = calendar.date(byAdding: .year, value: -1, to: candidate)
             }
             return (entry, date?.timeIntervalSince1970)

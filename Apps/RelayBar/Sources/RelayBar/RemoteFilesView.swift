@@ -951,7 +951,10 @@ struct RemoteFilesView: View {
             }
             if listing.hidden > 0 {
                 HStack {
+                    // Starts under the file names, not under their icons.
                     Text(FolderListing.hiddenLabel(listing.hidden))
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 48)
                     Spacer()
                     Button(FolderListing.show) { model.showsHidden = true }
                 }

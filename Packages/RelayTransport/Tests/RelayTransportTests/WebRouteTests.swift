@@ -322,7 +322,12 @@ private func response(_ peer: Peer) async throws -> (Int, String) {
             catch let error as IOError where error.errnoCode == EADDRINUSE && attempt < 16 { continue }
             try await reservation.close()
             await #expect(throws: (any Error).self) { try await LocalhostGate.start(port: UInt16(port)) }
-            let proof = try await bootstrap.bind(host: free, port: port).get()
+            let proof: Channel
+            do { proof = try await bootstrap.bind(host: free, port: port).get() }
+            catch {
+                Issue.record("Port \(port) on \(free) was not released. Holders:\n\(portHolders(port))")
+                throw error
+            }
             try await proof.close()
             break
         }
@@ -497,13 +502,40 @@ private struct HalfClosedUpstream: RouteStreamOpener {
     await proxy.stop()
 }
 
+// The gate takes its port number from IPv4 and then needs the same number on IPv6. The system
+// hands out numbers in sequence, so the next ones are taken here on IPv6 only: with no port asked
+// for, the gate must move on to a number free on both, not fail to start.
+@Test func gateChoosesAnotherPortWhenIPv6HoldsTheNextNumbers() async throws {
+    let bootstrap = ServerBootstrap(group: MultiThreadedEventLoopGroup.singleton)
+    var base = 65_535
+    while base + 12 > 65_535 {  // Leave room below the top of the range.
+        let marker = try await bootstrap.bind(host: "127.0.0.1", port: 0).get()
+        base = try #require(marker.localAddress?.port)
+        try await marker.close()
+    }
+    var held: [Channel] = []
+    for port in (base + 1)...(base + 12) {
+        if let channel = try? await bootstrap.bind(host: "::1", port: port).get() { held.append(channel) }
+    }
+    defer { for channel in held { channel.close(promise: nil) } }
+    try #require(held.count > 6)
+    let gate = try await LocalhostGate.start(port: 0)
+    #expect(!held.contains { $0.localAddress?.port == Int(gate.port) })
+    await gate.stop()
+}
+
 @Test func restartingGateInvalidatesUnusedGrants() async throws {
     let registry = GateRegistry()
     let first = try await LocalhostGate.start(port: 0, registry: registry)
     let token = registry.register(profile: UUID(), privateName: "test.localhost", ports: [first.port],
                                   origins: [], opener: TestOpener())
     await first.stop()
-    let next = try await LocalhostGate.start(port: first.port, registry: registry)
+    let next: LocalhostGate
+    do { next = try await LocalhostGate.start(port: first.port, registry: registry) }
+    catch {
+        Issue.record("Restart on port \(first.port) failed. Holders:\n\(portHolders(Int(first.port)))")
+        throw error
+    }
     try await client(next.port) { peer in
         try await peer.send(request("localhost:\(next.port)", ["User-Agent: " + token.userAgentComponent]))
         #expect(try await response(peer).0 == 403)
@@ -617,3 +649,16 @@ private struct HalfClosedUpstream: RouteStreamOpener {
     await proxy.stop()
 }
 #endif
+
+/// The sockets using a port, for the message of a test that found it taken.
+func portHolders(_ port: Int) -> String {
+    let process = Process(), pipe = Pipe()
+    process.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+    process.arguments = ["-nP", "-iTCP:\(port)"]
+    process.standardOutput = pipe
+    process.standardError = FileHandle.nullDevice
+    guard (try? process.run()) != nil else { return "unavailable" }
+    let text = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    process.waitUntilExit()
+    return text.isEmpty ? "none listed" : text
+}

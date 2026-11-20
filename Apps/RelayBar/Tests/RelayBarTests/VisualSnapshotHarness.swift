@@ -8,6 +8,7 @@ import CompositionFixtures
 import CompositionUI
 import HouseStyle
 import SwiftUI
+import WebKit
 import XCTest
 @testable import RelayBar
 
@@ -770,6 +771,129 @@ final class VisualSnapshotHarness: XCTestCase {
             )
             model.cancelAll()
         }
+    }
+
+    private func browsingFixture() throws -> (RemoteFilesModel, Task037SnapshotService) {
+        let listing = """
+        -rw-r--r-- 1 100 100 18 Jan 01 2020 A.txt
+        drwxr-xr-x 1 100 100 0 Jan 01 2019 Archive
+        -rw-r--r-- 1 100 100 64 Jan 02 2020 Notes.md
+        drwxr-xr-x 1 100 100 0 Jan 02 2019 Work
+        -rw-r--r-- 1 100 100 10 Jan 03 2020 .config
+        drwxr-xr-x 1 100 100 0 Jan 03 2019 .cache
+        """
+        let service = Task037SnapshotService(entries: try SFTPListingParser.parse(listing, parentPath: "/library"))
+        let catalog = RemoteServerCatalog()
+        let server = try catalog.add(name: "Library", sshHost: "example.invalid")
+        _ = catalog.recordSuccessfulOpen(server, path: "/library")
+        let model = RemoteFilesModel(tunnels: [], service: service, presenter: Task037SnapshotPresenter(), serverCatalog: catalog)
+        model.activate(try XCTUnwrap(model.recentLocations.first))
+        return (model, service)
+    }
+
+    func testListingOrderAndHiddenEntriesAfterReturningToFolder() async throws {
+        let (model, _) = try browsingFixture()
+        defer { model.cancelAll() }
+        try await waitUntil { model.currentPath == "/library" }
+        let visible = ["Work", "Archive", "Notes.md", "A.txt"]
+        XCTAssertEqual(model.listing.shown.map(\.name), visible)
+        XCTAssertEqual(model.listing.hidden, 2)
+        model.showsHidden = true
+        XCTAssertEqual(model.listing.shown.map(\.name), [".cache", "Work", "Archive", ".config", "Notes.md", "A.txt"])
+        model.activate(try XCTUnwrap(model.entries.first { $0.name == "Work" }))
+        try await waitUntil { model.currentPath == "/library/Work" }
+        model.goBack()
+        try await waitUntil { model.currentPath == "/library" }
+        XCTAssertEqual(model.listing.shown.map(\.name), visible)
+        XCTAssertEqual(model.listing.hidden, 2)
+    }
+
+    func testRemoteBrowsingSnapshots() async throws {
+        guard let path = ProcessInfo.processInfo.environment["RELAYBAR_SNAPSHOT_DIR"], !path.isEmpty else {
+            throw XCTSkip("Set RELAYBAR_SNAPSHOT_DIR to capture snapshots.")
+        }
+        try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+        let previousForm = HousePalette.form
+        HousePalette.apply(.paper)
+        defer { HousePalette.apply(previousForm) }
+        let (model, service) = try browsingFixture()
+        defer { model.cancelAll() }
+        try await waitUntil { model.currentPath == "/library" }
+        func record(_ state: String) throws {
+            for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+                try capture(view: RemoteFilesView(model: model), appearance: appearance, size: RemoteFilesWindowSizing.workspace,
+                            to: outputDirectory.appendingPathComponent("remote-\(state)-\(suffix).png"))
+            }
+        }
+        try record("folder")
+        model.showsHidden = true
+        try record("folder-shown")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let url = folder.appendingPathComponent("Notes.md")
+        try Data("# Field notes\n\nThe library is ready for review.".utf8).write(to: url)
+        service.previewURL = url
+        model.preview(try XCTUnwrap(model.entries.first { $0.name == url.lastPathComponent }))
+        try await waitUntil { model.previewMarkdown != nil }
+        for (suffix, appearance) in [("light", NSAppearance.Name.aqua), ("dark", .darkAqua)] {
+            try await captureMarkdown(model, appearance: appearance,
+                to: outputDirectory.appendingPathComponent("remote-markdown-paper-\(suffix).png"))
+        }
+        model.closePreview()
+        for (state, diagnostic) in [("refused", "Connection refused"), ("changed-key", "REMOTE HOST IDENTIFICATION HAS CHANGED!")] {
+            let path = "/" + state
+            let message = SFTPRemoteFileService.friendlyMessage(from: diagnostic)
+            service.setError(RemoteFileError.commandFailed(message), for: path)
+            model.remotePath = path
+            model.openRemotePath()
+            try await waitUntil { model.errorMessage == message }
+            try record(state)
+        }
+    }
+
+    private func captureMarkdown(_ model: RemoteFilesModel, appearance: NSAppearance.Name, to url: URL) async throws {
+        let host = NSHostingView(rootView: RemoteFilesView(model: model))
+        let size = RemoteFilesWindowSizing.previewPreferred
+        let container = NSView(frame: NSRect(origin: .zero, size: size))
+        host.frame = container.bounds
+        host.autoresizingMask = [.width, .height]
+        container.addSubview(host)
+        let window = QuietWindow(size: size, styleMask: [.titled])
+        window.appearance = NSAppearance(named: appearance)
+        window.contentView = container
+        window.orderInOffscreen()
+        defer { window.orderOut(nil); window.contentView = nil }
+        host.layoutSubtreeIfNeeded()
+
+        func page(in view: NSView) -> RemoteMarkdownWebView? {
+            if let page = view as? RemoteMarkdownWebView { return page }
+            for child in view.subviews {
+                if let page = page(in: child) { return page }
+            }
+            return nil
+        }
+        try await waitUntil { page(in: host) != nil }
+        let web = try XCTUnwrap(page(in: host))
+        var heading: String?
+        for _ in 0..<200 {
+            heading = try? await web.evaluateJavaScript("document.querySelector('article h1')?.textContent") as? String
+            if heading == "Field notes" { break }
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        XCTAssertEqual(heading, "Field notes")
+        let background = try await web.evaluateJavaScript(
+            "getComputedStyle(document.documentElement).getPropertyValue('--md-bg').trim()"
+        ) as? String
+        let paper = DocumentPaper(form: .paper)
+        XCTAssertEqual(background, appearance == .aqua ? paper.light : paper.dark)
+        // AppKit's bitmap cache omits the WebKit process's pixels. Draw its own snapshot at the page's bounds.
+        let image = try await web.takeSnapshot(configuration: nil)
+        let surface = NSImageView(frame: container.convert(web.bounds, from: web))
+        surface.imageScaling = .scaleAxesIndependently
+        surface.image = image
+        container.addSubview(surface)
+        try writeBitmap(of: container, to: url)
     }
 
     func testCaptureTask037RemoteFilesWorkspaceSnapshots() async throws {
@@ -1718,6 +1842,10 @@ final class VisualSnapshotHarness: XCTestCase {
 
         try inspect(hosting)
 
+        try writeBitmap(of: hosting, to: url)
+    }
+
+    private func writeBitmap(of hosting: NSView, to url: URL) throws {
         let rep = try XCTUnwrap(hosting.bitmapImageRepForCachingDisplay(in: hosting.bounds))
         hosting.cacheDisplay(in: hosting.bounds, to: rep)
         let data = try XCTUnwrap(rep.representation(using: .png, properties: [:]))

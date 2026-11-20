@@ -42,7 +42,9 @@ Both relay directions await writes and propagate EOF independently.
 ## Exact localhost gate
 
 LocalhostGate.start binds 127.0.0.1 and ::1 on the requested port. A failed
-second bind closes the first listener. GateLimits defaults to 16 sockets
+second bind closes the first listener. When no port is requested, IPv4 chooses
+the number; if that number is taken on ::1 the gate tries up to 32 further
+numbers before failing. GateLimits defaults to 16 sockets
 awaiting first authorization, 16 KiB per head and 45 seconds for a complete
 head, including silent preconnects. When those slots fill, a new connection
 displaces the oldest socket still awaiting authorization. Authorized sockets

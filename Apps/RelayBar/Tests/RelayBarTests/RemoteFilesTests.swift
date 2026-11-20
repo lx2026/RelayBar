@@ -2589,6 +2589,22 @@ final class SFTPListingParserTests: XCTestCase {
         XCTAssertEqual(entries[0].path, "/srv/app/report[2026]")
     }
 
+    func testAFileJustChangedOnAServerAheadInTimeStaysNewest() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        let now = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 20, hour: 1, minute: 30)))
+        // The server's clock reads eight hours ahead of this Mac; the second file is from last December.
+        let output = """
+        -rw-r--r--    1 alice staff      4096 Nov 19 22:10 yesterday.md
+        -rw-r--r--    1 alice staff      4096 Nov 20 09:29 just-now.md
+        -rw-r--r--    1 alice staff      4096 Dec  3 10:00 last-december.md
+        """
+
+        let entries = try SFTPListingParser.parse(output, parentPath: "/srv/app", now: now)
+
+        XCTAssertEqual(entries.map(\.name), ["just-now.md", "yesterday.md", "last-december.md"])
+    }
+
     func testParsesSortsAndPreservesNamesWithSpaces() throws {
         let output = """
         drwxr-xr-x    3 alice staff        96 Jul 23 21:04 reports

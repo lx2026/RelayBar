@@ -383,6 +383,21 @@ final class FrameRemoteHelperTests: XCTestCase {
         let result = try await service.frameAsset(server: server, input: BridgeAssetInput(action: "list", root: root.path))
         XCTAssertEqual(Set(result.entries?.map(\.name) ?? []), ["a.jpg", "a.jpg.json", "ssh-fixture"])
     }
+    /// Runs the embedded helper on a real host, so a value filled into the script that the host's Python rejects is caught.
+    func testListsTheConfiguredRemoteFolderWhenLiveTestingIsEnabled() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard environment["RELAYBAR_REMOTE_FILES_LIVE_TEST"] == "1",
+              let sshHost = environment["RELAYBAR_LIVE_SSH_HOST"], !sshHost.isEmpty,
+              let remotePath = environment["RELAYBAR_LIVE_REMOTE_PATH"] else {
+            throw XCTSkip("Set RELAYBAR_REMOTE_FILES_LIVE_TEST=1, RELAYBAR_LIVE_SSH_HOST, and RELAYBAR_LIVE_REMOTE_PATH to run the helper on a live host.")
+        }
+        let service = SFTPRemoteFileService()
+        defer { service.shutdown() }
+        let server = RemoteServer(id: UUID(), name: "Live", sshHost: sshHost, additionalArguments: [])
+        let result = try await service.frameAsset(server: server, input: BridgeAssetInput(action: "list", root: remotePath))
+        XCTAssertNil(result.error)
+        XCTAssertNotNil(result.entries)
+    }
     func testVideoPosterAndMetadataWithoutOriginalTransfer() throws {
         guard ProcessInfo.processInfo.environment["FRAME_HELPER_PYTHON"] != nil,
               FileManager.default.isExecutableFile(atPath: "/opt/homebrew/bin/ffmpeg") else {

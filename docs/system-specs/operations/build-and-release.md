@@ -232,6 +232,6 @@ xcodebuild -project Apps/RelayBarMobile/RelayBarMobile.xcodeproj -scheme RelayBa
   CODE_SIGNING_ALLOWED=NO build
 ```
 
-Run `./scripts/test.sh mobile`, `./scripts/test.sh transport` and `./scripts/test.sh shared` on the Mac. Generate the off-screen phone and iPad gallery with `swift run --package-path Apps/RelayBarMobile ScreenGallery .build/screens`. Record physical-device results in the [mobile checklist](../../verification/mobile-device-checklist.md).
+Run `./scripts/test.sh mobile`, `./scripts/test.sh transport` and `./scripts/test.sh shared` on the Mac. The transport tests bind chosen port numbers on the one loopback port space, so the script runs that suite one test at a time. Generate the off-screen phone and iPad gallery with `swift run --package-path Apps/RelayBarMobile ScreenGallery .build/screens`. Record physical-device results in the [mobile checklist](../../verification/mobile-device-checklist.md).
 
 Preview the archive step with `./scripts/archive-mobile.sh --dry-run`. For a signed archive, the maintainer supplies the confirmed boolean encryption declaration in the app’s Info.plist, sets `DEVELOPMENT_TEAM` and installs the appropriate local signing assets. Run `./scripts/archive-mobile.sh` to create `.build/RelayBarMobile.xcarchive`. Export, upload, TestFlight distribution and App Store publication require explicit maintainer approval. [Export compliance](../../release/mobile/export-compliance.md)
